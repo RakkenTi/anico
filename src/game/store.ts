@@ -239,7 +239,7 @@ export const useGame = create<GameState>()(
               } catch (e) {
                 if (results.length > 0) {
                   get().pushToast(
-                    `The stream ran dry at ${results.length} — revealing what fate allowed.`,
+                    `The stream ran dry at ${results.length}. Revealing what fate allowed.`,
                     'info',
                   )
                   break
@@ -335,7 +335,7 @@ export const useGame = create<GameState>()(
         }
         if (seriesBonus > 0) {
           get().pushToast(
-            `Series set: ${inSeries}× ${char.series} — +${seriesBonus} credits!`,
+            `Series set: ${inSeries}× ${char.series}, +${seriesBonus} credits!`,
             'credits',
           )
         }
@@ -394,7 +394,7 @@ export const useGame = create<GameState>()(
           rolled: prev.rolled.map((r) => (r.owned ? r : { ...r, owned: true, compensation: 0 })),
         }))
         get().pushToast(
-          `Claimed ${claimedCount} character${claimedCount > 1 ? 's' : ''}${bonus > 0 ? ` (+${bonus} credits)` : ''} — sandbox`,
+          `Claimed ${claimedCount} character${claimedCount > 1 ? 's' : ''}${bonus > 0 ? ` (+${bonus} credits)` : ''} (sandbox)`,
           'info',
         )
       },
@@ -433,7 +433,7 @@ export const useGame = create<GameState>()(
         if (Date.now() < s.ritualReadyAt()) return
         sfx.wish()
         set({ nextClaimAt: 0, lastRitualAt: Date.now() })
-        get().pushToast('The ritual is complete — your claim is ready.', 'info')
+        get().pushToast('The ritual is complete. Your claim is ready.', 'info')
       },
 
       sell: (id) => {
@@ -449,7 +449,7 @@ export const useGame = create<GameState>()(
 
       sellMany: (ids) => {
         const s = get()
-        // Bulk, irreversible and cooldown-free — sandbox only, like claimAll.
+        // Bulk, irreversible and cooldown-free, so sandbox only, like claimAll.
         if (!s.settings.testingMode) return
         const doomed = new Set(ids)
         const sold = s.collection.filter((c) => doomed.has(c.id))
@@ -461,7 +461,7 @@ export const useGame = create<GameState>()(
           credits: prev.credits + total,
         }))
         get().pushToast(
-          `Sold ${sold.length} character${sold.length > 1 ? 's' : ''} for +${total} credits — sandbox`,
+          `Sold ${sold.length} character${sold.length > 1 ? 's' : ''} for +${total} credits (sandbox)`,
           'credits',
         )
       },
@@ -577,7 +577,7 @@ export const useGame = create<GameState>()(
       version: 7,
       migrate: (persisted: any, version) => {
         if (version < 2 && persisted) {
-          // v1 had a flat `perks` shop — refund what was spent, move to badges.
+          // v1 had a flat `perks` shop. Refund what was spent, move to badges.
           const perks = persisted.perks ?? {}
           const bases: Record<string, number> = {
             extraRolls: 500, swiftClaims: 750, gemHunter: 400, goldenTouch: 600,
@@ -612,7 +612,7 @@ export const useGame = create<GameState>()(
         }
         if (version < 7 && persisted) {
           // The currency is called credits now. It was `kakera` through v5 and
-          // briefly `shards` in v6, so accept either legacy field — a save
+          // briefly `shards` in v6, so accept either legacy field. A save
           // written by any earlier build converts. The storage key stays
           // 'mudae-clone-save' so existing saves are still found at all.
           persisted.credits = persisted.credits ?? persisted.shards ?? persisted.kakera ?? 0

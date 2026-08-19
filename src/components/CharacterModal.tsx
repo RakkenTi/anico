@@ -70,12 +70,12 @@ export default function CharacterModal({ character, onClose, onSell }: Props) {
             <dl className="modal-facts">
               <dt>Series</dt><dd>{character.series}</dd>
               <dt>Gender</dt><dd>{character.gender}</dd>
-              <dt>Credit value</dt><dd>◆{character.creditValue}</dd>
+              <dt>Credit value</dt><dd>{character.creditValue.toLocaleString()}</dd>
               <dt>AniList favourites</dt><dd>{character.favourites.toLocaleString()}</dd>
               <dt>Claimed</dt><dd>{new Date(character.claimedAt).toLocaleDateString()}</dd>
             </dl>
             <button className="btn btn-sell" onClick={onSell}>
-              Sell for ◆{character.creditValue}
+              Sell for {character.creditValue.toLocaleString()} credits
             </button>
           </div>
         </div>

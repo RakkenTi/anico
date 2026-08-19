@@ -4,7 +4,7 @@
  * A character's credit value derives from its AniList popularity
  * (favourites count) on a power curve: the most-favourited characters
  * land around 850-900 credits, mid-tier around 100-300, and obscure
- * ones bottom out near 20 — mirroring Mudae's value spread.
+ * ones bottom out near 20, mirroring Mudae's value spread.
  */
 export function creditValue(favourites: number): number {
   const v = Math.round(15 + 7 * Math.pow(Math.max(favourites, 0), 0.45))
@@ -43,7 +43,7 @@ export interface GemTier {
   weight: number
 }
 
-/** Gem tiers modeled on Mudae's kakera reaction colors — each drops a
+/** Gem tiers modeled on Mudae's kakera reaction colors. Each drops a
     band of credits when gathered. */
 export const GEM_TIERS: GemTier[] = [
   { key: 'P', label: 'Purple Gem', color: '#b07cf7', min: 1, max: 5, weight: 35 },

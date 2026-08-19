@@ -1,4 +1,4 @@
-/** Ascending bar-chart glyph — the Stats tab's icon. Sized in em so it
+/** Ascending bar-chart glyph for the Stats tab. Sized in em so it
     follows whatever font-size its container sets, and painted in
     currentColor so it inherits the tab's active/hover states. */
 export default function BarsIcon({ className }: { className?: string }) {

@@ -11,7 +11,7 @@ export default function ShopView() {
         <h2 className="section-title">Credit Badges</h2>
         <p className="section-sub">
           Mudae's badge tree, reforged. Bronze, Silver and Gold are open to all;
-          Sapphire, Ruby and Emerald demand progress — or any two badges raised to IV.
+          Sapphire, Ruby and Emerald demand progress, or any two badges raised to IV.
           {discounted && <b className="credits-text"> Ruby IV discount active: −25% on all badges.</b>}
         </p>
         <div className="badge-grid">
@@ -28,7 +28,7 @@ export default function ShopView() {
                 style={{ ['--badge-color' as string]: def.color }}
               >
                 <div className="badge-head">
-                  <span className="badge-medal">◆</span>
+                  <span className="badge-medal" aria-hidden="true" />
                   <div>
                     <div className="badge-name">
                       {def.name} {level > 0 && <span className="badge-level">{ROMAN[level]}</span>}
@@ -53,7 +53,7 @@ export default function ShopView() {
                   disabled={maxed || !unlocked || !affordable}
                   onClick={() => s.buyBadge(def.key)}
                 >
-                  {maxed ? 'Complete' : !unlocked ? 'Locked' : `Forge ${def.name} ${ROMAN[level + 1]} — ◆${cost.toLocaleString()}`}
+                  {maxed ? 'Complete' : !unlocked ? 'Locked' : `Forge ${def.name} ${ROMAN[level + 1]} for ${cost.toLocaleString()} credits`}
                 </button>
               </div>
             )
@@ -83,7 +83,7 @@ export default function ShopView() {
                   disabled={s.credits < item.cost || unusable}
                   onClick={() => s.buyConsumable(key)}
                 >
-                  {unusable ? '—' : `◆${item.cost}`}
+                  {unusable ? 'n/a' : `${item.cost.toLocaleString()} credits`}
                 </button>
               </div>
             )

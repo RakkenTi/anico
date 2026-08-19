@@ -104,7 +104,7 @@ export default function RollView() {
         ) : s.rolled.length === 1 && entry ? (
           <div className="roll-reveal" key={s.rollCount}>
             {entry.wished && !entry.owned && (
-              <div className="wish-banner">✦ A wish come true ✦</div>
+              <div className="wish-banner">A wish come true</div>
             )}
             <div className="flip-inner">
               <div className="flip-back" aria-hidden="true">✦</div>
@@ -184,7 +184,7 @@ export default function RollView() {
 
         <div className="roll-meta">
           {testing ? (
-            <span className="testing-note">Sandbox — no limits apply</span>
+            <span className="testing-note">Sandbox: no limits apply</span>
           ) : (
             <>
               <span>{s.rollsLeft} rolls · refill {formatDuration(rollsResetIn)}</span>
@@ -200,12 +200,12 @@ export default function RollView() {
           <div className="claim-bar">
             <div className="claim-bar-info">
               <span className="claim-bar-name">{entry.char.name}</span>
-              <span className="claim-bar-value">◆ {entry.char.creditValue}</span>
+              <span className="claim-bar-value" title="Credit value">{entry.char.creditValue.toLocaleString()}</span>
             </div>
             {entry.owned ? (
               <span className="claim-bar-note">
                 {entry.compensation > 0
-                  ? `already yours — compensated ◆${entry.compensation}`
+                  ? `already yours, compensated ${entry.compensation} credits`
                   : 'bound to your collection'}
               </span>
             ) : (
@@ -241,8 +241,8 @@ export default function RollView() {
             onClick={s.collectGem}
             style={{ ['--gem-color' as string]: gemTier(s.pendingGem.tier).color }}
           >
-            <span className="gem-mark">◆</span>
-            {gemTier(s.pendingGem.tier).label} — tap to gather <b>+{s.pendingGem.amount}</b>
+            <span className="gem-mark" aria-hidden="true" />
+            {gemTier(s.pendingGem.tier).label}: tap to gather <b>+{s.pendingGem.amount}</b>
           </button>
         )}
 

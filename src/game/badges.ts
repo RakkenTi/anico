@@ -1,5 +1,5 @@
 /**
- * Credit Badges — adapted from Mudae's badge/reward tree.
+ * Credit Badges, adapted from Mudae's badge/reward tree.
  *
  * Six badge lines, four levels each. Sapphire/Ruby/Emerald are locked
  * behind progress in the basic lines (or any two maxed badges), exactly

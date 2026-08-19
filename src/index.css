@@ -1,5 +1,5 @@
 /* ============================================================
-   ANICO — themes over one semantic token set.
+   ANICO: themes over one semantic token set.
    Currently shipping: arcade (charcoal glass, one electric teal
    signal) on the Stage layout. festival/daybreak and the other
    layouts remain defined but are hidden from Settings for now.
@@ -135,11 +135,10 @@ body {
   gap: 10px;
   font-family: var(--serif);
 }
-.brand-mark { color: var(--value); font-size: 1.1rem; }
 .brand-name {
   font-size: 1.65rem;
   font-weight: 800;
-  letter-spacing: 0.34em;
+  letter-spacing: 0.1em;
   color: var(--text);
 }
 .brand-jp { color: var(--text-dim); font-size: 0.85rem; letter-spacing: 0.3em; }
@@ -176,6 +175,12 @@ body {
 }
 .header-stats .stat:first-child { border-left: none; padding-left: 0; }
 .stat-credits { color: var(--value-soft); }
+.stat-credits em {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.86em;
+  color: var(--text-dim);
+}
 .stat-ready { color: var(--ready); }
 
 button.stat { cursor: pointer; }
@@ -413,7 +418,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 
 /* ------------------------------------------------ roll view
    Stage and controls sit side by side so the summon buttons are
-   always in view — the card never pushes them below the fold. */
+   always in view, so the card never pushes them below the fold. */
 .roll-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
@@ -536,8 +541,8 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   perspective: 900px;
 }
 /* --deal-delay comes from RollView (dealDelayMs): an eased-in-and-out
-   cascade — slow off the top, fast through the middle, settling on the
-   last card — that every flip sound is scheduled against too. */
+   cascade (slow off the top, fast through the middle, settling on the
+   last card) that every flip sound is scheduled against too. */
 .spread-slot .flip-inner {
   animation-delay: var(--deal-delay, 0ms);
 }
@@ -675,7 +680,12 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   animation: gemFloat 1.4s ease-in-out infinite;
 }
 .gem-drop b { color: var(--gem-color); }
-.gem-mark { color: var(--gem-color); font-size: 1.15rem; }
+.gem-mark {
+  width: 9px; height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--gem-color);
+}
 @keyframes gemFloat {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
@@ -809,15 +819,13 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 
 .badge-head { display: flex; gap: 12px; align-items: center; }
 .badge-medal {
-  font-family: var(--serif);
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--badge-color);
   width: 46px; height: 46px;
-  display: grid; place-items: center;
+  flex: none;
   border: 1px solid var(--badge-color);
   border-radius: 50%;
-  background: var(--well);
+  background:
+    radial-gradient(circle at 50% 50%, var(--badge-color) 0 34%, transparent 34%),
+    var(--well);
 }
 .badge-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.05em; }
 .badge-level { color: var(--badge-color); }

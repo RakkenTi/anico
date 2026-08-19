@@ -9,6 +9,7 @@ import ShopView from './components/ShopView'
 import StatsView from './components/StatsView'
 import SettingsView from './components/SettingsView'
 import BarsIcon from './components/BarsIcon'
+import BagIcon from './components/BagIcon'
 import ToastStack from './components/ToastStack'
 
 type Tab = 'roll' | 'collection' | 'wishes' | 'shop' | 'stats' | 'settings'
@@ -17,7 +18,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'roll', label: 'Summon', icon: '✦' },
   { key: 'collection', label: 'Collection', icon: '▦' },
   { key: 'wishes', label: 'Wishes', icon: '★' },
-  { key: 'shop', label: 'Shop', icon: '◆' },
+  { key: 'shop', label: 'Shop', icon: <BagIcon /> },
   { key: 'stats', label: 'Stats', icon: <BarsIcon /> },
   { key: 'settings', label: 'Settings', icon: '⚙' },
 ]
@@ -56,12 +57,13 @@ export default function App() {
     <div className="app">
       <header className="header">
         <div className="brand">
-          <span className="brand-mark">◆</span>
           <span className="brand-name">ANICO</span>
           {testing && <span className="sandbox-tag">SANDBOX</span>}
         </div>
         <div className="header-stats">
-          <span className="stat stat-credits" title="Credit balance">◆ {credits.toLocaleString()}</span>
+          <span className="stat stat-credits" title="Credit balance">
+            {credits.toLocaleString()} <em>credits</em>
+          </span>
           <span className="stat" title="Rolls remaining">{testing ? '∞' : rollsLeft} rolls</span>
           <span className={`stat ${claimReady ? 'stat-ready' : ''}`} title="Claim status">
             {claimReady ? 'claim ready' : `claim ${formatDuration(nextClaimAt - now)}`}

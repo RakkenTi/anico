@@ -73,7 +73,7 @@ export default function CollectionView() {
           <h2>Collection</h2>
           <p className="col-meta">
             <b>{collection.length}</b> characters · worth{' '}
-            <b className="credits-text">◆{totalWorth.toLocaleString()}</b>
+            <b className="credits-text">{totalWorth.toLocaleString()} credits</b>
           </p>
         </div>
         <div className="col-controls">
@@ -105,7 +105,7 @@ export default function CollectionView() {
                     setConfirmBulk(false)
                   }}
                 >
-                  Sell {filtered.length} for ◆{shownWorth.toLocaleString()}
+                  Sell {filtered.length} for {shownWorth.toLocaleString()} credits
                 </button>
                 <button className="btn btn-ghost" onClick={() => setConfirmBulk(false)}>
                   Cancel

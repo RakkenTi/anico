@@ -1,5 +1,5 @@
 /**
- * ANICO sound kit — sampled UI sounds, played through Web Audio so we can
+ * ANICO sound kit: sampled UI sounds, played through Web Audio so we can
  * schedule per-card sequences, vary pitch and follow the volume setting.
  *
  * All samples are CC0 from Kenney.nl (Casino Audio, Interface Sounds,
@@ -140,7 +140,7 @@ export function dealStepMs(count: number): number {
 /* The deal eases in and out: the first cards land unhurried, the middle
    riffles, the last few settle. delay(x) = x + A·sin(2πx)/2π has slope
    1 + A·cos(2πx), so gaps run (1+A)× nominal at the ends and (1−A)× in
-   the middle — and it lands exactly on 1, leaving the total deal time
+   the middle. It lands exactly on 1, so the total deal time
    (and everything synced to it) unchanged. */
 const DEAL_EASE = 0.55
 
@@ -151,7 +151,7 @@ export function dealDelayMs(i: number, count: number): number {
   return (x + (DEAL_EASE * Math.sin(2 * Math.PI * x)) / (2 * Math.PI)) * count * dealStepMs(count)
 }
 
-/** Fraction of the deal revealed at time fraction `u` — the inverse of the
+/** Fraction of the deal revealed at time fraction `u`: the inverse of the
     curve above, to first order, for animations that track the cascade. */
 export function dealtFraction(u: number): number {
   const x = Math.max(0, Math.min(1, u))
@@ -171,7 +171,7 @@ export const sfx = {
 
   /** Reveal: one short flip per card, timed to the flip animation, then a
       stinger scaled to the best rarity. Monster spreads thin the flips to
-      ~48 spread evenly across the deal — at 3ms spacing, more samples
+      ~48 spread evenly across the deal. At 3ms spacing, more samples
       would smear into noise; fewer, faster ones read as a card riffle. */
   reveal(rarity: RarityKey, count = 1) {
     const step = dealStepMs(count) / 1000

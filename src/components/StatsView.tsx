@@ -6,7 +6,7 @@ import CharacterModal from './CharacterModal'
 import BarsIcon from './BarsIcon'
 import type { OwnedCharacter } from '../game/types'
 
-/* Chart palettes — validated (dataviz six checks) against the arcade
+/* Chart palettes, validated (dataviz six checks) against the arcade
    surface #12181e: lightness band, chroma, CVD + normal-vision
    separation, contrast. Every bar/segment is also direct-labeled,
    so identity never rides on color alone. */
@@ -202,7 +202,7 @@ export default function StatsView() {
       <div className="stats-view">
         <div className="empty-state">
           <div className="empty-glyph"><BarsIcon /></div>
-          <p>No story to tell yet — summon a few characters and come back.</p>
+          <p>No story to tell yet. Summon a few characters and come back.</p>
         </div>
       </div>
     )
@@ -212,8 +212,8 @@ export default function StatsView() {
     <div className="stats-view">
       <div className="stat-tiles">
         <Tile label="characters collected" value={collection.length} />
-        <Tile label="collection worth" value={worth} suffix=" ◆" />
-        <Tile label="credits on hand" value={credits} suffix=" ◆" />
+        <Tile label="collection worth" value={worth} />
+        <Tile label="credits on hand" value={credits} />
         <Tile label="lifetime rolls" value={totalRolls} />
         <Tile label="claims made" value={totalClaims} />
         <Tile label="claim rate" value={claimRate} suffix="%" />
@@ -238,7 +238,7 @@ export default function StatsView() {
 
         <div className="panel stat-panel stat-panel-wide">
           <h2 className="section-title">Top series</h2>
-          <p className="section-sub">Where your loyalty lies — biggest sets in your collection.</p>
+          <p className="section-sub">Where your loyalty lies. The biggest sets in your collection.</p>
           {seriesRows.length > 0 ? (
             <BarChart rows={seriesRows} max={maxSeries} />
           ) : (
@@ -248,7 +248,7 @@ export default function StatsView() {
 
         <div className="panel stat-panel stat-panel-wide">
           <h2 className="section-title">Hall of fame</h2>
-          <p className="section-sub">Your five most valuable claims — click to inspect.</p>
+          <p className="section-sub">Your five most valuable claims. Click to inspect.</p>
           {topFive.length > 0 ? (
             <div className="fame-row">
               {topFive.map((c, i) => (
@@ -256,7 +256,7 @@ export default function StatsView() {
                   <span className="fame-rank">#{i + 1}</span>
                   <img src={c.image} alt={c.name} loading="lazy" />
                   <span className="fame-name">{c.name}</span>
-                  <span className="fame-value">◆{c.creditValue}</span>
+                  <span className="fame-value" title="Credit value">{c.creditValue.toLocaleString()}</span>
                 </button>
               ))}
             </div>
@@ -274,7 +274,7 @@ export default function StatsView() {
           <span className="dot">·</span>
           <span>
             average value{' '}
-            <b>◆{collection.length > 0 ? Math.round(worth / collection.length) : 0}</b>
+            <b>{collection.length > 0 ? Math.round(worth / collection.length) : 0}</b>
           </span>
         </div>
       </div>

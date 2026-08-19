@@ -1,20 +1,20 @@
 /* ============================================================
-   ANICO — structural layouts, orthogonal to color themes.
+   ANICO: structural layouts, orthogonal to color themes.
    Themes recolor; layouts restructure. Selected via
    <html data-layout="…">, persisted in settings.
 
-   巻 scroll: hanging-scroll sidebar nav, editorial serif calm —
+   巻 scroll: hanging-scroll sidebar nav, editorial serif calm;
              panels dissolve into hairline-ruled sections.
-   帳 ledger: dense monospace terminal — boxed status bar,
+   帳 ledger: dense monospace terminal, boxed status bar,
              bracketed commands, zero radii, tight grids.
-   舞 stage:  marquee header and a fixed console dock — big type,
+   舞 stage:  marquee header and a fixed console dock, big type,
              single centered summon column, rounded 2px-frame cards.
 
    'classic' has no rules here; index.css is the classic layout.
    ============================================================ */
 
 /* ------------------------------------------------------------
-   巻 SCROLL — museum-catalog editorial
+   巻 SCROLL: museum-catalog editorial
    ------------------------------------------------------------ */
 
 /* Sidebar structure only above the tablet breakpoint; below it the
@@ -74,7 +74,7 @@
 }
 
 /* Editorial typography and hairline sections at every width. */
-[data-layout='scroll'] .brand-name { font-weight: 600; letter-spacing: 0.45em; }
+[data-layout='scroll'] .brand-name { font-weight: 600; letter-spacing: 0.16em; }
 [data-layout='scroll'] .panel {
   background: transparent;
   border: none;
@@ -102,7 +102,7 @@
 }
 
 /* ------------------------------------------------------------
-   帳 LEDGER — dense monospace terminal
+   帳 LEDGER: dense monospace terminal
    ------------------------------------------------------------ */
 
 [data-layout='ledger'] {
@@ -137,7 +137,7 @@
   margin-top: 16px;
   padding: 9px 14px;
 }
-[data-layout='ledger'] .brand-name { font-size: 1rem; letter-spacing: 0.3em; font-family: var(--sans); }
+[data-layout='ledger'] .brand-name { font-size: 1rem; letter-spacing: 0.12em; font-family: var(--sans); }
 [data-layout='ledger'] .brand-jp { display: none; }
 [data-layout='ledger'] .stat { font-size: 0.78rem; }
 
@@ -191,7 +191,7 @@
 }
 
 /* ------------------------------------------------------------
-   舞 STAGE — marquee header, console dock
+   舞 STAGE: marquee header, console dock
    ------------------------------------------------------------ */
 
 [data-layout='stage'] .app {
@@ -212,8 +212,8 @@
 [data-layout='stage'] .brand { flex-direction: column; align-items: center; gap: 2px; }
 [data-layout='stage'] .brand-name {
   font-size: 2rem;
-  letter-spacing: 0.5em;
-  margin-right: -0.5em; /* recenter: tracking pads the right edge */
+  letter-spacing: 0.14em;
+  margin-right: -0.14em; /* recentre: tracking pads the right edge */
 }
 [data-layout='stage'] .sandbox-tag { align-self: center; }
 [data-layout='stage'] .header-stats {
@@ -264,14 +264,14 @@
 [data-layout='stage'] .main { margin-top: 18px; }
 
 /* Summon keeps the rail beside the stage (buttons must never scroll
-   away under the dock) — the pair is just centered as one group.
+   away under the dock). The pair is just centered as one group.
    Cards subtract extra dvh for the marquee header and the fixed dock. */
 [data-layout='stage'] .roll-view { max-width: 880px; margin: 0 auto; }
 /* Mega spreads need the full viewport width; the app's bottom padding
    already reserves clearance for the fixed dock. The margin must be
    restated because stage's '.roll-view { margin: 0 auto }' above would
    otherwise cancel the base full-bleed shift (same specificity, later
-   in the cascade) — leaving a 100vw grid hanging off the right edge. */
+   in the cascade), leaving a 100vw grid hanging off the right edge. */
 @media (min-width: 861px) {
   [data-layout='stage'] .roll-view.mega {
     max-width: none;
@@ -300,8 +300,7 @@
 [data-layout='stage'] .claim-bar,
 [data-layout='stage'] .gem-drop { border-radius: 8px; }
 [data-layout='stage'] .section-title { text-align: center; font-size: 1.4rem; }
-[data-layout='stage'] .section-title::before { content: '✦ '; }
-[data-layout='stage'] .section-title::after { content: ' ✦'; color: var(--accent); }
+[data-layout='stage'] .section-title::before { content: none; }
 [data-layout='stage'] .section-sub {
   text-align: center;
   max-width: 56ch;

@@ -118,7 +118,7 @@ async function query(body: object): Promise<any> {
     body: JSON.stringify(body),
   })
   if (res.status === 429) {
-    throw new Error('AniList rate limit reached — wait a few seconds and try again.')
+    throw new Error('AniList rate limit reached. Wait a few seconds and try again.')
   }
   if (!res.ok) {
     throw new Error(`AniList request failed (${res.status}). Try again shortly.`)
@@ -187,7 +187,7 @@ export async function fetchRollBatch(
     if (seen.size >= maxPage) break
   }
   if (batch.length === 0) {
-    throw new Error('No rollable characters matched your filters — try widening the pool or gender preference in Settings.')
+    throw new Error('No rollable characters matched your filters. Try widening the pool or gender preference in Settings.')
   }
   const unique = [...new Map(batch.map((c) => [c.id, c])).values()]
   return shuffle(unique)

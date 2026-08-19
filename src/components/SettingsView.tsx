@@ -4,10 +4,10 @@ import { sfx } from '../game/sound'
 import type { RollGender } from '../game/types'
 
 const POOL_OPTIONS = [
-  { value: 1000, label: '~1,000 — household names only' },
-  { value: 5000, label: '~5,000 — popular characters' },
-  { value: 10000, label: '~10,000 — the standard pool' },
-  { value: 25000, label: '~25,000 — deep cuts included' },
+  { value: 1000, label: '~1,000 (household names only)' },
+  { value: 5000, label: '~5,000 (popular characters)' },
+  { value: 10000, label: '~10,000 (the standard pool)' },
+  { value: 25000, label: '~25,000 (deep cuts included)' },
 ]
 
 export default function SettingsView() {
@@ -39,7 +39,7 @@ export default function SettingsView() {
             <span>Sound effects</span>
           </label>
           <p className="setting-hint">
-            Card deals, coin handles and chimes — a ×10 summon deals all ten cards
+            Card deals, coin handles and chimes. A ×10 summon deals all ten cards
             in sequence. No music, nothing loops.
           </p>
         </div>
@@ -65,7 +65,7 @@ export default function SettingsView() {
               [
                 ['female', '♀ Waifus'],
                 ['male', '♂ Husbandos'],
-                ['everyone', '✦ Everyone'],
+                ['everyone', 'Everyone'],
               ] as [RollGender, string][]
             ).map(([value, label]) => (
               <button
@@ -94,7 +94,7 @@ export default function SettingsView() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
-          <p className="setting-hint">Rolls draw characters from the most popular series on AniList — bigger pools reach deeper, more obscure series.</p>
+          <p className="setting-hint">Rolls draw characters from the most popular series on AniList. Bigger pools reach deeper, more obscure series.</p>
         </div>
 
         <div className="setting-row">
@@ -151,7 +151,7 @@ export default function SettingsView() {
               checked={settings.testingMode}
               onChange={(e) => update({ testingMode: e.target.checked })}
             />
-            <span>Sandbox mode — skip all restrictions</span>
+            <span>Sandbox mode (skip all restrictions)</span>
           </label>
           <p className="setting-hint">
             Unlimited rolls, no claim cooldown, daily offering always available.

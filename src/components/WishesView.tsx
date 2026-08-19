@@ -38,7 +38,7 @@ export default function WishesView() {
       <div className="panel">
         <h2 className="section-title">Wishlist <span className="slot-count">{wishes.length} / {fx.wishSlots} slots</span></h2>
         <p className="section-sub">
-          Wished characters have a chance to barge into your rolls — boosted by Silver and
+          Wished characters have a chance to barge into your rolls, boosted by Silver and
           Ruby badges. Bronze IV pays +100 credits when you claim a wish.
         </p>
         {wishes.length === 0 ? (
@@ -103,7 +103,7 @@ export default function WishesView() {
                       className="btn btn-wish"
                       disabled={wishedAlready || slotsFree <= 0}
                       onClick={() => addWish(c)}
-                      title={slotsFree <= 0 && !wishedAlready ? 'No wish slots free — Bronze badges add more' : undefined}
+                      title={slotsFree <= 0 && !wishedAlready ? 'No wish slots free. Bronze badges add more.' : undefined}
                     >
                       {wishedAlready ? 'Wished' : owned ? 'Wish (owned)' : slotsFree <= 0 ? 'Slots full' : 'Wish'}
                     </button>

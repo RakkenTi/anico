@@ -30,7 +30,7 @@ export default function CharacterCard({ character, footer, compact, wished, onCl
           <span className={`gender-badge ${gender.className}`} title={gender.label}>
             {gender.symbol}
           </span>
-          <span className="rarity-tag" title={`${rarity.name} — ${character.favourites.toLocaleString()} AniList favourites`}>
+          <span className="rarity-tag" title={`${rarity.name}, ${character.favourites.toLocaleString()} AniList favourites`}>
             <b>{rarity.kanji}</b> {rarity.name}
           </span>
           {wished && <span className="wish-mark" title="On your wishlist">★</span>}
@@ -49,7 +49,7 @@ export default function CharacterCard({ character, footer, compact, wished, onCl
           </div>
           <div className="char-sub">
             <span className="char-series" title={character.series}>{character.series}</span>
-            <span className="char-value">◆{character.creditValue}</span>
+            <span className="char-value" title="Credit value">{character.creditValue.toLocaleString()}</span>
           </div>
         </div>
         {footer && <div className="char-footer">{footer}</div>}
