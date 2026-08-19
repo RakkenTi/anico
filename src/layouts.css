@@ -1,0 +1,330 @@
+/* ============================================================
+   ANICO — structural layouts, orthogonal to color themes.
+   Themes recolor; layouts restructure. Selected via
+   <html data-layout="…">, persisted in settings.
+
+   巻 scroll: hanging-scroll sidebar nav, editorial serif calm —
+             panels dissolve into hairline-ruled sections.
+   帳 ledger: dense monospace terminal — boxed status bar,
+             bracketed commands, zero radii, tight grids.
+   舞 stage:  marquee header and a fixed console dock — big type,
+             single centered summon column, rounded 2px-frame cards.
+
+   'classic' has no rules here; index.css is the classic layout.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   巻 SCROLL — museum-catalog editorial
+   ------------------------------------------------------------ */
+
+/* Sidebar structure only above the tablet breakpoint; below it the
+   classic stacking is the better reading order. */
+@media (min-width: 861px) {
+  [data-layout='scroll'] .app {
+    display: grid;
+    grid-template-columns: 212px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'nav header'
+      'nav main';
+    column-gap: 44px;
+    max-width: 1300px;
+  }
+  [data-layout='scroll'] .header {
+    grid-area: header;
+    border-bottom: none;
+    padding: 30px 0 10px;
+  }
+  [data-layout='scroll'] .main { grid-area: main; }
+
+  [data-layout='scroll'] .tabs {
+    grid-area: nav;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    padding-top: 34px;
+    border-bottom: none;
+    border-right: 1px solid var(--line);
+  }
+  [data-layout='scroll'] .tab {
+    justify-content: flex-start;
+    padding: 14px 18px 14px 14px;
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 0.88rem;
+    letter-spacing: 0.14em;
+    border-bottom: 1px solid var(--line);
+    border-left: 2px solid transparent;
+  }
+  [data-layout='scroll'] .tab:first-child { border-top: 1px solid var(--line); }
+  [data-layout='scroll'] .tab-kanji { font-size: 1.35rem; }
+  [data-layout='scroll'] .tab.active {
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+    border-bottom-color: var(--line);
+  }
+
+  /* Full-bleed mega spreads would cover the sidebar; stay in-column here. */
+  [data-layout='scroll'] .roll-view.mega {
+    width: 100%;
+    margin-left: 0;
+    padding: 0;
+  }
+}
+
+/* Editorial typography and hairline sections at every width. */
+[data-layout='scroll'] .brand-name { font-weight: 600; letter-spacing: 0.45em; }
+[data-layout='scroll'] .panel {
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--line-strong);
+  border-radius: 0;
+  padding: 24px 2px 10px;
+  margin-bottom: 30px;
+}
+[data-layout='scroll'] .section-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+[data-layout='scroll'] .section-title::before { content: none; }
+[data-layout='scroll'] .section-sub { max-width: 62ch; }
+[data-layout='scroll'] .card-frame,
+[data-layout='scroll'] .card-back { box-shadow: none; }
+[data-layout='scroll'] .collection-grid {
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 22px;
+}
+[data-layout='scroll'] .wish-grid {
+  grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
+  gap: 18px;
+}
+
+/* ------------------------------------------------------------
+   帳 LEDGER — dense monospace terminal
+   ------------------------------------------------------------ */
+
+[data-layout='ledger'] {
+  --sans: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', 'Hiragino Maru Gothic ProN', monospace;
+  --shadow: none;
+}
+
+[data-layout='ledger'] .app { max-width: 1500px; }
+
+/* Every rounded corner goes square. */
+[data-layout='ledger'] .panel,
+[data-layout='ledger'] .btn,
+[data-layout='ledger'] .input,
+[data-layout='ledger'] .chip,
+[data-layout='ledger'] .seg,
+[data-layout='ledger'] .card-frame,
+[data-layout='ledger'] .card-back,
+[data-layout='ledger'] .flip-back,
+[data-layout='ledger'] .modal,
+[data-layout='ledger'] .toast,
+[data-layout='ledger'] .badge-card,
+[data-layout='ledger'] .item-card,
+[data-layout='ledger'] .theme-swatch,
+[data-layout='ledger'] .gem-drop,
+[data-layout='ledger'] .claim-bar,
+[data-layout='ledger'] .rarity-tag,
+[data-layout='ledger'] .gender-badge,
+[data-layout='ledger'] .sandbox-tag { border-radius: 0; }
+
+[data-layout='ledger'] .header {
+  border: 1px solid var(--line-strong);
+  margin-top: 16px;
+  padding: 9px 14px;
+}
+[data-layout='ledger'] .brand-name { font-size: 1rem; letter-spacing: 0.3em; font-family: var(--sans); }
+[data-layout='ledger'] .brand-jp { display: none; }
+[data-layout='ledger'] .stat { font-size: 0.78rem; }
+
+/* Tabs become bracketed commands. */
+[data-layout='ledger'] .tabs { gap: 0; margin: 12px 0 18px; border-bottom-width: 1px; }
+[data-layout='ledger'] .tab {
+  padding: 7px 12px 8px;
+  margin-bottom: -1px;
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-bottom-width: 1px;
+}
+[data-layout='ledger'] .tab-kanji { display: none; }
+[data-layout='ledger'] .tab-label { display: inline; }
+[data-layout='ledger'] .tab-label::before { content: '[ '; opacity: 0.45; }
+[data-layout='ledger'] .tab-label::after { content: ' ]'; opacity: 0.45; }
+[data-layout='ledger'] .tab.active { color: var(--accent); }
+
+[data-layout='ledger'] .panel { padding: 14px 16px; margin-bottom: 12px; }
+[data-layout='ledger'] .section-title {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+[data-layout='ledger'] .section-title::before { content: '// '; }
+
+[data-layout='ledger'] .btn {
+  text-transform: uppercase;
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  min-height: 34px;
+}
+[data-layout='ledger'] .btn-summon { min-height: 42px; font-size: 0.85rem; }
+
+/* Denser everything: the whole point is rows-per-screen. */
+[data-layout='ledger'] .collection-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 8px; }
+[data-layout='ledger'] .wish-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; }
+[data-layout='ledger'] .badge-grid,
+[data-layout='ledger'] .item-grid { gap: 8px; }
+[data-layout='ledger'] .roll-spread { gap: 8px; }
+[data-layout='ledger'] .char-name { font-family: var(--sans); font-size: 0.8rem; }
+[data-layout='ledger'] .card-frame { box-shadow: none; }
+[data-layout='ledger'] .gem-drop { animation: none; }
+
+/* Keep command labels visible on phones (classic hides them). */
+@media (max-width: 620px) {
+  [data-layout='ledger'] .tab { padding: 7px 6px 8px; }
+  [data-layout='ledger'] .tab-label { font-size: 0.66rem; }
+}
+
+/* ------------------------------------------------------------
+   舞 STAGE — marquee header, console dock
+   ------------------------------------------------------------ */
+
+[data-layout='stage'] .app {
+  max-width: 1020px;
+  /* room for the fixed dock */
+  padding-bottom: 130px;
+}
+
+/* Marquee stays, but compact enough that the summon view below still
+   fits a full card + controls on one screen. */
+[data-layout='stage'] .header {
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  border-bottom: none;
+  padding: 22px 2px 4px;
+}
+[data-layout='stage'] .brand { flex-direction: column; align-items: center; gap: 2px; }
+[data-layout='stage'] .brand-name {
+  font-size: 2rem;
+  letter-spacing: 0.5em;
+  margin-right: -0.5em; /* recenter: tracking pads the right edge */
+}
+[data-layout='stage'] .sandbox-tag { align-self: center; }
+[data-layout='stage'] .header-stats {
+  justify-content: center;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 7px 8px;
+}
+
+[data-layout='stage'] .tabs {
+  position: fixed;
+  z-index: 30;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+[data-layout='stage'] .tab {
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 18px 7px;
+  margin: 0;
+  border-bottom: none;
+  border-radius: 6px;
+}
+[data-layout='stage'] .tab-kanji { font-size: 1.45rem; }
+[data-layout='stage'] .tab-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+[data-layout='stage'] .tab.active { background: var(--accent); color: var(--on-accent); }
+[data-layout='stage'] .tab.active .tab-kanji { color: var(--on-accent); }
+
+/* The dock is ~68px tall and floats over the bottom of the page, so
+   toasts rise above it instead of landing behind it on narrow screens
+   where the dock stretches toward the right edge. */
+[data-layout='stage'] .toast-stack {
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 88px);
+}
+
+[data-layout='stage'] .main { margin-top: 18px; }
+
+/* Summon keeps the rail beside the stage (buttons must never scroll
+   away under the dock) — the pair is just centered as one group.
+   Cards subtract extra dvh for the marquee header and the fixed dock. */
+[data-layout='stage'] .roll-view { max-width: 880px; margin: 0 auto; }
+/* Mega spreads need the full viewport width; the app's bottom padding
+   already reserves clearance for the fixed dock. The margin must be
+   restated because stage's '.roll-view { margin: 0 auto }' above would
+   otherwise cancel the base full-bleed shift (same specificity, later
+   in the cascade) — leaving a 100vw grid hanging off the right edge. */
+@media (min-width: 861px) {
+  [data-layout='stage'] .roll-view.mega {
+    max-width: none;
+    margin: 0 0 0 calc(50% - 50vw);
+  }
+}
+[data-layout='stage'] .btn-summon { min-height: 54px; font-size: 1.05rem; }
+[data-layout='stage'] .roll-reveal,
+[data-layout='stage'] .card-back {
+  width: min(100%, clamp(190px, calc(64vh - 250px), 330px));
+  width: min(100%, clamp(190px, calc(64dvh - 250px), 330px));
+}
+[data-layout='stage'] .roll-spread {
+  max-width: clamp(320px, calc(166vh - 620px), 820px);
+  max-width: clamp(320px, calc(166dvh - 620px), 820px);
+}
+
+[data-layout='stage'] .panel { border-radius: 10px; padding: 24px 26px; }
+[data-layout='stage'] .card-frame,
+[data-layout='stage'] .card-back,
+[data-layout='stage'] .flip-back { border-radius: 10px; }
+[data-layout='stage'] .btn,
+[data-layout='stage'] .chip,
+[data-layout='stage'] .input,
+[data-layout='stage'] .seg,
+[data-layout='stage'] .claim-bar,
+[data-layout='stage'] .gem-drop { border-radius: 8px; }
+[data-layout='stage'] .section-title { text-align: center; font-size: 1.4rem; }
+[data-layout='stage'] .section-title::before { content: '✦ '; }
+[data-layout='stage'] .section-title::after { content: ' ✦'; color: var(--accent); }
+[data-layout='stage'] .section-sub {
+  text-align: center;
+  max-width: 56ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+[data-layout='stage'] .settings-view { margin: 0 auto; }
+
+@media (max-width: 620px) {
+  [data-layout='stage'] .tab { padding: 8px 13px 7px; }
+  [data-layout='stage'] .brand-name { font-size: 1.7rem; }
+}
+
+/* ------------------------------------------------------------
+   Layout picker in Settings (shared by all layouts)
+   ------------------------------------------------------------ */
+.layout-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.layout-swatch { background: var(--surface-2); color: var(--text); }
+.layout-swatch .theme-kanji { color: var(--accent); }
+@media (max-width: 620px) {
+  .layout-grid { grid-template-columns: 1fr 1fr; }
+}
