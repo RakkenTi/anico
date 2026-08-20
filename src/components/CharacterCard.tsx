@@ -12,6 +12,9 @@ interface Props {
   footer?: React.ReactNode
   compact?: boolean
   wished?: boolean
+  /** Painted on the artwork: the spread's new/dupe/wish tag lives here so it
+   *  cannot come to rest on top of the name, series or value. */
+  overlay?: React.ReactNode
   /** Bulk mode: the card carries a checkbox instead of opening a detail view. */
   selectable?: boolean
   selected?: boolean
@@ -23,6 +26,7 @@ export default function CharacterCard({
   footer,
   compact,
   wished,
+  overlay,
   selectable,
   selected,
   onClick,
@@ -43,9 +47,10 @@ export default function CharacterCard({
             {gender.symbol}
           </span>
           <span className="rarity-tag" title={`${rarity.name}, ${character.favourites.toLocaleString()} AniList favourites`}>
-            <b>{rarity.kanji}</b> {rarity.name}
+            <b>{rarity.kanji}</b> <span className="tag-word">{rarity.name}</span>
           </span>
           {wished && <span className="wish-mark" title="On your wishlist">★</span>}
+          {overlay}
           {selectable && (
             <span className={`pick-mark ${selected ? 'on' : ''}`} aria-hidden="true">
               {selected ? '✓' : ''}

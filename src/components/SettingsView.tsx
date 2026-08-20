@@ -9,6 +9,7 @@ import type { RollGender } from '../game/types'
 export default function SettingsView() {
   const settings = useGame((s) => s.settings)
   const packSize = useGame((s) => s.packSize)
+  const packPrice = useGame((s) => s.packPrice)
   const sandbox = useGame((s) => s.sandbox)
   const isAdmin = useGame((s) => s.isAdmin)
   const ui = useUi()
@@ -133,19 +134,19 @@ export default function SettingsView() {
       <div className="panel">
         <h2 className="section-title">Summoning</h2>
         <p className="section-sub">
-          Summon and claim as much as you like. Nothing is on a cooldown, and there is
-          no daily allowance to spend.
+          Nothing is on a cooldown and nothing is rationed. Credits are the pacing: a
+          single summon is free, and a pack costs what its cards are nearly worth.
         </p>
         <dl className="pacing-list">
           <div>
             <dt>Single summon</dt>
-            <dd>always available, one card, yours to claim or leave</dd>
+            <dd>free, always available, one card, yours to claim or leave</dd>
           </div>
           <div>
             <dt>Packs</dt>
             <dd>
               {packSize > 0
-                ? `sealed, ×${packSize} cards, and every card in one is granted`
+                ? `sealed, ×${packSize} cards for ${packPrice.toLocaleString()} credits, and every card in one is granted`
                 : 'locked until the Sapphire badge in the shop opens them'}
             </dd>
           </div>
@@ -155,6 +156,14 @@ export default function SettingsView() {
               {fx.guaranteeRarity
                 ? `every pack holds a ${RARITY_NAMES[fx.guaranteeRarity]} or better (Emerald)`
                 : 'none yet — the Emerald badge promises a rarity floor'}
+            </dd>
+          </div>
+          <div>
+            <dt>Opening speed</dt>
+            <dd>
+              {fx.hasteMult < 1
+                ? `${Math.round(100 / fx.hasteMult)}% of normal (Swift Hands)`
+                : 'normal — Swift Hands in the shop makes big packs quick'}
             </dd>
           </div>
         </dl>
@@ -278,7 +287,7 @@ export default function SettingsView() {
 
       <p className="attribution">
         Character data & images from <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a>.
-        Sound effects (CC0) from <a href="https://kenney.nl/assets" target="_blank" rel="noreferrer">Kenney</a>.
+        Icons and sound effects (CC0) from <a href="https://kenney.nl/assets" target="_blank" rel="noreferrer">Kenney</a>.
         An unaffiliated fan project.
       </p>
     </div>

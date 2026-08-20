@@ -6,6 +6,7 @@
 
 import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
+import type { Upgrades } from './game/upgrades'
 
 export interface ServerSettings {
   rollGender: 'female' | 'male' | 'everyone'
@@ -21,13 +22,16 @@ export interface Snapshot {
   credits: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
+  /** What that pack costs to open. */
+  packPrice: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
   totalClaims: number
   badges: Badges
+  upgrades: Upgrades
   settings: ServerSettings
-  pendingCoins: { tier: string; amount: number } | null
+  pendingCoins: { amount: number } | null
   wishes: RolledCharacter[]
   /** Present only on calls that could have changed it. */
   collection?: OwnedCharacter[]
@@ -110,6 +114,7 @@ export const api = {
     request<{ state: Snapshot }>(`/wish/${characterId}`, { method: 'DELETE' }),
   search: (q: string) => request<{ results: RolledCharacter[] }>(`/search?q=${encodeURIComponent(q)}`),
   buyBadge: (key: string) => post<{ state: Snapshot }>('/badge', { key }),
+  buyUpgrade: (key: string) => post<{ state: Snapshot }>('/upgrade', { key }),
   updateSettings: (patch: Partial<ServerSettings>) =>
     request<{ state: Snapshot }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
   grant: (amount: number) => post<{ state: Snapshot }>('/grant', { amount }),

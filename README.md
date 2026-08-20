@@ -233,7 +233,8 @@ is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
 
 - **Client**: React 19 + Zustand + Vite. Holds a mirror of the server's snapshot plus
   browser-only state (which card is selected, deal animations, toasts). Installable as a
-  PWA; the shell is cached, gameplay needs the instance.
+  PWA; the shell is cached, gameplay needs the instance. Icons are Kenney's CC0 art,
+  painted as CSS masks so one file follows every theme.
 - **Server**: Hono on Node, one process serving both the API and the built client. Owns
   every rule that could otherwise be cheated
   ([ADR 0003](./docs/adr/0003-the-server-owns-the-rules.md)).
@@ -249,57 +250,78 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 
 ## The game
 
-**Summon.** One card at a time, free and unlimited: nothing is on a cooldown and there is
-no allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)). Claim the ones
-you want, sell the ones you do not, and pick who shows up in *Settings, Roll for*
-(Waifus / Husbandos / Everyone).
+**Summon.** One card at a time, free and unlimited: nothing is on a cooldown
+and there is no allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)).
+Claim the ones you want, sell the ones you do not, and pick who shows up in
+*Settings, Roll for* (Waifus / Husbandos / Everyone).
 
-**Packs are what you save for.** A fresh account has the single summon and nothing else.
-The **Sapphire** badge unlocks a sealed ×10 and grows it to ×15, ×20 and ×50; **Ruby IV**
-adds five more. A pack comes wrapped in seamless foil, tinted by the best card inside:
-drag across it and a rip travels along the seam, accumulating as you pull — a partial
-tear stays torn, so you can saw at it exactly as you would a real one. Underneath, all
-the cards are face up in a stack showing a sliver of each; throw the top one aside to
-reach the next, as fast as you like. <kbd>Space</kbd> before the tear opens the whole
-thing for you; after a hand tear it throws one card a press. **Every card in a pack is
-yours the moment it is rolled**, however you choose to open it, so how you open it is
-ceremony.
+**Packs are what credits are for.** A fresh account has the single summon and
+nothing else. The **Sapphire** badge unlocks a sealed ×10 and grows it to ×15,
+×20 and ×25; the **Deeper Packs** upgrade takes it to ×50, ×75, ×100 and past
+that. A pack costs twelve credits a card — always less than the cards inside
+are worth, so opening one and selling what you did not want is the loop
+([ADR 0005](./docs/adr/0005-credits-buy-packs.md)).
 
-**The shop is the whole progression.** Six badge lines, four levels each, bought with
-credits:
+A pack comes wrapped in seamless foil, tinted by the best card inside: drag
+across it and a rip travels along the seam, accumulating as you pull — a
+partial tear stays torn, so you can saw at it exactly as you would a real one.
+Underneath, the cards are face up in a stack showing a sliver of each; throw the
+top one aside to reach the next, as fast as you like. <kbd>Space</kbd> before
+the tear opens the whole thing for you; after a hand tear it throws one card a
+press. **Every card in a pack is yours the moment it is rolled**, however you
+choose to open it, so how you open it is ceremony. Once it is laid out, *Best
+first* sorts the spread by value so the one card worth finding in a hundred is
+at the top.
+
+**The shop is the whole progression**, and it is deliberately long. Every price
+is a multiple of the one below it, so the first hour is generous and the tenth
+is deliberate.
+
+*Upgrades* have no last level worth reaching:
+
+| Upgrade | What each level buys |
+| --- | --- |
+| **Deeper Packs** | +25 cards a pack |
+| **Swift Hands** | Packs deal and throw 10% faster, compounding |
+| **Appraisal** | +5% on everything you sell and every duplicate |
+| **Fortune** | Coins fall more often and are worth more |
+
+*Badges* are six short ladders, four rungs each, every rung three times the last:
 
 | Badge | What it buys |
 | --- | --- |
 | **Bronze** | Wish slots, and +100 credits when you claim a wished character |
 | **Silver** | The chance your wishes barge into a roll, and double duplicate compensation |
 | **Gold** | Coin drop chance, and a doubled daily offering |
-| **Sapphire** | **Packs**: ×10 at I, then ×15, ×20 and ×50 |
-| **Ruby** | More wish slots, wish chance and coin chance · at IV, −25% on every badge and +5 cards a pack |
-| **Emerald** | A **guarantee**: every pack holds a Rare or better, rising to Mythic · at IV, claims also pay the character's credit value |
+| **Sapphire** | **Packs**: ×10 at I, then ×15, ×20, ×25 · at IV, every pack drops a coin |
+| **Ruby** | More wish slots, wish chance and coin chance · at IV, everything in the shop costs 25% less |
+| **Emerald** | A **guarantee**: every pack holds a Rare or better, rising to Mythic · at IV, claims pay back a quarter of a character's value |
 
-Sapphire, Ruby and Emerald need progress in the first three lines, or any two badges
-raised to IV.
+Sapphire, Ruby and Emerald need progress in the first three lines, or any two
+badges raised to IV.
 
 **Everything else.**
 
-- **Credit value**: a character's worth, from its AniList favourites on a power curve
-  (≈35 for obscure picks, ≈865 for Levi). Rarity frame, sell price and duplicate
-  compensation all descend from it
-- **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer
-  on Mythic
+- **Credit value**: a character's worth, from its AniList favourites on a power
+  curve (≈35 for obscure picks, ≈865 for Levi). Rarity frame, sell price and
+  duplicate compensation all descend from it
+- **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil
+  shimmer on Mythic
 - **Wishes**: pin characters by name and they can barge into any roll
-- **Coins**: Copper up to Solar, weighted by rarity, dropping alongside about one summon
-  in twenty-five. Tap to gather
-- **Selling**: any character, at the credit value it had when you claimed it. **Bulk
-  mode** in the Collection picks many at once — with *select all* honouring whatever the
-  filters are showing — and sells the lot in one go
-- **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time bonuses
+- **Coins**: one coin, worth a band of credits, landing on about one summon in
+  fifty. Tap to gather
+- **Selling**: any character, at what Appraisal says it is worth. **Bulk mode**
+  in the Collection picks many at once — with *select all* honouring whatever
+  the filters are showing — and sells the lot in one go
+- **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time
+  bonuses
 - **Daily offering**: every 20 h, with a streak bonus
 - **Stats page**: animated charts over your collection, rolls and claims
-- **Sandbox**: an admin-granted privilege to switch into a *scratch profile* with its own
-  credits and its own empty collection. Nothing done in it touches the collection you
-  care about, and none of it is kept: leaving deletes it, and so does restarting the
-  instance. It summons a hundred at a time and claims them all, enforced server side
+- **Sandbox**: an admin-granted privilege to switch into a *scratch profile* with
+  its own credits and its own empty collection. Nothing done in it touches the
+  collection you care about, and none of it is kept: leaving deletes it, and so
+  does restarting the instance. Packs are free and a hundred cards wide in there
 
 *This is an unaffiliated fan project. Character data © their respective owners, served by
-AniList. Sound effects (CC0) by [Kenney](https://kenney.nl/assets).*
+AniList. Icons and sound effects (CC0) by [Kenney](https://kenney.nl/assets); the icons are
+vendored in [`src/assets/icons`](./src/assets/icons) with their licence.*

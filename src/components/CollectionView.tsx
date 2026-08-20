@@ -21,6 +21,10 @@ const RARITY_CHIPS: { key: RarityFilter; label: string }[] = [
 export default function CollectionView() {
   const collection = useGame((s) => s.collection)
   const wishes = useGame((s) => s.wishes)
+  // Appraisal raises what a card fetches, so the totals here quote the payout
+  // rather than the sticker price: the number on the sell button is the number
+  // that lands in the balance.
+  const sellMult = useGame((s) => s.effects().sellMult)
   const sell = useGame((s) => s.sell)
   const sellMany = useGame((s) => s.sellMany)
   const [search, setSearch] = useState('')
@@ -66,8 +70,9 @@ export default function CollectionView() {
     }
   }, [collection, search, sort, gender, rarity, seriesFilter])
 
-  const totalWorth = collection.reduce((s, c) => s + c.creditValue, 0)
-  const pickedWorth = collection.reduce((s, c) => (picked.has(c.id) ? s + c.creditValue : s), 0)
+  const worth = (c: OwnedCharacter) => Math.round(c.creditValue * sellMult)
+  const totalWorth = collection.reduce((s, c) => s + worth(c), 0)
+  const pickedWorth = collection.reduce((s, c) => (picked.has(c.id) ? s + worth(c) : s), 0)
   // "Select all" means all of what is on screen, so a filter is how you say
   // "every common" or "everything from this series" without tapping each one.
   const allShownPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id))

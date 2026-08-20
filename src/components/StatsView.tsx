@@ -3,7 +3,7 @@ import { useGame } from '../game/store'
 import { rarityOf } from '../game/economy'
 import type { Rarity } from '../game/economy'
 import CharacterModal from './CharacterModal'
-import BarsIcon from './BarsIcon'
+import Icon from './Icon'
 import type { OwnedCharacter } from '../game/types'
 
 /* Chart palettes, validated (dataviz six checks) against the arcade
@@ -201,7 +201,7 @@ export default function StatsView() {
     return (
       <div className="stats-view">
         <div className="empty-state">
-          <div className="empty-glyph"><BarsIcon /></div>
+          <div className="empty-glyph"><Icon name="chart" /></div>
           <p>No story to tell yet. Summon a few characters and come back.</p>
         </div>
       </div>

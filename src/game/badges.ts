@@ -13,6 +13,7 @@
  */
 
 import { RARITY_MIN } from './economy.js'
+import { PACK_STEP, MAX_PACK_SIZE, hasteMult, type Upgrades } from './upgrades.js'
 
 export type BadgeKey = 'bronze' | 'silver' | 'gold' | 'sapphire' | 'ruby' | 'emerald'
 export type Badges = Record<BadgeKey, number>
@@ -31,17 +32,19 @@ export const EMPTY_BADGES: Badges = {
  *
  * A pack is the whole reason to keep earning credits: with no Sapphire at all
  * the only summon is a single card, so the first level of this line is the
- * moment the game opens up rather than one more increment.
+ * moment the game opens up rather than one more increment. Round numbers, and
+ * only this line and Deeper Packs may move them -- Ruby IV used to add five on
+ * top, which is how a badge advertising fifty handed over fifty-five.
  */
-export const PACK_SIZES = [10, 15, 20, 50] as const
-/** Ruby IV's parting gift: every pack deals this many extra cards. */
-export const RUBY_PACK_BONUS = 5
+export const PACK_SIZES = [10, 15, 20, 25] as const
 
 /** The rarity floor Emerald I..IV guarantees in every pack. */
 export const GUARANTEE_TIERS = ['rare', 'epic', 'legendary', 'mythic'] as const
 
 export interface BadgeDef {
   key: BadgeKey
+  /** Name of the vendored Kenney icon this line wears. */
+  icon: string
   name: string
   kanji: string
   color: string
@@ -54,10 +57,11 @@ export interface BadgeDef {
 export const BADGE_DEFS: BadgeDef[] = [
   {
     key: 'bronze',
+    icon: 'suit_hearts',
     name: 'Bronze',
     kanji: '銅',
     color: '#cd8a4f',
-    baseCost: 150,
+    baseCost: 200,
     levels: [
       '+1 wish slot',
       '+1 wish slot',
@@ -68,10 +72,11 @@ export const BADGE_DEFS: BadgeDef[] = [
   },
   {
     key: 'silver',
+    icon: 'dice',
     name: 'Silver',
     kanji: '銀',
     color: '#c8ccd8',
-    baseCost: 200,
+    baseCost: 250,
     levels: [
       '+25% chance for your wishes to appear in rolls',
       '+25% wish chance',
@@ -82,57 +87,61 @@ export const BADGE_DEFS: BadgeDef[] = [
   },
   {
     key: 'gold',
+    icon: 'token',
     name: 'Gold',
     kanji: '金',
     color: '#d4af37',
-    baseCost: 250,
+    baseCost: 300,
     levels: [
-      '+1.5% coin drop chance',
-      '+1.5% coin drop chance',
-      '+1.5% coin drop chance',
-      '+1.5% coin drop chance · daily offering doubled',
+      '+0.5% coin drop chance',
+      '+0.5% coin drop chance',
+      '+0.5% coin drop chance',
+      '+0.5% coin drop chance · daily offering doubled',
     ],
     prereq: null,
   },
   {
     key: 'sapphire',
+    icon: 'cards_stack_high',
     name: 'Sapphire',
     kanji: '青',
     color: '#5a8cff',
-    baseCost: 300,
+    baseCost: 500,
     levels: [
       `Unlock packs: a sealed ×${PACK_SIZES[0]}, and every card in it is yours`,
       `Packs hold ×${PACK_SIZES[1]}`,
       `Packs hold ×${PACK_SIZES[2]}`,
-      `Packs hold ×${PACK_SIZES[3]} · Copper/Bronze coins upgrade one tier`,
+      `Packs hold ×${PACK_SIZES[3]} · every pack drops a coin`,
     ],
     prereq: 'Bronze I + Silver I + Gold I, or any two badges at IV',
   },
   {
     key: 'ruby',
+    icon: 'pouch',
     name: 'Ruby',
     kanji: '紅',
     color: '#f05a7e',
-    baseCost: 550,
+    baseCost: 900,
     levels: [
       '+2 wish slots',
       '+50% chance for your wishes to appear in rolls',
-      '+3% coin drop chance',
-      `all badge prices −25% · packs hold ${RUBY_PACK_BONUS} more cards`,
+      '+1.5% coin drop chance',
+      'Everything in the shop costs 25% less',
     ],
     prereq: 'Bronze II + Silver II + Gold II, or any two badges at IV',
   },
   {
     key: 'emerald',
+    icon: 'crown_a',
     name: 'Emerald',
     kanji: '翠',
     color: '#4fd0a0',
-    baseCost: 700,
+    baseCost: 1200,
     levels: [
       'Every pack is guaranteed a Rare or better',
       'That guarantee rises to Epic',
       'That guarantee rises to Legendary',
-      'That guarantee rises to Mythic · claiming also pays the character’s credit value',
+      'That guarantee rises to Mythic · claiming pays a quarter of the character’s value',
     ],
     prereq: 'Bronze III + Silver III + Gold III, or any two badges at IV',
   },
@@ -157,22 +166,49 @@ export function badgeUnlocked(key: BadgeKey, b: Badges): boolean {
   }
 }
 
+/**
+ * What the next level of a badge costs.
+ *
+ * Three times the last one. A flat multiple of the level used to make a whole
+ * tree cost about twenty thousand credits, which a player could clear in a
+ * single sitting; tripling means the fourth level of a line costs as much as
+ * the first three lines together, and the tree is a season rather than an
+ * evening.
+ */
+export const BADGE_GROWTH = 3
+
 export function badgeCost(def: BadgeDef, nextLevel: number, discounted: boolean): number {
-  return Math.round(def.baseCost * nextLevel * (discounted ? 0.75 : 1))
+  const raw = def.baseCost * Math.pow(BADGE_GROWTH, Math.max(0, nextLevel - 1))
+  return Math.round((discounted ? raw * 0.75 : raw) / 10) * 10
 }
 
-/** Aggregate gameplay effects of a badge loadout. */
-export interface BadgeEffects {
+/**
+ * Aggregate gameplay effects of a loadout.
+ *
+ * Badges and upgrades are bought in different parts of the shop and stored
+ * apart, but nothing downstream should have to care which one paid for a
+ * number. Everything folds into one object here.
+ */
+export interface Effects {
   wishSlots: number
   wishChanceMult: number
   coinChanceBonus: number
-  coinUpgrade: boolean
+  coinValueMult: number
+  /** Sapphire IV: a pack always drops a coin, on top of the per-card chance. */
+  packCoin: boolean
   dailyMult: number
   wishClaimBonus: number
   dupCompMult: number
-  claimPaysValue: boolean
+  /** Everything sold pays this much more. */
+  sellMult: number
+  /** Emerald IV: a claim pays back this fraction of the character's value. */
+  claimPayback: number
   /** Cards a pack deals, or 0 while packs are still locked. */
   packSize: number
+  /** Deal and throw animations run at this multiple of their base time. */
+  hasteMult: number
+  /** Everything in the shop costs this multiple of its list price. */
+  priceMult: number
   /** Credit value at least one card in every pack is guaranteed to reach. */
   guaranteeValue: number
   /** The rarity that guarantee names, for the UI to say out loud. */
@@ -181,19 +217,26 @@ export interface BadgeEffects {
 
 export const BASE_WISH_SLOTS = 3
 
-export function computeEffects(b: Badges): BadgeEffects {
+export function computeEffects(b: Badges, u: Upgrades): Effects {
   const sapphire = Math.min(b.sapphire, PACK_SIZES.length)
   const guaranteeRarity = b.emerald >= 1 ? GUARANTEE_TIERS[Math.min(b.emerald, 4) - 1] : null
+  const base = sapphire >= 1 ? PACK_SIZES[sapphire - 1] : 0
   return {
     wishSlots: BASE_WISH_SLOTS + b.bronze + (b.ruby >= 1 ? 2 : 0),
     wishChanceMult: 1 + 0.25 * b.silver + (b.ruby >= 2 ? 0.5 : 0),
-    coinChanceBonus: 0.015 * b.gold + (b.ruby >= 3 ? 0.03 : 0),
-    coinUpgrade: b.sapphire >= 4,
+    coinChanceBonus: 0.005 * b.gold + (b.ruby >= 3 ? 0.015 : 0) + 0.003 * u.fortune,
+    coinValueMult: 1 + 0.2 * u.fortune,
+    packCoin: b.sapphire >= 4,
     dailyMult: b.gold >= 4 ? 2 : 1,
     wishClaimBonus: b.bronze >= 4 ? 100 : 0,
-    dupCompMult: b.silver >= 4 ? 2 : 1,
-    claimPaysValue: b.emerald >= 4,
-    packSize: sapphire >= 1 ? PACK_SIZES[sapphire - 1] + (b.ruby >= 4 ? RUBY_PACK_BONUS : 0) : 0,
+    dupCompMult: (b.silver >= 4 ? 2 : 1) * (1 + 0.05 * u.appraisal),
+    sellMult: 1 + 0.05 * u.appraisal,
+    claimPayback: b.emerald >= 4 ? 0.25 : 0,
+    // Only Sapphire and Deeper Packs may move this, so a badge that advertises
+    // twenty-five hands over twenty-five.
+    packSize: base > 0 ? Math.min(MAX_PACK_SIZE, base + PACK_STEP * u.packs) : 0,
+    hasteMult: hasteMult(u.haste),
+    priceMult: b.ruby >= 4 ? 0.75 : 1,
     guaranteeValue: guaranteeRarity ? RARITY_MIN[guaranteeRarity] : 0,
     guaranteeRarity,
   }

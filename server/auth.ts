@@ -11,6 +11,7 @@ import { randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import type { DB } from './db.js'
 import { EMPTY_BADGES } from '../src/game/badges.js'
+import { EMPTY_UPGRADES } from '../src/game/upgrades.js'
 import { DEFAULT_SETTINGS, type ServerSettings } from './rules.js'
 
 const scryptAsync = promisify(scrypt) as (
@@ -111,9 +112,9 @@ export async function register(
       .run(name, name.toLowerCase(), hash, first ? 1 : 0, first ? 1 : 0, now)
     const id = Number(info.lastInsertRowid)
     db.prepare(
-      `INSERT INTO player_state (player_id, credits, badges_json, settings_json)
-       VALUES (?, 0, ?, ?)`,
-    ).run(id, JSON.stringify(EMPTY_BADGES), JSON.stringify(settings))
+      `INSERT INTO player_state (player_id, credits, badges_json, upgrades_json, settings_json)
+       VALUES (?, 0, ?, ?, ?)`,
+    ).run(id, JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), JSON.stringify(settings))
     if (inviteRow) {
       db.prepare('UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?').run(id, now, inviteRow.code)
     }
@@ -253,9 +254,15 @@ export function setSandboxActive(db: DB, player: Player, on: boolean): void {
         const id = Number(info.lastInsertRowid)
         const settings: ServerSettings = { ...DEFAULT_SETTINGS }
         db.prepare(
-          `INSERT INTO player_state (player_id, credits, badges_json, settings_json)
-           VALUES (?, ?, ?, ?)`,
-        ).run(id, 25_000, JSON.stringify(EMPTY_BADGES), JSON.stringify(settings))
+          `INSERT INTO player_state (player_id, credits, badges_json, upgrades_json, settings_json)
+           VALUES (?, ?, ?, ?, ?)`,
+        ).run(
+          id,
+          250_000,
+          JSON.stringify(EMPTY_BADGES),
+          JSON.stringify(EMPTY_UPGRADES),
+          JSON.stringify(settings),
+        )
       }
       db.prepare('UPDATE players SET sandbox_active = 1 WHERE id = ?').run(player.id)
     } else {
