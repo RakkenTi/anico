@@ -1,0 +1,22 @@
+services:
+  anico:
+    build: .
+    # or, once you publish an image:  image: ghcr.io/you/anico:latest
+    container_name: anico
+    restart: unless-stopped
+    ports:
+      # Caddy talks to this. Bind to localhost so nothing else can.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - anico-data:/data
+    environment:
+      # The database and everything else lives here.
+      DATA_DIR: /data
+      # Cookies are Secure by default because Caddy terminates TLS in front.
+      # Set to "false" only for a plain-HTTP LAN instance.
+      COOKIE_SECURE: "true"
+      # Fill the character catalog on first boot (a few minutes, once).
+      CRAWL_ON_BOOT: "true"
+
+volumes:
+  anico-data:

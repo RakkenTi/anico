@@ -1,72 +1,121 @@
-# Anico 💠
+# Anico 🎴
 
-A fan-made, cross-platform reimagining of **Mudae** as a standalone collecting
-game with no Discord, no commands, just a fast web app. Roll for anime characters,
-claim your favorites, build a collection, and grow a credit economy.
+A self-hosted, multi-player reimagining of **Mudae** as a standalone collecting game: no
+Discord, no commands, just a web app you run on your own box. Roll for anime characters,
+claim your favourites, build a collection, and grow a credit economy.
 
-Character data and images come live from the [AniList GraphQL API](https://docs.anilist.co/)
-(no API key required).
+One deployment is an **instance**. Players share the instance but their collections are
+independent: two people can each own the same character, and nothing one player does can
+take a character away from another.
 
-## Running it
+Character data and images come from the [AniList GraphQL API](https://docs.anilist.co/),
+fetched by the server and cached in the instance's own database.
+
+## Running an instance
+
+```sh
+docker compose up -d
+```
+
+That is the whole setup. It builds the image, creates a named volume for the database, and
+listens on `127.0.0.1:8080`. Then:
+
+1. Open the instance and **create the first account**. It becomes the **admin** and gets
+   sandbox access. No credentials are baked into the image.
+2. The catalog starts filling in the background. It walks the reachable AniList pool
+   (330 pages, ~1.1s apart) in about **six minutes**, and resumes where it left off if you
+   restart. You can play immediately; early rolls just draw from a smaller pool.
+3. Invite the others: **Settings, Instance, Create an invite link**. Each invite works
+   once, and registration is closed to anyone without one.
+
+### Behind Caddy
+
+The instance speaks plain HTTP and binds to localhost, so it is only reachable through
+your reverse proxy. Copy the block from [`Caddyfile.example`](./Caddyfile.example):
+
+```caddy
+anico.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+Running on a LAN with no TLS at all? Publish the port directly and set
+`COOKIE_SECURE: "false"` in `docker-compose.yml`, or the browser drops the session cookie
+and login appears to do nothing.
+
+### Configuration
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PORT` | `8080` | Port the server listens on |
+| `DATA_DIR` | `/data` | Where `anico.db` lives. Back this directory up |
+| `COOKIE_SECURE` | `true` | Session cookie's `Secure` flag. `false` for plain-HTTP LAN |
+| `CRAWL_ON_BOOT` | `true` | Fill the character catalog on startup |
+| `CLIENT_DIR` | `/app/dist/client` | Where the built client is served from |
+
+### Backups
+
+The entire instance is one SQLite file. Copy `anico.db` (with its `-wal` sidecar, or stop
+the container first) and you have everything: accounts, collections, catalog.
+
+## Development
 
 ```sh
 npm install
-npm run dev      # local dev server
-npm run build    # production bundle in dist/ (fully static, host anywhere)
+npm run build         # client into dist/client, server into dist/server
+npm start             # run the built server on :8080
+npm run dev           # Vite dev server on :5173, proxying /api to :8080
 ```
 
-The production build is a static bundle (~68 KB gzipped) that runs in any
-modern browser, and can be wrapped with Tauri or Capacitor for native
-desktop/mobile builds. Your save lives in `localStorage`.
+Run `npm start` and `npm run dev` together for hot reload against a live API. `npm run
+lint` runs oxlint.
+
+## How it fits together
+
+- **Client**: React 19 + Zustand + Vite. Holds a mirror of the server's snapshot plus
+  browser-only state (which card is selected, deal animations, toasts). Installable as a
+  PWA; the shell is cached, gameplay needs the instance.
+- **Server**: Hono on Node, one process serving both the API and the built client. Owns
+  every rule that could otherwise be cheated
+  ([ADR 0003](./docs/adr/0003-the-server-owns-the-rules.md)).
+- **Database**: SQLite in the app container, no separate service
+  ([ADR 0001](./docs/adr/0001-sqlite-in-one-container.md)).
+- **Catalog**: the instance's own table of characters, filled from AniList. Rolls are a
+  local `SELECT`, so play does not depend on AniList being reachable, and one instance
+  never has to share its ~90 requests/minute among its players.
+
+The project's vocabulary is in [`CONTEXT.md`](./CONTEXT.md); the decisions worth not
+re-litigating are in [`docs/adr/`](./docs/adr/).
 
 ## How Mudae's systems map here
 
 | Mudae | Anico |
 | --- | --- |
-| `$w` / `$h` / `$m` roll commands | **Roll** button + a *Roll for* setting (♀ Waifus / ♂ Husbandos / ✨ Everyone) |
+| `$w` / `$h` / `$m` roll commands | **Roll** button + a *Roll for* setting (Waifus / Husbandos / Everyone) |
 | Claiming with a reaction, ~3 h claim interval | **Claim** button with a configurable cooldown (default 180 min) |
-| 10 rolls per hour | Configurable roll budget (default 10) refilling on a configurable interval (default 60 min) |
-| Kakera value from character popularity | Value derived from AniList favourites on a power curve (≈35 for obscure picks, ≈865 for Levi) |
-| Kakera reactions dropping on rolls | Gems (Purple → Light tiers, weighted rarity) randomly drop alongside rolls; tap to collect before your next roll |
-| `$divorce` for kakera | **Sell** any character from your collection at its credit value |
+| 10 rolls per hour | Configurable roll budget (default 10) refilling on a configurable interval |
+| Kakera value from character popularity | Credit value derived from AniList favourites on a power curve (≈35 for obscure picks, ≈865 for Levi) |
+| Kakera reactions dropping on rolls | Gems (Purple to Light tiers, weighted rarity) drop alongside rolls; tap to collect |
+| `$divorce` for kakera | **Sell** any character at the credit value it had when you claimed it |
+| One claim per character per server | **Not copied.** Collections are per player ([ADR 0002](./docs/adr/0002-collections-are-per-player.md)) |
 | Silver compensation for duplicates | Rolling a character you own pays 10% of its value (20% with Silver IV) |
-| `$wish` / wishlist pings | **Wishes** tab: search AniList by name, pin characters; wishes can barge into your rolls, with the chance boosted by Silver/Ruby badges |
-| Kakera badges (`$kakera`) | **Shop**: the full Bronze/Silver/Gold/Sapphire/Ruby/Emerald badge tree (levels I–IV) with Mudae's real prerequisite chart, rebalanced for single-player |
-| `$dailykakera` | **Daily offering** button in the header, every 20 h, with a streak bonus (and doubled by Gold IV) |
-| `$resetclaimtimer` (Emerald badge) | The **Claim Reset ritual** on the Summon screen, unlocked by Emerald I, faster with each level |
-| `$harem` | **Collection** tab: search, gender/rarity/series filters, sorting, total worth, character detail view |
-
-## Settings
-
-Everything lives in the **Settings** tab:
-
-- **Roll for**: female, male, or everyone
-- **Character pool**: ~1k / 5k / 10k / 25k characters, drawn from the most popular series on AniList (bigger pools reach more obscure series)
-- **Skip owned**: never roll duplicates (or keep them on for compensation credits)
-- **Rolls per reset**, **roll reset interval**, and **claim cooldown** sliders
-- **Reset save**: wipe everything and start fresh
-- **Sandbox (testing) mode**: removes roll limits and every cooldown, and adds a
-  +1000 credits debug button, so the whole loop can be exercised quickly
+| `$wish` / wishlist pings | **Wishes** tab: search by name, pin characters; wishes can barge into your rolls |
+| Kakera badges (`$kakera`) | **Shop**: the Bronze/Silver/Gold/Sapphire/Ruby/Emerald tree with Mudae's prerequisite chart |
+| `$dailykakera` | **Daily offering** in the header, every 20 h, with a streak bonus |
+| `$resetclaimtimer` (Emerald badge) | The **Claim Reset ritual**, unlocked by Emerald I |
+| `$harem` | **Collection** tab: search, filters, sorting, total worth, detail view |
 
 ## Beyond Mudae
 
-- **×10 summons**: spend up to ten rolls at once for a staggered card spread;
-  pick any card in the spread to claim, duplicates auto-compensate and gem
-  drops from the whole spread pool together
-- **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames
-  derived from credit value, with a foil shimmer on Mythic cards
-- **Series sets**: claiming 3 / 5 / 10 characters from the same series pays
-  one-time credit bonuses; progress chips live in the Collection tab
-- **Daily streaks**: consecutive daily offerings grow the payout (up to +60)
+- **×10 summons** with a staggered card spread; pick any card to claim
+- **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer
+  on Mythic
+- **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time bonuses
+- **Daily streaks**: consecutive offerings grow the payout
+- **Stats page**: animated charts over your collection, rolls and claims
+- **Sandbox**: an admin-granted per-account privilege that lifts limits and unlocks bulk
+  operations, enforced server side
 
-## Tech stack
-
-- **Vite + React 19 + TypeScript**: instant dev loop, tiny static output
-- **Zustand** (with `persist`): game state machine + localStorage saves
-- **AniList GraphQL**: characters, images, gender, favourites. AniList caps
-  offset pagination at 5,000 entries, so deep pools can't page characters
-  directly; instead one request fetches a random page of 15 popular series and
-  each series' top characters (~250 candidates per request). Rolls consume that
-  buffer, so even ×10 summons cost ~1 API request per hundreds of rolls
-
-*This is an unaffiliated fan project. Character data © their respective owners, served by AniList.*
+*This is an unaffiliated fan project. Character data © their respective owners, served by
+AniList. Sound effects (CC0) by [Kenney](https://kenney.nl/assets).*

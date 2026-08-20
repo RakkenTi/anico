@@ -69,7 +69,7 @@ export default function ShopView() {
             const item = CONSUMABLES[key]
             const unusable =
               key === 'rollRefill'
-                ? s.rollsLeft >= s.maxRolls() || s.settings.testingMode
+                ? s.rollsLeft >= s.maxRolls() || s.sandbox
                 : s.claimReady()
             return (
               <div className="item-card" key={key}>

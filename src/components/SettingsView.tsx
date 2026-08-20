@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useGame } from '../game/store'
+import { useGame, useUi } from '../game/store'
 import { sfx } from '../game/sound'
+import AdminPanel from './AdminPanel'
 import type { RollGender } from '../game/types'
 
 const POOL_OPTIONS = [
@@ -12,6 +13,9 @@ const POOL_OPTIONS = [
 
 export default function SettingsView() {
   const settings = useGame((s) => s.settings)
+  const sandbox = useGame((s) => s.sandbox)
+  const isAdmin = useGame((s) => s.isAdmin)
+  const ui = useUi()
   const badges = useGame((s) => s.badges)
   const effects = useGame((s) => s.effects)
   const update = useGame((s) => s.updateSettings)
@@ -30,9 +34,9 @@ export default function SettingsView() {
           <label className="toggle-row">
             <input
               type="checkbox"
-              checked={settings.soundEnabled}
+              checked={ui.soundEnabled}
               onChange={(e) => {
-                update({ soundEnabled: e.target.checked })
+                ui.set({ soundEnabled: e.target.checked })
                 if (e.target.checked) sfx.daily()
               }}
             />
@@ -44,12 +48,12 @@ export default function SettingsView() {
           </p>
         </div>
         <div className="setting-row">
-          <label>Volume: <b>{Math.round(settings.soundVolume * 100)}%</b></label>
+          <label>Volume: <b>{Math.round(ui.soundVolume * 100)}%</b></label>
           <input
             type="range" min={0} max={100} step={5}
-            value={Math.round(settings.soundVolume * 100)}
-            disabled={!settings.soundEnabled}
-            onChange={(e) => update({ soundVolume: Number(e.target.value) / 100 })}
+            value={Math.round(ui.soundVolume * 100)}
+            disabled={!ui.soundEnabled}
+            onChange={(e) => ui.set({ soundVolume: Number(e.target.value) / 100 })}
             onPointerUp={() => sfx.payout()}
             onKeyUp={() => sfx.payout()}
           />
@@ -142,23 +146,16 @@ export default function SettingsView() {
         </div>
       </div>
 
-      <div className={`panel ${settings.testingMode ? 'panel-testing' : ''}`}>
+      <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>
         <h2 className="section-title">Testing</h2>
         <div className="setting-row">
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={settings.testingMode}
-              onChange={(e) => update({ testingMode: e.target.checked })}
-            />
-            <span>Sandbox mode (skip all restrictions)</span>
-          </label>
           <p className="setting-hint">
-            Unlimited rolls, no claim cooldown, daily offering always available.
-            For testing the loop; saves normally otherwise.
+            {sandbox
+              ? 'Sandbox is enabled for your account: unlimited rolls, no cooldowns, and bulk operations.'
+              : 'Sandbox is off for your account. It is a privilege the instance admin grants, not a switch, because the server enforces every limit it lifts.'}
           </p>
         </div>
-        {settings.testingMode && (
+        {sandbox && (
           <div className="setting-row">
             <button
               className="btn btn-ghost"
@@ -197,6 +194,8 @@ export default function SettingsView() {
           <p className="setting-hint">Erases your collection, credits, wishes and badges. There is no undo.</p>
         </div>
       </div>
+
+      {isAdmin && <AdminPanel />}
 
       <p className="attribution">
         Character data & images from <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a>.

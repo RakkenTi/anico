@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useGame } from '../game/store'
-import { searchCharacters } from '../api/anilist'
+import { api } from '../api'
 import type { RolledCharacter } from '../game/types'
 import CharacterCard from './CharacterCard'
 
@@ -25,7 +25,7 @@ export default function WishesView() {
     setSearching(true)
     setError(null)
     try {
-      setResults(await searchCharacters(q))
+      setResults((await api.search(q)).results)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

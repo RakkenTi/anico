@@ -1222,3 +1222,96 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .col-controls { width: 100%; }
   .col-controls input[type='search'] { flex: 1; min-width: 0; }
 }
+
+/* ------------------------------------------------ auth */
+.auth-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.boot-note { color: var(--text-dim); font-size: 0.9rem; letter-spacing: 0.08em; }
+
+.auth-card {
+  width: min(400px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 30px 28px 24px;
+  box-shadow: var(--shadow);
+}
+.auth-brand {
+  font-family: var(--serif);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+.auth-tagline {
+  margin: 8px 0 22px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-form label { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; font-weight: 700; }
+.auth-form label span { color: var(--text-dim); letter-spacing: 0.06em; }
+.auth-form .btn { margin-top: 4px; }
+.auth-error {
+  border: 1px solid var(--red);
+  border-radius: 3px;
+  color: var(--red);
+  font-size: 0.82rem;
+  padding: 8px 12px;
+}
+.auth-switch {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.auth-switch:hover { color: var(--text); }
+
+.stat-user em { font-style: normal; font-size: 0.86em; color: var(--text-dim); }
+
+/* ------------------------------------------------ admin */
+.admin-panel .setting-row { gap: 10px; }
+.admin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.admin-list li {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+}
+.admin-name { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.admin-tag {
+  font-size: 0.6rem; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase;
+  background: var(--value); color: var(--bg); border-radius: 2px; padding: 2px 6px;
+}
+.admin-meta { color: var(--text-dim); font-size: 0.78rem; }
+.admin-toggle { margin-left: auto; font-size: 0.78rem; }
+.invite-code { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--value-soft); }
+
+.catalog-bar {
+  position: relative;
+  height: 24px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.catalog-fill { height: 100%; background: var(--accent-soft); border-right: 1px solid var(--accent); transition: width 0.4s ease-out; }
+.catalog-text {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 0.76rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

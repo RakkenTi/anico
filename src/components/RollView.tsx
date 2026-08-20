@@ -6,7 +6,7 @@ import CharacterCard from './CharacterCard'
 
 export default function RollView() {
   const s = useGame()
-  const testing = s.settings.testingMode
+  const testing = s.sandbox
   const claimReady = testing || s.now >= s.nextClaimAt
   const rollsResetIn = s.rollsResetAt - s.now
   const claimIn = s.nextClaimAt - s.now

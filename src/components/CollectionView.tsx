@@ -23,7 +23,7 @@ export default function CollectionView() {
   const wishes = useGame((s) => s.wishes)
   const sell = useGame((s) => s.sell)
   const sellMany = useGame((s) => s.sellMany)
-  const testing = useGame((s) => s.settings.testingMode)
+  const testing = useGame((s) => s.sandbox)
   const [confirmBulk, setConfirmBulk] = useState(false)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('value')

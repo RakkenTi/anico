@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useGame, formatDuration } from './game/store'
+import { useGame, useUi, formatDuration } from './game/store'
 import { DAILY_INTERVAL_H } from './game/economy'
 import { sfx } from './game/sound'
 import RollView from './components/RollView'
@@ -10,6 +10,7 @@ import StatsView from './components/StatsView'
 import SettingsView from './components/SettingsView'
 import BarsIcon from './components/BarsIcon'
 import BagIcon from './components/BagIcon'
+import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
 
 type Tab = 'roll' | 'collection' | 'wishes' | 'shop' | 'stats' | 'settings'
@@ -32,16 +33,25 @@ export default function App() {
   const nextClaimAt = useGame((s) => s.nextClaimAt)
   const lastDailyAt = useGame((s) => s.lastDailyAt)
   const dailyStreak = useGame((s) => s.dailyStreak)
-  const testing = useGame((s) => s.settings.testingMode)
+  const testing = useGame((s) => s.sandbox)
+  const username = useGame((s) => s.username)
   const claimDaily = useGame((s) => s.claimDaily)
-  const theme = useGame((s) => s.settings.theme)
-  const layout = useGame((s) => s.settings.layout)
+  const booting = useGame((s) => s.booting)
+  const authed = useGame((s) => s.authed)
+  const boot = useGame((s) => s.boot)
+  const signOut = useGame((s) => s.signOut)
+  const theme = useUi((s) => s.theme)
+  const layout = useUi((s) => s.layout)
   const tick = useGame((s) => s.tick)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     document.documentElement.dataset.layout = layout
   }, [theme, layout])
+
+  useEffect(() => {
+    void boot()
+  }, [boot])
 
   useEffect(() => {
     tick()
@@ -52,6 +62,15 @@ export default function App() {
   const claimReady = testing || now >= nextClaimAt
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt
+
+  if (booting) {
+    return (
+      <div className="auth-shell">
+        <div className="boot-note">Reaching the instance…</div>
+      </div>
+    )
+  }
+  if (!authed) return <AuthView />
 
   return (
     <div className="app">
@@ -77,6 +96,9 @@ export default function App() {
           >
             {dailyReady ? 'daily ready' : `daily ${formatDuration(dailyAt - now)}`}
             {dailyStreak > 1 && <span className="streak"> ×{dailyStreak}</span>}
+          </button>
+          <button className="stat stat-user" onClick={signOut} title="Sign out of this instance">
+            {username} <em>sign out</em>
           </button>
         </div>
       </header>

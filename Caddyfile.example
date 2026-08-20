@@ -1,0 +1,13 @@
+# Caddy in front of Anico. Copy the block into your Caddyfile and reload.
+#
+# TLS, HTTP/2 and compression are Caddy's job; the instance speaks plain HTTP
+# on localhost only, so it is never reachable except through this.
+
+anico.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}
+
+# Plain-HTTP LAN instance instead? Skip Caddy, publish the port directly, and
+# set COOKIE_SECURE=false in docker-compose.yml, or the session cookie is
+# dropped by the browser and login silently fails.
