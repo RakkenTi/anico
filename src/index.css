@@ -1298,6 +1298,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .admin-meta { color: var(--text-dim); font-size: 0.78rem; }
 .admin-toggle { margin-left: auto; font-size: 0.78rem; }
+/* Per-player actions sit inside a dense list row, so they run smaller than a
+   standalone button without shrinking to something nobody can tap. */
+.admin-action { min-height: 32px; padding: 5px 12px; font-size: 0.76rem; letter-spacing: 0.03em; }
 .invite-code { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--value-soft); }
 
 .catalog-bar {

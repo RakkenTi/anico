@@ -10,6 +10,7 @@ import {
   createInvite,
   createSession,
   endSession,
+  endSessionsFor,
   login,
   playerCount,
   playerForToken,
@@ -18,7 +19,7 @@ import {
 } from './auth.js'
 import * as game from './game.js'
 import { GameError } from './game.js'
-import { crawlStatus, searchCharacters, startCrawl } from './catalog.js'
+import { UpstreamError, crawlStatus, searchCharacters, startCrawl } from './catalog.js'
 
 const COOKIE = 'anico_session'
 
@@ -26,25 +27,65 @@ export interface Config {
   cookieSecure: boolean
 }
 
-/** Crude login throttle: enough to make guessing pointless on a home server. */
-const attempts = new Map<string, { n: number; until: number }>()
-const THROTTLE_WINDOW = 15 * 60_000
-const THROTTLE_MAX = 10
+/**
+ * Fixed-window counters, shared by the login throttle and the search limit.
+ *
+ * Keys are attacker-supplied on the login path (whatever username arrived), so
+ * the map is capped rather than left to grow: an unbounded Map keyed by
+ * anything a stranger sends is a slow memory leak with their hand on the tap.
+ * Every window is the same length, so insertion order is expiry order and the
+ * sweep can work from the front.
+ */
+const MAX_KEYS = 5_000
 
-function throttled(key: string): boolean {
-  const rec = attempts.get(key)
-  if (!rec) return false
-  if (Date.now() > rec.until) {
-    attempts.delete(key)
-    return false
+function counter(max: number, windowMs: number) {
+  const rows = new Map<string, { n: number; until: number }>()
+
+  const live = (key: string) => {
+    const rec = rows.get(key)
+    if (!rec) return undefined
+    if (Date.now() >= rec.until) {
+      rows.delete(key)
+      return undefined
+    }
+    return rec
   }
-  return rec.n >= THROTTLE_MAX
+
+  // Drop expired keys, then the oldest live ones until back under the cap.
+  const sweep = () => {
+    const now = Date.now()
+    for (const [key, rec] of rows) {
+      if (now < rec.until && rows.size < MAX_KEYS) break
+      rows.delete(key)
+    }
+  }
+
+  return {
+    over: (key: string) => (live(key)?.n ?? 0) >= max,
+    note: (key: string) => {
+      const rec = live(key)
+      if (rec) {
+        rec.n++
+        return
+      }
+      if (rows.size >= MAX_KEYS) sweep()
+      rows.set(key, { n: 1, until: Date.now() + windowMs })
+    },
+    clear: (key: string) => rows.delete(key),
+  }
 }
-function noteFailure(key: string): void {
-  const rec = attempts.get(key)
-  if (!rec || Date.now() > rec.until) attempts.set(key, { n: 1, until: Date.now() + THROTTLE_WINDOW })
-  else rec.n++
-}
+
+/** Crude login throttle: enough to make guessing pointless on a home server. */
+const loginFailures = counter(10, 15 * 60_000)
+
+/**
+ * Search reaches AniList, and the whole instance shares one upstream budget
+ * with the crawler. The documented ceiling is 90 requests/minute but the
+ * observed one is far tighter: a burst of eight searches was enough to draw a
+ * 429 in testing. Ten a minute is still more than anyone types by hand, and it
+ * leaves room for the other players and the crawl.
+ */
+const searches = counter(10, 60_000)
 
 export function createApp(db: DB, config: Config) {
   const app = new Hono<{ Variables: { player: Player } }>()
@@ -91,13 +132,15 @@ export function createApp(db: DB, config: Config) {
     const body = await c.req.json().catch(() => ({}))
     const username = String(body.username ?? '')
     const key = username.toLowerCase()
-    if (throttled(key)) return c.json({ error: 'Too many attempts. Wait a few minutes.' }, 429)
+    if (loginFailures.over(key)) {
+      return c.json({ error: 'Too many attempts. Wait a few minutes.' }, 429)
+    }
     const result = await login(db, username, String(body.password ?? ''))
     if (!result.ok) {
-      noteFailure(key)
+      loginFailures.note(key)
       return c.json({ error: result.error }, 401)
     }
-    attempts.delete(key)
+    loginFailures.clear(key)
     setSessionCookie(c, createSession(db, result.player.id))
     return c.json({
       player: {
@@ -174,7 +217,14 @@ export function createApp(db: DB, config: Config) {
 
   api.get('/search', async (c) => {
     const q = (c.req.query('q') ?? '').trim()
+    // Short queries never leave the instance, so they cost nothing and count
+    // for nothing; the limit only guards calls that actually reach AniList.
     if (q.length < 2) return c.json({ results: [] })
+    const key = String(c.get('player').id)
+    if (searches.over(key)) {
+      return c.json({ error: 'Too many searches in a row. Give it a minute.' }, 429)
+    }
+    searches.note(key)
     return c.json({ results: await searchCharacters(db, q) })
   })
 
@@ -211,10 +261,12 @@ export function createApp(db: DB, config: Config) {
     const rows = db
       .prepare(
         `SELECT p.id, p.username, p.is_admin, p.sandbox, p.created_at,
-                (SELECT COUNT(*) FROM claims WHERE player_id = p.id) AS claims
+                (SELECT COUNT(*) FROM claims WHERE player_id = p.id) AS claims,
+                (SELECT COUNT(*) FROM sessions
+                  WHERE player_id = p.id AND expires_at > ?) AS sessions
            FROM players p ORDER BY p.created_at`,
       )
-      .all()
+      .all(Date.now())
     return c.json({ users: rows })
   })
 
@@ -242,6 +294,16 @@ export function createApp(db: DB, config: Config) {
     return c.json({ ok: true })
   })
 
+  /**
+   * Sign a player out of everywhere. The only recourse when a session token
+   * leaks, and the reason sessions are rows instead of self-contained tokens.
+   */
+  api.delete('/admin/users/:id/sessions', adminOnly, (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isInteger(id)) return c.json({ error: 'Unknown player.' }, 400)
+    return c.json({ revoked: endSessionsFor(db, id) })
+  })
+
   api.post('/admin/crawl', adminOnly, (c) => {
     void startCrawl(db, true)
     return c.json({ ok: true })
@@ -251,6 +313,9 @@ export function createApp(db: DB, config: Config) {
 
   app.onError((err, c) => {
     if (err instanceof GameError) return c.json({ error: err.message }, 400)
+    // Upstream trouble is not this instance falling over, and saying so is the
+    // difference between "wait a minute" and "something is wrong with the server".
+    if (err instanceof UpstreamError) return c.json({ error: err.message }, 503)
     console.error('[api]', err)
     return c.json({ error: 'Something went wrong on the server.' }, 500)
   })
