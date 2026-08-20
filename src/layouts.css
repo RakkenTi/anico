@@ -123,8 +123,7 @@
 [data-layout='ledger'] .flip-back,
 [data-layout='ledger'] .modal,
 [data-layout='ledger'] .toast,
-[data-layout='ledger'] .badge-card,
-[data-layout='ledger'] .upgrade-card,
+[data-layout='ledger'] .shop-row,
 [data-layout='ledger'] .theme-swatch,
 [data-layout='ledger'] .coin-drop,
 [data-layout='ledger'] .claim-bar,
@@ -177,8 +176,7 @@
 /* Denser everything: the whole point is rows-per-screen. */
 [data-layout='ledger'] .collection-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 8px; }
 [data-layout='ledger'] .wish-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; }
-[data-layout='ledger'] .badge-list,
-[data-layout='ledger'] .upgrade-list { gap: 8px; }
+[data-layout='ledger'] .shop-rows { gap: 4px; }
 [data-layout='ledger'] .roll-spread { gap: 8px; }
 [data-layout='ledger'] .char-name { font-family: var(--sans); font-size: 0.8rem; }
 [data-layout='ledger'] .card-frame { box-shadow: none; }

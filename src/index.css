@@ -1111,153 +1111,170 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .modal-facts dd { margin: 0; }
 
 /* ------------------------------------------------ shop */
-/* Two shelves rather than one sorted list. Sorting by price meant every
-   purchase re-ordered the grid under the cursor; the two kinds of thing also
-   read as one ladder with two naming conventions when they shared a card. */
-.shop-shelves { display: grid; gap: 16px; align-items: start; }
+/* Rows, not cards: fifteen things are for sale and they should all be on one
+   screen. Two shelves side by side where there is room, one at a time behind a
+   switch where there is not, and nothing ever re-orders itself. */
+.shop-shelves { display: grid; gap: 18px; align-items: start; }
 @media (min-width: 1040px) {
   .shop-shelves { grid-template-columns: 1fr 1fr; }
   /* Both classes, because .segmented sets a display of its own further down. */
   .shop-switch.segmented { display: none; }
   .shop-col { display: block; }
 }
-/* Narrow: one shelf at a time, chosen by the switch above them. */
 @media (max-width: 1039px) {
   .shop-shelves.show-upgrades .col-badges,
   .shop-shelves.show-badges .col-upgrades { display: none; }
 }
 .shop-switch { margin: 0 0 14px; }
 .shop-switch .seg { display: inline-flex; align-items: center; gap: 7px; }
-/* Something on that shelf is affordable right now. */
 .ready-dot {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--value);
   box-shadow: 0 0 6px var(--value);
 }
 
-.upgrade-list,
-.badge-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 12px; }
+.shelf-head { margin: 0 0 8px; }
+.shelf-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+}
+.shelf-head p { margin: 3px 0 0; color: var(--text-dim); font-size: 0.77rem; line-height: 1.45; }
 
-/* An upgrade: a rate, its next value, and a price. */
-.upgrade-card {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding: 13px 15px 15px;
-  background: var(--well);
+.shop-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.shop-row {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 4px;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 210px;
+  background: var(--well);
 }
-.upgrade-card.maxed { border-color: var(--line-value); opacity: 0.85; }
-.upgrade-card.affordable { border-color: var(--line-value); box-shadow: inset 0 0 0 1px var(--line-value); }
-.upgrade-head { display: flex; align-items: center; gap: 11px; }
-.upgrade-icon {
-  width: 38px; height: 38px;
-  flex: none;
+.shop-row.is-badge { border-left: 3px solid var(--badge-color); }
+.shop-row.affordable { border-color: var(--line-value); }
+.shop-row.maxed,
+.shop-row.locked { opacity: 0.6; }
+
+/* The whole row is the buy button: in a shop like this, clicking the thing is
+   how you buy the thing. */
+.row-buy {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 38px 7px 9px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.row-buy:hover:not(:disabled) { background: var(--surface-2); }
+.row-buy:disabled { cursor: default; }
+.row-icon {
+  width: 30px; height: 30px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--surface-2);
   color: var(--accent);
-  font-size: 16px;
+  font-size: 15px;
 }
-.upgrade-title { display: flex; flex-direction: column; min-width: 0; }
-.upgrade-name { font-family: var(--serif); font-weight: 700; font-size: 1.02rem; letter-spacing: 0.03em; }
-.upgrade-level {
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.upgrade-blurb { margin: 0; color: var(--text-dim); font-size: 0.79rem; line-height: 1.5; }
-.upgrade-effect {
-  margin: 0 0 auto;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  border-left: 2px solid var(--line-strong);
-  padding-left: 10px;
-}
-.upgrade-effect .now,
-.upgrade-effect .next {
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-right: 4px;
-}
-.upgrade-effect .next { color: var(--value-soft); }
-
-/* A badge: a metal, a ladder of six rungs, and how far up it you are. */
-.badge-card {
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--badge-color);
-  border-radius: 4px;
-  background: var(--surface-2);
-  padding: 14px 15px 15px;
+.row-icon.badge-icon { border-radius: 50%; color: var(--badge-color); border: 1px solid var(--badge-color); }
+.row-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row-name {
   display: flex;
-  flex-direction: column;
-  gap: 11px;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 300px;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
 }
-.badge-card.locked { opacity: 0.72; }
-.badge-card.maxed { border-color: var(--line-value); opacity: 0.85; }
-.badge-card.affordable { box-shadow: inset 0 0 0 1px var(--line-value); }
-.badge-head { display: flex; gap: 11px; align-items: center; }
-/* The medal used to be a coloured dot in a ring, which read as a status light
-   rather than a badge. It holds the line's icon now; the ring and the metal
-   colour are what still say which line it is. */
-.badge-medal {
-  width: 42px; height: 42px;
-  flex: none;
+.row-lv {
+  font-style: normal;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+.row-effect {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+  /* One line. The detail is behind the ? and the whole point is the count of
+     rows you can see at once. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-effect b { color: var(--text); font-weight: 600; }
+.row-arrow { color: var(--value-soft); font-weight: 700; }
+.row-cost {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: var(--value-soft);
+  white-space: nowrap;
+}
+.shop-row.affordable .row-cost { color: var(--value); }
+.row-buy:disabled .row-cost { color: var(--text-dim); }
+
+.row-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px; height: 22px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--badge-color);
+  border: 1px solid var(--line);
   border-radius: 50%;
-  background: var(--well);
-  color: var(--badge-color);
-  font-size: 16px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
 }
-.badge-card.locked .badge-medal { opacity: 0.6; }
-.badge-card.maxed .badge-medal { background: color-mix(in srgb, var(--badge-color) 18%, var(--well)); }
-.badge-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.05em; }
-.badge-level { color: var(--badge-color); }
-.badge-pips { display: flex; gap: 3px; margin-top: 5px; }
-.pip { width: 15px; height: 4px; border-radius: 1px; background: var(--line); }
+.row-more:hover { color: var(--text); border-color: var(--line-strong); }
+.row-detail {
+  margin: 0;
+  padding: 0 10px 10px 50px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.badge-pips { display: inline-flex; gap: 3px; }
+.pip { width: 11px; height: 3px; border-radius: 1px; background: var(--line); }
 .pip.filled { background: var(--badge-color); }
 
-.badge-levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; flex: 1; }
-.badge-levels li {
-  font-size: 0.78rem; color: var(--text-dim); line-height: 1.4;
-  padding-left: 8px; border-left: 2px solid transparent;
-}
-.badge-levels li.owned { color: var(--text); border-left-color: var(--badge-color); }
-.badge-levels li.next { color: var(--text); border-left-color: var(--line-strong); }
-.lvl-roman { display: inline-block; min-width: 20px; color: var(--badge-color); font-weight: 700; }
-.badge-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
+ol.badge-levels { list-style: none; counter-reset: none; display: flex; flex-direction: column; gap: 4px; }
+.badge-levels li { color: var(--text-dim); }
+.badge-levels li.owned { color: var(--text); }
+.badge-levels li.next { color: var(--value-soft); }
+.lvl-roman { display: inline-block; min-width: 22px; color: var(--badge-color); font-weight: 700; }
 
-/* The numbers the shop moves, above both shelves. */
+/* Where the shop has got you, above both shelves. */
 .shop-status {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 28px;
-  margin: 0 0 16px;
-  padding: 12px 14px;
+  gap: 6px 26px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
   background: var(--well);
   border: 1px solid var(--line);
   border-radius: 4px;
 }
-.shop-status > div { min-width: 0; flex: 1 1 170px; }
+.shop-status > div { min-width: 0; flex: 1 1 150px; }
 .shop-status dt {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.shop-status dd { margin: 3px 0 0; font-size: 0.88rem; }
+.shop-status dd { margin: 2px 0 0; font-size: 0.85rem; }
 
 /* Kept on purpose. The mark sits opposite the wish star, which is the other
    thing on a card that means "this one matters". */

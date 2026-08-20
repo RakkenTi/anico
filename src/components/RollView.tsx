@@ -319,7 +319,7 @@ export default function RollView() {
                   : entry.fresh
                     ? 'yours, and in your collection'
                     : entry.compensation > 0
-                      ? `another copy — compensated ${fmt(entry.compensation)} credits`
+                      ? `another copy, +${fmt(entry.compensation)} credits`
                       : 'bound to your collection'}
             </span>
             {/* The whole reason auto-sell waits for the next summon: this is

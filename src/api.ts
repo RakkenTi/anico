@@ -24,6 +24,8 @@ export interface Snapshot {
   sandbox: boolean
   sandboxAllowed: boolean
   credits: number
+  /** Moves whenever the collection changes, including on another device. */
+  collectionRev: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
   /** Packs torn at a single press. */
@@ -130,6 +132,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+
+/**
+ * Live snapshots from the instance.
+ *
+ * One account can be open on several devices, each of them acting: the server
+ * decides the order and pushes the result here, so a phone and a desktop never
+ * disagree about the balance. `onState` is called with an authoritative
+ * snapshot, minus the collection, which is fetched separately when its
+ * revision moves.
+ */
+export function listenForState(onState: (s: Snapshot) => void): () => void {
+  if (typeof EventSource === 'undefined') return () => {}
+  const source = new EventSource('/api/events')
+  source.addEventListener('state', (e) => {
+    try {
+      onState(JSON.parse((e as MessageEvent).data) as Snapshot)
+    } catch {
+      /* a half-written frame is not worth a crash */
+    }
+  })
+  return () => source.close()
+}
 
 export const api = {
   me: () => request<SessionInfo>('/auth/me'),

@@ -72,7 +72,7 @@ export interface UpgradeDef {
   key: UpgradeKey
   name: string
   icon: string
-  /** What the line is for, in one line. */
+  /** One plain sentence: what buying this does. */
   blurb: string
   baseCost: number
   /** Each level costs this much more than the one before it. */
@@ -94,95 +94,91 @@ export const CARD_RATE_STEP = 4
 export const UPGRADE_DEFS: UpgradeDef[] = [
   {
     key: 'appraisal',
-    name: 'Appraisal',
+    name: 'Sell Value',
     icon: 'dollar',
-    blurb: 'Everything you sell, and every duplicate you are compensated for, pays more.',
+    blurb: 'Cards and duplicates are worth more when you sell them.',
     baseCost: 6_000,
     growth: 1.95,
-    effect: (l) => `cards sell for ${fmtX(sellMult(l))} their worth`,
+    effect: (l) => `${fmtX(sellMult(l))} sell value`,
   },
   {
     key: 'haste',
-    name: 'Swift Hands',
+    name: 'Open Speed',
     icon: 'hourglass',
-    blurb: 'How fast cards actually come out of a pack, which is what a big pack costs you.',
+    blurb: 'Cards come out of a pack faster. Big packs need this.',
     baseCost: 8_000,
     growth: 1.9,
-    effect: (l) => `${cardRate(l)} cards a second`,
+    effect: (l) => `${cardRate(l)} cards per second`,
   },
   {
     key: 'packs',
-    name: 'Deeper Packs',
+    name: 'Pack Size',
     icon: 'cards_stack',
-    blurb: 'Every level makes a pack half again as deep. Compounds, and never stops.',
+    blurb: 'More cards in every pack. Multiplies, so it never stops mattering.',
     baseCost: 12_000,
     growth: 2.15,
-    effect: (l) => (l > 0 ? `packs are ${fmtX(packMult(l))} as deep` : 'packs stay as Sapphire left them'),
+    effect: (l) => (l > 0 ? `${fmtX(packMult(l))} pack size` : 'base pack size'),
   },
   {
     key: 'fortune',
-    name: 'Fortune',
+    name: 'Coin Drops',
     icon: 'd20',
-    blurb: 'Coins fall more often, and are worth a great deal more when they do.',
+    blurb: 'Coins drop more often and are worth more.',
     baseCost: 8_000,
     growth: 2.05,
     effect: (l) =>
       l > 0
-        ? `+${(coinChanceBonus(l) * 100).toFixed(1)}% coin chance · coins worth ${fmtX(coinValueMult(l))}`
-        : 'coins fall as they fall',
+        ? `+${(coinChanceBonus(l) * 100).toFixed(1)}% drop chance, ${fmtX(coinValueMult(l))} value`
+        : 'base coin drops',
   },
   {
     key: 'multipack',
-    name: 'Both Hands',
+    name: 'Extra Packs',
     icon: 'cards_fan',
-    blurb: 'Tear open several packs at once, side by side, each with its own wrapper.',
+    blurb: 'Open several packs at once, side by side.',
     baseCost: 60_000,
     growth: 2.2,
-    effect: (l) => `${packsPerPull(l)} pack${packsPerPull(l) === 1 ? '' : 's'} a press`,
+    effect: (l) => `${packsPerPull(l)} pack${packsPerPull(l) === 1 ? '' : 's'} per press`,
   },
   {
     key: 'alchemy',
-    name: 'Alchemy',
+    name: 'Merge Value',
     icon: 'flask_full',
-    blurb: 'Every star a stack has merged to multiplies it further. The reason to keep anything.',
+    blurb: 'Each star on a merged stack multiplies it by more.',
     baseCost: 40_000,
     growth: 1.95,
-    effect: (l) => `each star is worth ${fmtX(mergeMult(l))} the stack`,
+    effect: (l) => `${fmtX(mergeMult(l))} per star`,
   },
   {
     key: 'automaton',
-    name: 'The Automaton',
+    name: 'Auto Summon',
     icon: 'gear',
-    blurb:
-      'Hands the button to a machine: it tears, swipes and presses again, as long as you can pay.',
+    blurb: 'Opens packs for you: tears, swipes, and presses again.',
     baseCost: 200_000,
     growth: 2.8,
     maxLevel: 10,
-    effect: (l) =>
-      l > 0 ? `presses every ${(autoSpinMs(l) / 1000).toFixed(2)}s` : 'you press the button yourself',
+    effect: (l) => (l > 0 ? `1 press every ${(autoSpinMs(l) / 1000).toFixed(2)}s` : 'not bought'),
   },
   {
     key: 'nightshift',
-    name: 'Night Shift',
+    name: 'Offline Earnings',
     icon: 'campfire',
-    blurb: 'The Automaton keeps working with the tab closed, at a fraction of its speed.',
+    blurb: 'Auto Summon keeps earning while the game is closed.',
     baseCost: 300_000,
     growth: 2.6,
     maxLevel: 11,
     effect: (l) =>
-      l > 0
-        ? `${Math.round(offlineRate(l) * 100)}% speed while away, up to ${offlineHours(l)}h`
-        : 'the machine stops when you close the tab',
+      l > 0 ? `${Math.round(offlineRate(l) * 100)}% speed, up to ${offlineHours(l)}h` : 'not bought',
   },
   {
     key: 'divination',
-    name: 'Divination',
+    name: 'Wish Odds',
     icon: 'cards_seek',
-    blurb: 'Wishes come true more often. Still rare, deliberately: a wish is a cheat code.',
+    blurb: 'Wishes turn up more often. They stay rare.',
     baseCost: 25_000,
     growth: 2.6,
     maxLevel: 10,
-    effect: (l) => (l > 0 ? `wishes ${fmtX(wishMult(l))} as likely` : 'wishes are as rare as they come'),
+    effect: (l) => (l > 0 ? `${fmtX(wishMult(l))} wish chance` : 'base wish chance'),
   },
 ]
 

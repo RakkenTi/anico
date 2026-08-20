@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useGame } from '../game/store'
 import { SERIES_MILESTONES, rarityOf } from '../game/economy'
 import type { OwnedCharacter } from '../game/types'
@@ -22,6 +22,13 @@ const RARITY_CHIPS: { key: RarityFilter; label: string }[] = [
 
 export default function CollectionView() {
   const collection = useGame((s) => s.collection)
+  // Another device may have sold, locked or claimed something while this one
+  // was elsewhere; the snapshot that told us so did not carry the cards.
+  const collectionRev = useGame((s) => s.collectionRev)
+  const refreshCollection = useGame((s) => s.refreshCollection)
+  useEffect(() => {
+    void refreshCollection()
+  }, [collectionRev, refreshCollection])
   const wishes = useGame((s) => s.wishes)
   // Appraisal raises what a card fetches, so the totals here quote the payout
   // rather than the sticker price: the number on the sell button is the number

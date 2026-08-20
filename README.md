@@ -1,16 +1,85 @@
 # Anico 🎴
 
-A self-hosted, multi-player anime character collecting game: no Discord, no commands,
-just a web app you run on your own box. Summon characters, keep the ones worth keeping,
-build a collection, and spend the credits it earns on a shop whose prices never stop
-climbing.
+A self-hosted anime card collecting game. No Discord bot, no commands: a web app you run
+on your own box, open in a browser, and play. Pull packs, keep what you like, sell the
+rest, and spend the credits on a shop that never runs out of things to sell you.
 
-One deployment is an **instance**. Players share the instance but their collections are
-independent: two people can each own the same character, and nothing one player does can
-take a character away from another.
+![Opening a pack](./docs/img/opening.gif)
 
-Character data and images come from the [AniList GraphQL API](https://docs.anilist.co/),
-fetched by the server and cached in the instance's own database.
+Character data and art come from the [AniList GraphQL API](https://docs.anilist.co/),
+fetched once by the server and cached in the instance's own database. One deployment is
+an **instance**; players share it but their collections are separate, so two people can
+own the same character and nobody can take one away from anyone else.
+
+## What you do
+
+### Pull packs
+
+A summon is free and unlimited. Packs cost credits and hold more cards: 10 at the first
+Sapphire badge, 60 by the last, and thousands once Pack Size has a few levels on it. Buy
+Extra Packs and you open several at once, side by side.
+
+Packs are sealed. Drag across the foil to tear it, then swipe the cards off the stack one
+at a time, or hit <kbd>Space</kbd> to empty everything at your current open speed. It is
+only ceremony: every card is yours the moment the pack is bought, so closing the tab
+mid-tear costs you nothing.
+
+![Three sealed packs](./docs/img/packs.jpg)
+
+### Keep what is worth keeping
+
+Duplicates stack. Every doubling merges a stack one star higher (★1 at two copies, ★2 at
+four, ★3 at eight) and each star multiplies what the whole stack sells for, so holding
+sixteen copies beats selling them as they arrive.
+
+Set **auto-sell** to a rarity and anything below it is marked for sale, then sold when
+you next summon. That gap is deliberate: it is your chance to look at the spread and
+**lock** anything you want to keep. Locked cards are never auto-sold and are skipped by
+bulk sales.
+
+![A pack laid out](./docs/img/spread.jpg)
+
+### Spend it
+
+Two shelves. **Upgrades** raise your rates and mostly have no maximum level: pack size,
+sell value, open speed, coin drops, merge value, extra packs. **Badges** are six tiers
+each and change how the game works: they unlock packs, add wish slots, and guarantee
+rarities in every pack.
+
+Every level costs more than the last, and always more than the effect it buys, so the
+next purchase is always a little further away than the one before. Numbers get big enough
+to need names: past ten thousand everything is quoted as 4.18B or 12.4Qa.
+
+![The shop](./docs/img/shop.jpg)
+
+### Let it run
+
+**Auto Summon** presses the button for you: it tears the wrappers, swipes the cards away
+and presses again, faster with every level. It works on any screen, so you can browse
+your collection while it grinds. Add **Offline Earnings** and it keeps paying while the
+tab is closed, at a fraction of its speed, for as many hours as you have bought.
+
+### Play on two devices
+
+One account, several devices, all acting at once. The server owns every rule and pushes
+the result to every open tab, so a phone and a desktop never disagree about your balance,
+and two copies of Auto Summon really do earn twice as fast. Every action is applied one at
+a time, so two devices selling the same card end with one sale and one polite refusal.
+
+![Collection](./docs/img/collection.jpg)
+
+### The rest
+
+- **Wishes**: pin characters by name. They turn up rarely on purpose, at most one a
+  summon, more often with Silver, Ruby and Wish Odds
+- **Coins**: drop on about one summon in fifty, worth a band of credits, collected
+  automatically
+- **Series sets**: 3, 5 and 10 characters from one show pay a bonus
+- **Daily bonus**: every 20 hours, worth at least half a minute of Auto Summon
+- **Stats**: charts of your collection by rarity, gender and series
+- **Sandbox**: an admin-granted scratch profile with free packs and its own empty
+  collection. Nothing in it is kept
+- **Themes and layouts**: three colour themes, four structural layouts, and a PWA install
 
 ## Running an instance
 
@@ -27,7 +96,7 @@ ssh server 'cd /srv/anico && ./setup.sh && docker compose up -d'
 ```
 
 [`setup.sh`](./setup.sh) is the part worth not skipping. It checks Docker is reachable,
-writes a `.env` from the example, and — the reason it exists — creates `./anico-data`
+writes a `.env` from the example, and (the reason it exists) creates `./anico-data`
 owned by the uid the container actually runs as. It asks the image rather than assuming,
 and it is safe to re-run.
 
@@ -57,8 +126,8 @@ Either way, once it is up:
 
 1. Open the instance and **create the first account**. It becomes the **admin** and
    gets sandbox access. No credentials are baked into the image.
-2. The catalog starts filling in the background. It walks AniList in four sweeps — anime
-   then manga, headline cast then supporting — 800 requests 15s apart, so a **complete**
+2. The catalog starts filling in the background. It walks AniList in four sweeps (anime
+   then manga, headline cast then supporting), 800 requests 15s apart, so a **complete**
    catalog takes about **3½ hours** and resumes where it left off if you restart. The
    pace is deliberate: it keeps the instance well inside AniList's request budget and
    leaves room for player searches. You can play immediately; the first sweep is
@@ -99,7 +168,7 @@ compose itself; the rest are container environment variables. All of them have d
 so an instance runs with no `.env` at all.
 
 `ANICO_IMAGE` defaults to `ghcr.io/rakkenti/anico:latest`. The package is public, so the
-server pulls it anonymously. Override it only to **pin a tag** — with watchtower following
+server pulls it anonymously. Override it only to **pin a tag**. With watchtower following
 `:latest` every minute, pinning is how you freeze on a known-good build or roll back after
 a bad one, and watchtower will not move you off a pinned tag:
 
@@ -165,7 +234,7 @@ resorts to `SIGKILL`. Copying `anico.db` from a **running** instance is the case
 avoid: in WAL mode recent writes may still be in `anico.db-wal`, so the copy can silently
 miss everything since the last checkpoint.
 
-Restoring is the reverse — drop the file back with the container stopped:
+Restoring is the reverse: drop the file back with the container stopped.
 
 ```sh
 docker compose stop
@@ -191,10 +260,10 @@ container that has *exited*. A process that has wedged while still holding its p
 Watchtower polls every minute, which suits pushing to `master` often and wanting the
 instance to follow: a push is live a minute or two after the image publishes. Raise
 `WATCHTOWER_POLL_INTERVAL` in `.env` to slow it down. Note that
-`WATCHTOWER_POLL_INTERVAL` and `WATCHTOWER_SCHEDULE` are mutually exclusive — set both
+`WATCHTOWER_POLL_INTERVAL` and `WATCHTOWER_SCHEDULE` are mutually exclusive. Set both
 and watchtower refuses to start.
 
-Both are scoped by label, so neither touches anything else on the box — watchtower runs
+Both are scoped by label, so neither touches anything else on the box: watchtower runs
 with `WATCHTOWER_LABEL_ENABLE`, and only the three containers in this file carry the
 label. Two things to know before leaving them on:
 
@@ -219,15 +288,14 @@ npm run dev           # Vite dev server on :5173, proxying /api to :8080
 Run `npm start` and `npm run dev` together for hot reload against a live API. `npm run
 lint` runs oxlint.
 
-`npm run shots` drives the running instance with a real browser and writes screenshots to
-`shots/` at a desktop, a phone and a small phone size: the summon screen, a pack being
-torn open, the collection in bulk mode, the wishlist and the shop. Every mobile problem
-this app has had was found by looking rather than by reasoning, and it captures the
-states that only exist mid-gesture — a pack half torn, a card mid-throw — which are
-exactly the ones that went wrong. It needs an account that already owns Sapphire to reach
-the pack states; without one it shoots the single-summon screen and moves on. It uses `playwright-core`, which ships no browsers of its own and borrows a
-Chromium already on the machine; `npx playwright install chromium` provides one if there
-is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
+`npm run shots` drives the running instance with a real browser and writes screenshots
+to `shots/` at desktop and phone sizes: the summon screen, a pack being torn open, the
+collection in bulk mode, the wishlist and the shop. It catches the states that only exist
+mid-gesture, like a pack half torn or a card in flight, which is where the mobile bugs
+have been. It needs an account that already owns Sapphire to reach the pack screens.
+It uses `playwright-core`, which ships no browser of its own and borrows a Chromium
+already on the machine (`npx playwright install chromium` provides one, or point
+`PLAYWRIGHT_CHROMIUM` at an existing binary).
 
 ## How it fits together
 
@@ -237,7 +305,9 @@ is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
   painted as CSS masks so one file follows every theme.
 - **Server**: Hono on Node, one process serving both the API and the built client. Owns
   every rule that could otherwise be cheated
-  ([ADR 0003](./docs/adr/0003-the-server-owns-the-rules.md)).
+  ([ADR 0003](./docs/adr/0003-the-server-owns-the-rules.md)). Writes are serialised and
+  atomic (one process, synchronous SQLite), and every mutation is pushed to the player's
+  other devices over SSE.
 - **Database**: SQLite in the app container, no separate service
   ([ADR 0001](./docs/adr/0001-sqlite-in-one-container.md)).
 - **Catalog**: the instance's own table of characters, filled from AniList in four
@@ -247,130 +317,6 @@ is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
 
 The project's vocabulary is in [`CONTEXT.md`](./CONTEXT.md); the decisions worth not
 re-litigating are in [`docs/adr/`](./docs/adr/).
-
-## The game
-
-**Summon.** Three sizes of press: one pack, all your packs at once, or a single
-card that is free and unlimited — nothing is on a cooldown and there is no
-allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)), so an
-empty purse is never a dead end. Every summon grants what it turns up; there is
-no claim button. Pick who shows up in *Settings, Roll for* (Waifus / Husbandos /
-Everyone).
-
-**Packs are what credits are for.** A fresh account has the single summon and
-nothing else. The **Sapphire** badge unlocks a sealed ×10 and grows it to ×60;
-the **Deeper Packs** upgrade makes a pack half again as deep every level, with
-no last level, so late pulls run to thousands and then millions of cards. A pack
-costs twelve credits a card — always less than the cards inside are worth, so
-opening one and selling what you did not want is the loop
-([ADR 0005](./docs/adr/0005-credits-buy-packs.md)).
-
-A pack comes wrapped in seamless foil, tinted by the best card inside: drag
-across it and a rip travels along the seam, accumulating as you pull — a
-partial tear stays torn, so you can saw at it exactly as you would a real one.
-Underneath, the cards are face up in a stack showing a sliver of each; throw the
-top one aside to reach the next, as fast as you like. **Both Hands** buys more
-packs at one press and they arrive side by side, each with its own wrapper and
-its own pile. <kbd>Space</kbd> means *finish it*: from sealed it tears every
-wrapper and empties them, and mid-open it takes over the throwing. Past what
-**Swift Hands** can throw in about six seconds the cards land in the spread all
-at once — the foil still comes off first, because a pack that is simply replaced
-by a grid looks skipped rather than opened.
-
-**Every card a pack deals is yours the moment it is rolled**, however you choose
-to open it, and the next summon waits until this one is out of the wrapper. Two
-hundred cards are dealt; when a pull holds more than that, the rest is opened by
-the machine and appraised into credits at what the dealt cards averaged
-([ADR 0007](./docs/adr/0007-the-numbers-have-no-ceiling.md)). Once a spread is
-laid out, *Best first* sorts it by value so the one card worth finding in a
-hundred is at the top.
-
-**The shop has two shelves**, side by side on a wide screen and one at a time
-behind a switch on a narrow one, each in a fixed order that never rearranges
-itself. Every line costs a multiple of its own last level, and the multiple is
-always larger than the effect it buys: that difference is the difficulty curve.
-The first five rungs of the endless lines are sold at a fraction of list price,
-fading out by the sixth — the opening should be a ramp rather than a wall.
-Numbers grow past what digits are good for, so anything over ten thousand is
-quoted with a suffix — 4.18B, 12.4Qa.
-
-*Upgrades* are the curve. Six of the nine never end:
-
-| Upgrade | What each level buys | Ends? |
-| --- | --- | --- |
-| **Appraisal** | Everything sells for 1.22× more | no |
-| **Swift Hands** | +4 cards a second out of a pack — a pull empties at exactly that rate | no |
-| **Deeper Packs** | A pack 1.3× as deep | no |
-| **Fortune** | Coins fall more often and are worth 1.25× more | no |
-| **Both Hands** | One more pack torn at the same press | no |
-| **Alchemy** | Every merged star multiplies a stack further | no |
-| **The Automaton** | Presses the button for you, faster each level | at 10 |
-| **Night Shift** | It keeps working with the tab closed, longer and faster | at 11 |
-| **Divination** | Wishes come true 1.6× as often | at 10 |
-
-*Badges* are six short ladders of six rungs, each rung five times the last. They
-decide what the game *is* rather than how fast it runs:
-
-| Badge | What it buys |
-| --- | --- |
-| **Bronze** | Wish slots, and credits when you claim a wished character |
-| **Silver** | The chance your wishes barge into a roll, and richer duplicate compensation |
-| **Gold** | Coin drop chance, a doubled daily offering, and coins worth double |
-| **Sapphire** | **Packs**: ×10 at I, up to ×60 at VI · coins with every pack from IV |
-| **Ruby** | More wish slots, wish chance and coin chance · from IV, everything in the shop costs less, up to half |
-| **Emerald** | A **guarantee**: a Rare or better in every pack, rising to three Mythics · from IV, claims pay back part of a character's value |
-
-Sapphire, Ruby and Emerald need progress in the first three lines, or any two
-badges raised to IV.
-
-**The Automaton** is the shop's machine for pressing the button. It tears the
-wrappers, swipes the cards away and presses again, on a timer that gets shorter
-with every level — an autoclicker rather than a shortcut, running in your own
-browser and charged and refused by the server exactly as you would be. It keeps
-going while you read your Collection or shop: away from the summon view there is
-nobody to tear a wrapper, so it settles them itself. With
-**Night Shift** it keeps going when the tab is closed, at a fraction of its
-speed and for as many hours as the upgrade bought, and hands over what it earned
-the moment you come back
-([ADR 0008](./docs/adr/0008-the-machine-works-while-you-are-away.md)).
-
-**Everything else.**
-
-- **Credit value**: a character's worth, from its AniList favourites on a power
-  curve (≈35 for obscure picks, ≈865 for Levi). Rarity frame, sell price and
-  duplicate compensation all descend from it
-- **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil
-  shimmer on Mythic
-- **Wishes**: pin characters by name. A wish barging into a roll is rare on
-  purpose — roughly one pack of a hundred in seven with three pinned, better
-  with the badges that improve the odds, and never more than one to a summon
-- **Duplicates stack.** A second copy of a character joins its stack instead of
-  paying out, and every doubling merges the stack a star higher: ★1 at two
-  copies, ★2 at four, ★3 at eight, up to ★12. A star multiplies what the whole
-  stack sells for — further with every level of **Alchemy** — so holding beats
-  selling by a wide margin
-  ([ADR 0006](./docs/adr/0006-duplicates-are-copies.md))
-- **Auto-sell**: pick a rarity in the summon view and anything below it is
-  queued as it lands and sold when you next summon — the gap is your chance to
-  look at the spread and **lock** anything worth keeping. It never sells a wish,
-  never a stack that has begun to merge, and never a locked card
-- **Lock**: a card kept on purpose. Locked stacks are skipped by the auto-sell
-  sweep and by bulk sales, and cannot be sold until you unlock them. The button
-  is on the bar under a selected card and in its detail view
-- **Coins**: one coin, worth a band of credits, landing on about one summon in
-  fifty. Gathered where they fall
-- **Selling**: any character, at what Appraisal says it is worth. **Bulk mode**
-  in the Collection picks many at once — with *select all* honouring whatever
-  the filters are showing — and sells the lot in one go
-- **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time
-  bonuses
-- **Daily offering**: every 20 h, with a streak bonus — worth at least half a
-  minute of the Automaton's work, so it stays worth collecting
-- **Stats page**: animated charts over your collection, rolls and claims
-- **Sandbox**: an admin-granted privilege to switch into a *scratch profile* with
-  its own credits and its own empty collection. Nothing done in it touches the
-  collection you care about, and none of it is kept: leaving deletes it, and so
-  does restarting the instance. Packs are free and a hundred cards wide in there
 
 *This is an unaffiliated fan project. Character data © their respective owners, served by
 AniList. Icons and sound effects (CC0) by [Kenney](https://kenney.nl/assets); the icons are

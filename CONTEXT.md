@@ -9,6 +9,16 @@ detail and no specification.
 set of accounts. Players share an instance. Nothing is shared *between* instances, and an
 instance is the unit an owner runs on their own hardware.
 
+**Device** — one browser tab holding a session. An account may have several at once and
+they are meant to be played at once: each runs its own Auto Summon, each acts on its own,
+and the instance pushes every result to all of them (**live sync**). Devices never merge
+anything and never talk to each other; the server decided the order and they are told
+what is true.
+
+**Live sync** — the stream of authoritative snapshots the instance pushes to a player's
+devices after every mutation. Carries everything except the collection, which is fetched
+separately when its revision moves, because it can be five figures of cards.
+
 Never called a "server" in prose: that word means the process, and "your collection is
 per server" would read as being about the deployment rather than the machine.
 
@@ -154,10 +164,13 @@ survives only in older commits.
 rare — one to a summon at most — because a wishlist that arrives on demand is a way of
 ordering Mythics rather than hoping for one.
 
-**Shop** — two shelves, **Upgrades** and **Badges**, each in a fixed order: side by side
-where there is room, one at a time behind a switch where there is not. It was one panel
-above another (the lower one went unnoticed), and then briefly one list sorted by price,
-which re-ordered itself under the cursor every time anything was bought.
+**Shop** — two shelves, **Upgrades** and **Badges**, each a list of rows in a fixed
+order: side by side where there is room, one at a time behind a switch where there is
+not. Fifteen things are for sale and a player checks all of them whenever they have
+money, so the whole list wants to be on one screen. Three shapes were tried first: one
+panel above another (the lower one went unnoticed), one list sorted by price (it
+re-ordered itself under the cursor), and a grid of cards (three hundred pixels a
+purchase).
 
 **Badge** — a permanent perk bought with credits, in the Bronze through Emerald tree. Six
 lines of six levels, each level five times the price of the one below it. Badges change
