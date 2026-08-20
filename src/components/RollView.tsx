@@ -110,7 +110,7 @@ export default function RollView() {
             </div>
           </div>
         ) : pack ? (
-          <PackOpener pack={pack} count={s.rolled.length} cards={s.rolled} />
+          <PackOpener pack={pack} cards={s.rolled} />
         ) : s.rolled.length === 1 && entry ? (
           <div className="roll-reveal" key={s.rollCount}>
             {entry.wished && !entry.owned && (

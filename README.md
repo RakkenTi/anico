@@ -259,9 +259,11 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
   summon and claim as much as you like, and the ×10 arrives as a **sealed pack**.
   **Normal** is the paced game, with an hourly summon budget, one ×10 a day and one
   claim an hour
-- **Packs**: a Fun-mode ×10 comes wrapped. Hit <kbd>Space</kbd> to tear it open all at
-  once, or swipe across it to slice the wrapper and then slide the cards off the stack
-  one at a time. Every card in it is yours either way, so how you open it is ceremony
+- **Packs**: a Fun-mode ×10 comes wrapped. Drag across it and the lid tears under your
+  cursor; pull far enough and it comes away, hesitate and it springs back. Underneath,
+  all ten cards are face up in a stack — throw the top one aside to get at the next, or
+  hit <kbd>Space</kbd> at any point to lay them all out. Every card is yours either way,
+  so how you open it is ceremony
 - **×10 summons** in Normal mode deal face up in a staggered spread, once a day, and
   spend no hourly summons
 - **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer

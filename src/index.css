@@ -1383,120 +1383,51 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 /* ------------------------------------------------ pack opening */
-/* A fun-mode x10 arrives sealed. Space tears it; a swipe slices it and then
-   slides cards off the top one at a time. The cards are already claimed, so
-   none of this decides anything: it is the ceremony of opening one. */
+/* A fun-mode x10 arrives wrapped. The lid tears under the cursor rather than
+   on a click, and the cards beneath are face up from the start: opening one is
+   a matter of throwing the top card aside to get at the next, not of guessing.
+   Sized to match a single summon, because that is the card you are looking at. */
 .pack-opener {
-  display: grid;
-  grid-template-columns: minmax(190px, 260px) minmax(0, 1fr);
-  gap: clamp(18px, 4vw, 44px);
-  align-items: center;
-  width: 100%;
-  max-width: 820px;
-}
-.pack {
-  position: relative;
-  aspect-ratio: 3 / 4.2;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  transition: transform 0.15s;
-}
-.pack:active { cursor: grabbing; }
-.pack:hover { transform: translateY(-3px); }
-.pack:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
-
-.pack-wrap {
-  position: absolute;
-  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  border-radius: 6px;
-  border: 1px solid var(--line-strong);
-  background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.12) 0%, transparent 42%),
-    linear-gradient(200deg, var(--accent-soft) 0%, var(--well) 55%);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
-  overflow: hidden;
+  gap: 18px;
+  width: 100%;
 }
-/* A band of light that drifts across the foil. */
-.pack-foil {
-  position: absolute;
-  inset: -40% -120%;
-  background: linear-gradient(
-    72deg,
-    transparent 42%,
-    rgba(255, 255, 255, 0.22) 50%,
-    transparent 58%
-  );
-  animation: foilSweep 3.6s ease-in-out infinite;
-}
-@keyframes foilSweep {
-  0%, 100% { transform: translateX(-28%); }
-  50% { transform: translateX(28%); }
-}
-.pack-brand {
+.pack-area {
   position: relative;
-  font-family: var(--display, var(--sans));
-  font-size: 1.5rem;
-  font-weight: 800;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
-  color: var(--text);
+  /* Same measure as .roll-reveal: a pack card is a card, at card size. No
+     forced aspect ratio here. The top card is in normal flow and gives the
+     stack its exact height, so nothing is letterboxed or clipped. */
+  width: min(100%, clamp(210px, calc(64vh - 160px), 330px));
+  width: min(100%, clamp(210px, calc(64dvh - 160px), 330px));
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
 }
-.pack-count {
-  position: relative;
-  font-family: var(--sans);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-/* The perforated strip along the top, where a real one would tear. */
-.pack-tear {
-  position: absolute;
-  top: 16px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--line-strong) 0 5px,
-    transparent 5px 10px
-  );
-}
-.pack.sliced .pack-wrap { display: none; }
+.pack-area:active { cursor: grabbing; }
+.pack-area.sealed { cursor: grab; }
 
-.pack-stack { position: absolute; inset: 0; }
-.pack-card {
+.pack-stack { position: relative; }
+.pack-card.behind {
   position: absolute;
   inset: 0;
-  /* Each card deeper in the stack sits back and down a touch, so the pile
-     reads as having thickness rather than being one card. */
-  transform: translate(calc(var(--depth) * 2px), calc(var(--depth) * -2px));
-  border-radius: 5px;
-  border: 1px solid var(--line-strong);
-  background:
-    repeating-linear-gradient(45deg, transparent 0 6px, rgba(255, 255, 255, 0.035) 6px 12px),
-    var(--well);
-  display: grid;
-  place-items: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26);
+  /* Each card behind sits a little lower and a little narrower, so the pile
+     shows its depth instead of looking like a single card. */
+  transform: translateY(calc(var(--depth) * 7px)) scale(calc(1 - var(--depth) * 0.018));
+  transform-origin: 50% 100%;
+  filter: brightness(calc(1 - var(--depth) * 0.055));
+  pointer-events: none;
 }
-.pack-card:not(.top) .covered-glyph { opacity: 0; }
 .pack-card.top {
-  animation: cardSettle 0.22s ease-out;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
+  position: relative;
+  filter: none;
+  border-radius: 4px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
 }
-@keyframes cardSettle {
-  from { transform: translate(14px, -14px) rotate(2deg); opacity: 0.7; }
-  to { transform: translate(0, 0); opacity: 1; }
-}
-.covered-glyph { font-size: 1.9rem; opacity: 0.5; color: var(--text-dim); }
+/* No transition while a finger is on it: the card has to track the cursor
+   exactly, or the drag feels like it is being negotiated rather than obeyed. */
+.pack-card.top.flying { transition: transform 0.3s cubic-bezier(0.3, 0, 0.7, 1), opacity 0.3s ease-in; }
 .pack-empty {
   position: absolute;
   inset: 0;
@@ -1511,17 +1442,77 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   color: var(--text-dim);
 }
 
-.pack-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.pack-latest { animation: fadeIn 0.24s ease-out; max-width: 260px; }
-.pack-hint, .pack-note {
+/* --- the wrapper ------------------------------------------------------- */
+.pack-wrap { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+.pack-body,
+.pack-lid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.14) 0%, transparent 44%),
+    linear-gradient(200deg, var(--accent-soft) 0%, var(--well) 58%);
+  border: 1px solid var(--line-strong);
+}
+/* The lid is the strip you pull off; the body is what stays behind, and both
+   carry the same zigzag so the parting edge looks torn rather than cut. */
+.pack-lid {
+  top: 0;
+  height: 27%;
+  border-radius: 6px 6px 0 0;
+  display: grid;
+  place-items: center;
+  clip-path: polygon(
+    0 0, 100% 0, 100% 78%,
+    92% 92%, 84% 80%, 76% 94%, 68% 82%, 60% 95%, 52% 81%,
+    44% 93%, 36% 80%, 28% 94%, 20% 82%, 12% 93%, 4% 81%, 0 90%
+  );
+  z-index: 2;
+}
+.pack-body {
+  top: 24%;
+  bottom: 0;
+  border-radius: 0 0 6px 6px;
+  clip-path: polygon(
+    0 6%, 4% 2%, 12% 8%, 20% 1%, 28% 7%, 36% 0, 44% 8%,
+    52% 1%, 60% 9%, 68% 2%, 76% 8%, 84% 0, 92% 7%, 100% 3%,
+    100% 100%, 0 100%
+  );
+  /* Recedes as the tear runs, so the cards climb out of the wrapper. */
+  opacity: calc(1 - var(--tear) * 0.9);
+  z-index: 1;
+}
+.pack-brand {
+  font-family: var(--display, var(--sans));
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  color: var(--text);
+}
+/* The seam glows as the pull gets close to committing. */
+.pack-rip {
+  position: absolute;
+  top: 25%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 3;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: calc(var(--tear) * 1.1);
+  filter: blur(1px);
+}
+
+.pack-hint {
   margin: 0;
+  max-width: 34ch;
+  text-align: center;
   font-family: var(--sans);
   font-size: 0.86rem;
   color: var(--text-dim);
-  line-height: 1.5;
+  line-height: 1.55;
 }
-.pack-hint b { color: var(--text); }
-.pack-note { font-size: 0.76rem; opacity: 0.75; }
+.pack-hint b { color: var(--text); font-variant-numeric: tabular-nums; }
 .pack-hint kbd {
   font-family: var(--mono, monospace);
   font-size: 0.76rem;
@@ -1533,14 +1524,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   color: var(--text);
 }
 
-@media (max-width: 700px) {
-  .pack-opener { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-  .pack { width: min(62vw, 240px); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .pack-foil { animation: none; }
-  .pack-card.top { animation: none; }
-  .pack:hover { transform: none; }
+  .pack-card.top.flying { transition-duration: 0.12s; }
 }
 
 /* ------------------------------------------------ mode picker */

@@ -355,15 +355,17 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    /** Cut the wrapper: the cards are there, waiting to be turned over. */
+    /** The wrapper comes away, leaving the stack. */
     slicePack: () => {
       const s = get()
       if (!s.pack || s.pack.state !== 'sealed') return
       sfx.rollStart(1)
-      set({ pack: { ...s.pack, state: 'sliced' } })
+      const first = s.rolled[0]
+      if (first) sfx.reveal(rarityOf(first.char.creditValue).key, 1)
+      set({ selected: 0, pack: { ...s.pack, state: 'sliced' } })
     },
 
-    /** Tear it open and take the lot in one go. */
+    /** Skip the throwing and lay all ten out at once. */
     tearPack: () => {
       const s = get()
       if (!s.pack || s.pack.state === 'open') return
@@ -372,16 +374,19 @@ export const useGame = create<GameState>()((set, get) => {
       set({ pack: { ...s.pack, state: 'open', revealed: s.rolled.length } })
     },
 
-    /** Slide the top card off a sliced pack. */
+    /** Throw the top card aside, uncovering the one under it. */
     revealNext: () => {
       const s = get()
       if (!s.pack || s.pack.state !== 'sliced') return
       const next = s.pack.revealed + 1
-      const entry = s.rolled[s.pack.revealed]
-      if (entry) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
+      const done = next >= s.rolled.length
+      // Follow whatever is now on top, so the bar under the stack describes
+      // the card being looked at rather than the one just discarded.
+      const entry = s.rolled[done ? s.rolled.length - 1 : next]
+      if (entry && !done) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
       set({
-        selected: s.pack.revealed,
-        pack: { ...s.pack, revealed: next, state: next >= s.rolled.length ? 'open' : 'sliced' },
+        selected: done ? s.rolled.length - 1 : next,
+        pack: { ...s.pack, revealed: next, state: done ? 'open' : 'sliced' },
       })
     },
 
