@@ -52,7 +52,7 @@ export interface Settings {
   soundVolume: number
 }
 
-export interface PendingGem {
+export interface PendingCoins {
   tier: string
   amount: number
 }

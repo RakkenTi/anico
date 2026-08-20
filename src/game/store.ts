@@ -65,7 +65,7 @@ interface GameState {
   lastRitualAt: number
   totalRolls: number
   totalClaims: number
-  pendingGem: { tier: string; amount: number } | null
+  pendingCoins: { tier: string; amount: number } | null
   /** A face-down spread: how many cards, and which one has been turned over. */
   covered: { count: number; revealed: number | null } | null
 
@@ -97,7 +97,7 @@ interface GameState {
   selectRolled: (index: number) => void
   claim: () => Promise<void>
   claimAll: () => Promise<void>
-  collectGem: () => Promise<void>
+  collectCoins: () => Promise<void>
   flip: (index: number) => Promise<void>
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
@@ -141,7 +141,7 @@ export const useGame = create<GameState>()((set, get) => {
       lastRitualAt: s.lastRitualAt,
       totalRolls: s.totalRolls,
       totalClaims: s.totalClaims,
-      pendingGem: s.pendingGem,
+      pendingCoins: s.pendingCoins,
       covered: s.covered,
       clockOffset: s.serverNow - Date.now(),
       now: s.serverNow,
@@ -189,7 +189,7 @@ export const useGame = create<GameState>()((set, get) => {
     lastRitualAt: 0,
     totalRolls: 0,
     totalClaims: 0,
-    pendingGem: null,
+    pendingCoins: null,
     covered: null,
 
     rolled: [],
@@ -276,7 +276,7 @@ export const useGame = create<GameState>()((set, get) => {
       const s = get()
       if (s.rolling || s.now < s.dealUntil) return
       sfx.rollStart(count)
-      set({ rolling: true, error: null, pendingGem: null })
+      set({ rolling: true, error: null, pendingCoins: null })
       const res = await guard(() => api.roll(count))
       if (!res) {
         set({ rolling: false })
@@ -343,9 +343,9 @@ export const useGame = create<GameState>()((set, get) => {
       )
     },
 
-    collectGem: async () => {
-      sfx.gem()
-      const res = await guard(() => api.gem())
+    collectCoins: async () => {
+      sfx.coins()
+      const res = await guard(() => api.coins())
       if (res) apply(res.state)
     },
 

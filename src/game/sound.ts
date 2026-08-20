@@ -218,8 +218,8 @@ export const sfx = {
     play('coins', { at, rate: 1.15, gain: 0.75 })
   },
 
-  /** Gem gather: glass ping into coins. */
-  gem() {
+  /** Coin gather: a bright chime into a handful of coins. */
+  coins() {
     play('glass', { rate: 0.9, gain: 0.7 })
     play('coins', { at: 0.08, gain: 0.85 })
   },

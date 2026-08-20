@@ -12,15 +12,15 @@
 
 import type { DB } from './db.js'
 import {
-  BASE_GEM_CHANCE,
-  GEM_TIERS,
+  BASE_COIN_CHANCE,
+  COIN_TIERS,
   DAILY_INTERVAL_H,
   DAILY_STREAK_WINDOW_H,
   SERIES_MILESTONES,
   dailyAmount,
   duplicateCompensation,
   rarityOf,
-  rollGemDrop,
+  rollCoinDrop,
 } from '../src/game/economy.js'
 import {
   BADGE_DEFS,
@@ -71,7 +71,7 @@ interface StateRow {
   settings_json: string
   series_paid_json: string
   roll_session_json: string | null
-  pending_gem_json: string | null
+  pending_coins_json: string | null
 }
 
 interface RollSessionEntry {
@@ -199,7 +199,7 @@ export interface Snapshot {
   totalClaims: number
   badges: Badges
   settings: ServerSettings
-  pendingGem: { tier: string; amount: number } | null
+  pendingCoins: { tier: string; amount: number } | null
   /** The face-down spread waiting on a pick, if there is one. */
   covered: { count: number; revealed: number | null } | null
   wishes: PoolPick[]
@@ -240,7 +240,7 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     totalClaims: row.total_claims,
     badges,
     settings,
-    pendingGem: row.pending_gem_json ? JSON.parse(row.pending_gem_json) : null,
+    pendingCoins: row.pending_coins_json ? JSON.parse(row.pending_coins_json) : null,
     covered: coveredOf(row),
     wishes: wishesOf(db, player.id),
     collection: withCollection ? collectionOf(db, player.id) : undefined,
@@ -321,8 +321,8 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
   const results: RollResult[] = []
   const used = new Set<number>()
   let totalComp = 0
-  let gemAmount = 0
-  let gemBestIdx = -1
+  let coinAmount = 0
+  let coinBestIdx = -1
 
   for (let i = 0; i < draws; i++) {
     let char: PoolPick | undefined
@@ -344,21 +344,21 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
     // duplicates up front would let a player count the money and deduce what
     // they were dealt without picking.
     if (!covered) totalComp += compensation
-    const gem = covered ? null : rollGemDrop(BASE_GEM_CHANCE + fx.gemChanceBonus, fx.gemUpgrade)
-    if (gem) {
-      gemAmount += gem.amount
-      const tierIdx = GEM_TIERS.findIndex((t) => t.key === gem.tier)
-      if (tierIdx > gemBestIdx) gemBestIdx = tierIdx
+    const coin = covered ? null : rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinUpgrade)
+    if (coin) {
+      coinAmount += coin.amount
+      const tierIdx = COIN_TIERS.findIndex((t) => t.key === coin.tier)
+      if (tierIdx > coinBestIdx) coinBestIdx = tierIdx
     }
     results.push({ char, owned, wished, compensation })
   }
 
-  const pendingGem =
-    gemBestIdx >= 0 ? { tier: GEM_TIERS[gemBestIdx].key, amount: gemAmount } : null
+  const pendingCoins =
+    coinBestIdx >= 0 ? { tier: COIN_TIERS[coinBestIdx].key, amount: coinAmount } : null
   const session: RollSession = { at: Date.now(), results, ...(covered ? { covered: true } : {}) }
   db.prepare(
     `UPDATE player_state SET credits = credits + ?, rolls_left = ?, last_multi_at = ?,
-            total_rolls = total_rolls + ?, roll_session_json = ?, pending_gem_json = ?
+            total_rolls = total_rolls + ?, roll_session_json = ?, pending_coins_json = ?
       WHERE player_id = ?`,
   ).run(
     totalComp,
@@ -366,7 +366,7 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
     multi && !sandbox && !free ? now : row.last_multi_at,
     results.length,
     JSON.stringify(session),
-    pendingGem ? JSON.stringify(pendingGem) : null,
+    pendingCoins ? JSON.stringify(pendingCoins) : null,
     player.id,
   )
 
@@ -501,16 +501,16 @@ export function flip(
 
   const fx = computeEffects(badges)
   const entry = session.results[i]
-  const gem = rollGemDrop(BASE_GEM_CHANCE + fx.gemChanceBonus, fx.gemUpgrade)
+  const coin = rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinUpgrade)
   session.revealed = i
 
   db.prepare(
-    `UPDATE player_state SET credits = credits + ?, roll_session_json = ?, pending_gem_json = ?
+    `UPDATE player_state SET credits = credits + ?, roll_session_json = ?, pending_coins_json = ?
       WHERE player_id = ?`,
   ).run(
     entry.compensation,
     JSON.stringify(session),
-    gem ? JSON.stringify(gem) : null,
+    coin ? JSON.stringify(coin) : null,
     player.id,
   )
   return { result: entry, snapshot: snapshot(db, player) }
@@ -562,13 +562,13 @@ export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed:
 
 /* ------------------------------------------------------- economy and timers */
 
-export function collectGem(db: DB, player: Player): Snapshot {
+export function collectCoins(db: DB, player: Player): Snapshot {
   const row = loadState(db, player.id)
-  if (!row.pending_gem_json) fail('No gem is waiting.')
-  const gem = JSON.parse(row.pending_gem_json!) as { amount: number }
+  if (!row.pending_coins_json) fail('No coins are waiting.')
+  const coins = JSON.parse(row.pending_coins_json!) as { amount: number }
   db.prepare(
-    'UPDATE player_state SET credits = credits + ?, pending_gem_json = NULL WHERE player_id = ?',
-  ).run(gem.amount, player.id)
+    'UPDATE player_state SET credits = credits + ?, pending_coins_json = NULL WHERE player_id = ?',
+  ).run(coins.amount, player.id)
   return snapshot(db, player)
 }
 
@@ -709,7 +709,7 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
       `UPDATE player_state SET credits = 0, rolls_left = ?, rolls_reset_at = ?, next_claim_at = 0,
               last_multi_at = 0, last_daily_at = 0, daily_streak = 0, last_ritual_at = 0,
               total_rolls = 0, total_claims = 0, badges_json = ?, series_paid_json = '{}',
-              roll_session_json = NULL, pending_gem_json = NULL
+              roll_session_json = NULL, pending_coins_json = NULL
         WHERE player_id = ?`,
     ).run(
       PACING.rollsPerHour,

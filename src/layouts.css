@@ -126,7 +126,7 @@
 [data-layout='ledger'] .badge-card,
 [data-layout='ledger'] .item-card,
 [data-layout='ledger'] .theme-swatch,
-[data-layout='ledger'] .gem-drop,
+[data-layout='ledger'] .coin-drop,
 [data-layout='ledger'] .claim-bar,
 [data-layout='ledger'] .rarity-tag,
 [data-layout='ledger'] .gender-badge,
@@ -182,7 +182,7 @@
 [data-layout='ledger'] .roll-spread { gap: 8px; }
 [data-layout='ledger'] .char-name { font-family: var(--sans); font-size: 0.8rem; }
 [data-layout='ledger'] .card-frame { box-shadow: none; }
-[data-layout='ledger'] .gem-drop { animation: none; }
+[data-layout='ledger'] .coin-drop { animation: none; }
 
 /* Keep command labels visible on phones (classic hides them). */
 @media (max-width: 620px) {
@@ -298,7 +298,7 @@
 [data-layout='stage'] .input,
 [data-layout='stage'] .seg,
 [data-layout='stage'] .claim-bar,
-[data-layout='stage'] .gem-drop { border-radius: 8px; }
+[data-layout='stage'] .coin-drop { border-radius: 8px; }
 [data-layout='stage'] .section-title { text-align: center; font-size: 1.4rem; }
 [data-layout='stage'] .section-title::before { content: none; }
 [data-layout='stage'] .section-sub {
