@@ -268,23 +268,26 @@ partial tear stays torn, so you can saw at it exactly as you would a real one.
 Underneath, the cards are face up in a stack showing a sliver of each; throw the
 top one aside to reach the next, as fast as you like. <kbd>Space</kbd> before
 the tear opens the whole thing for you; after a hand tear it throws one card a
-press. **Every card in a pack is yours the moment it is rolled**, however you
-choose to open it, so how you open it is ceremony. Once it is laid out, *Best
-first* sorts the spread by value so the one card worth finding in a hundred is
-at the top.
+press — and past two dozen cards it lays the rest out at once rather than making
+you watch. **Every card in a pack is yours the moment it is rolled**, however
+you choose to open it, so how you open it is ceremony; the next summon waits
+until this one is out of the wrapper. Once it is laid out, *Best first* sorts
+the spread by value so the one card worth finding in a hundred is at the top.
 
 **The shop is the whole progression**, and it is deliberately long. Every price
 is a multiple of the one below it, so the first hour is generous and the tenth
 is deliberate.
 
-*Upgrades* have no last level worth reaching:
+*Upgrades* are the long game — each level costs a multiple of the last:
 
 | Upgrade | What each level buys |
 | --- | --- |
 | **Deeper Packs** | +25 cards a pack |
+| **Both Hands** | One more pack torn at the same press |
 | **Swift Hands** | Packs deal and throw 10% faster, compounding |
 | **Appraisal** | +5% on everything you sell and every duplicate |
 | **Fortune** | Coins fall more often and are worth more |
+| **The Automaton** | Presses the summon button for you, faster each level |
 
 *Badges* are six short ladders, four rungs each, every rung three times the last:
 
@@ -307,9 +310,18 @@ badges raised to IV.
   duplicate compensation all descend from it
 - **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil
   shimmer on Mythic
-- **Wishes**: pin characters by name and they can barge into any roll
+- **Wishes**: pin characters by name. A wish barging into a roll is rare on
+  purpose — roughly one pack of a hundred in seven with three pinned, better
+  with the badges that improve the odds, and never more than one to a summon
+- **Duplicates stack.** A second copy of a character joins its stack instead of
+  paying out, and every doubling merges the stack a star higher: ★1 at two
+  copies, ★2 at four, ★3 at eight. A star multiplies what the whole stack
+  sells for, so holding beats selling by a wide margin
+  ([ADR 0006](./docs/adr/0006-duplicates-are-copies.md))
+- **Auto-sell**: pick a rarity in the summon view and anything below it is sold
+  as it lands. It never sells a wish, and never a stack that has begun to merge
 - **Coins**: one coin, worth a band of credits, landing on about one summon in
-  fifty. Tap to gather
+  fifty. Gathered where they fall
 - **Selling**: any character, at what Appraisal says it is worth. **Bulk mode**
   in the Collection picks many at once — with *select all* honouring whatever
   the filters are showing — and sells the lot in one go

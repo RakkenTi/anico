@@ -17,6 +17,12 @@ export interface RolledCharacter {
 
 export interface OwnedCharacter extends RolledCharacter {
   claimedAt: number
+  /** How many of this character the player holds. */
+  copies: number
+  /** The star the stack has merged to, one per doubling. */
+  stars: number
+  /** What the whole stack fetches, stars and Appraisal included. */
+  stackValue: number
 }
 
 export type RollGender = 'female' | 'male' | 'everyone'

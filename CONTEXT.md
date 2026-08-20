@@ -81,10 +81,22 @@ holds nobody that good yet.
 Available to every player, because the screen where a collection actually gets pruned is
 a phone.
 
-**Coin** — a drop that sometimes accompanies a summon, worth a band of credits when
-gathered. Roughly one summon in fifty. There is exactly one kind: it was a nine-rung
+**Coin** — a drop that sometimes accompanies a summon, worth a band of credits. Roughly
+one summon in fifty, and gathered the moment it falls: there used to be a button, which is
+a strange thing to ask of someone who has just been handed money. There is exactly one kind: it was a nine-rung
 ladder of metals (copper, electrum, mythril and friends) until it became clear nobody
 could say which of them was worth more than which.
+
+**Stack** — every copy of one character a player holds. A duplicate joins the stack rather
+than paying out, and every doubling **merges** it one **star** higher (★1 at two copies,
+★2 at four, ★3 at eight), which multiplies what the whole stack sells for. A stack sells
+whole or not at all (ADR 0006).
+
+**Auto-sell** — a per-player setting: sell every pull below a chosen rarity as it lands.
+Never a wish come true, and never a stack that has started to merge.
+
+**Automaton** — the shop's machine for pressing the summon button. Runs in the player's
+own browser and is charged and refused by the server exactly as a player would be.
 
 **Collection** — the characters one player has claimed. Collections are **per player and
 isolated**: two players on the same instance can each own the same character, and no
@@ -111,7 +123,9 @@ term is recognisable in older commits and comments.
 which Normal mode kept and Fun mode ignored. Both modes are gone (ADR 0004); the word
 survives only in older commits.
 
-**Wish** — a character a player has pinned. Wishes can barge into any roll.
+**Wish** — a character a player has pinned. A wish barging into a roll is deliberately
+rare — one to a summon at most — because a wishlist that arrives on demand is a way of
+ordering Mythics rather than hoping for one.
 
 **Badge** — a permanent perk bought with credits, in the Bronze through Emerald tree. Six
 lines of four levels, each level three times the price of the one below it. Badges change

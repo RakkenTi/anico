@@ -13,7 +13,15 @@
  */
 
 import { RARITY_MIN } from './economy.js'
-import { PACK_STEP, MAX_PACK_SIZE, hasteMult, type Upgrades } from './upgrades.js'
+import {
+  PACK_STEP,
+  MAX_PACK_SIZE,
+  MAX_PULL,
+  autoSpinMs,
+  hasteMult,
+  packsPerPull,
+  type Upgrades,
+} from './upgrades.js'
 
 export type BadgeKey = 'bronze' | 'silver' | 'gold' | 'sapphire' | 'ruby' | 'emerald'
 export type Badges = Record<BadgeKey, number>
@@ -207,6 +215,12 @@ export interface Effects {
   packSize: number
   /** Deal and throw animations run at this multiple of their base time. */
   hasteMult: number
+  /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
+  autoSpinMs: number
+  /** Packs torn at a single press. */
+  packsPerPull: number
+  /** Cards one press actually draws, once the ceiling is applied. */
+  cardsPerPull: number
   /** Everything in the shop costs this multiple of its list price. */
   priceMult: number
   /** Credit value at least one card in every pack is guaranteed to reach. */
@@ -236,6 +250,12 @@ export function computeEffects(b: Badges, u: Upgrades): Effects {
     // twenty-five hands over twenty-five.
     packSize: base > 0 ? Math.min(MAX_PACK_SIZE, base + PACK_STEP * u.packs) : 0,
     hasteMult: hasteMult(u.haste),
+    autoSpinMs: autoSpinMs(u.automaton),
+    packsPerPull: packsPerPull(u.multipack),
+    cardsPerPull: Math.min(
+      MAX_PULL,
+      (base > 0 ? Math.min(MAX_PACK_SIZE, base + PACK_STEP * u.packs) : 0) * packsPerPull(u.multipack),
+    ),
     priceMult: b.ruby >= 4 ? 0.75 : 1,
     guaranteeValue: guaranteeRarity ? RARITY_MIN[guaranteeRarity] : 0,
     guaranteeRarity,

@@ -25,6 +25,13 @@ const THROW_PX = 80
 const THROW_MS = 320
 const AUTO_STEP_MS = 110
 const AUTOTEAR_MS = 420
+/**
+ * Past this many cards, "open the rest" lays them out at once instead of
+ * throwing them one by one. Two hundred cards thrown at eighty milliseconds
+ * each is sixteen seconds of watching a pack you have already been given, and
+ * the throw is a flourish, not a toll.
+ */
+const AUTO_THROW_MAX = 24
 
 interface Props {
   pack: { state: 'sealed' | 'sliced' | 'open'; revealed: number; claimed: number; bonus: number }
@@ -114,6 +121,11 @@ export default function PackOpener({ pack, cards }: Props) {
   // Space: tear it, then flick the whole stack away in a quick alternating fan.
   const autoTimer = useRef(0)
   const autoOpen = useCallback(() => {
+    // A big pack skips the ceremony: everything lands in the spread at once.
+    if (useGame.getState().rolled.length > AUTO_THROW_MAX) {
+      useGame.getState().tearPack()
+      return
+    }
     let i = 0
     const step = () => {
       const st = useGame.getState()
@@ -129,10 +141,10 @@ export default function PackOpener({ pack, cards }: Props) {
   /**
    * Whether space opened this pack.
    *
-   * Space asks for the whole thing to be done for you, and it only means that
-   * if you say so before the wrapper is off. Tearing by hand is a statement
-   * that you want to open it yourself, so from then on space is one card a
-   * press rather than something that takes the pack away from you.
+   * Only affects what the hint says now. Space used to mean "one card" after a
+   * hand tear, on the theory that tearing by hand was a statement of intent --
+   * which is a fine theory until the pack holds a hundred cards and the
+   * statement becomes a hundred presses.
    */
   const [spaceTore, setSpaceTore] = useState(false)
 
@@ -159,12 +171,13 @@ export default function PackOpener({ pack, cards }: Props) {
       const el = document.activeElement
       if (el instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
       e.preventDefault()
-      if (sealed) openAll()
-      else if (!spaceTore) throwTop(1)
+      // Space always means "finish it": from sealed it tears and empties the
+      // pack, and mid-open it takes over the throwing.
+      openAll()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sealed, spaceTore, openAll, throwTop])
+  }, [openAll])
 
   // The grid waits for the last card to actually land.
   useEffect(() => {
@@ -335,7 +348,7 @@ export default function PackOpener({ pack, cards }: Props) {
         ) : (
           <>
             <b>{remaining}</b> of {cards.length} left — swipe or tap the top card away
-            {spaceTore ? '.' : <>, or <kbd>Space</kbd> for one at a time.</>}
+            {spaceTore ? '.' : <>, or <kbd>Space</kbd> to throw the rest.</>}
           </>
         )}
       </p>

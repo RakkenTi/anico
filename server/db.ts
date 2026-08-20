@@ -206,6 +206,24 @@ const MIGRATIONS: { name: string; sql: string }[] = [
      WHERE json_extract(badges_json, '$.sapphire') >= 4;
     `,
   },
+  {
+    name: '008_stacks',
+    sql: `
+    -- Duplicates stop being a few credits and start being copies: a stack that
+    -- merges a star higher every time it doubles, and is worth far more sold
+    -- whole than it ever was sold one card at a time.
+    ALTER TABLE claims ADD COLUMN copies INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE claims ADD COLUMN stars  INTEGER NOT NULL DEFAULT 0;
+
+    -- Auto-sell is a per-player preference and starts off, because a setting
+    -- that throws away cards should be something you switched on yourself.
+    UPDATE player_state SET settings_json = json_set(settings_json, '$.autoSell', 'off');
+
+    -- Coins are gathered where they fall now; there is no button and nothing
+    -- left pending. The column goes with the button.
+    ALTER TABLE player_state DROP COLUMN pending_coins_json;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

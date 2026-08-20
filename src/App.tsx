@@ -30,6 +30,7 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('roll')
   const credits = useGame((s) => s.credits)
+  const coinPops = useGame((s) => s.coinPops)
   const packSize = useGame((s) => s.packSize)
   const collectionSize = useGame((s) => s.collection.length)
   const now = useGame((s) => s.now)
@@ -83,6 +84,13 @@ export default function App() {
         <div className="header-stats">
           <span className="stat stat-credits" title="Credit balance">
             {credits.toLocaleString()} <em>credits</em>
+            {/* Coins are gathered where they fall; this is the receipt rising
+                off the balance they already landed in. */}
+            {coinPops.map((c) => (
+              <span className="coin-pop" key={c.id}>
+                <Icon name="token" /> +{c.amount.toLocaleString()}
+              </span>
+            ))}
           </span>
           {/* What the shop has bought so far, which is the only number here
               that can go up by playing well rather than by playing more. */}

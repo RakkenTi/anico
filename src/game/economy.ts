@@ -65,9 +65,9 @@ export const COIN_BASE_MAX = 110
 /**
  * Base chance for a coin to drop alongside a roll.
  *
- * One summon in fifty, down from one in twenty-five. A drop that lands on
- * every other pack is scenery; this one is an event, and it is worth more
- * when it happens.
+ * One summon in fifty. Coins are gathered the moment they fall -- there was a
+ * button to press, which is a strange thing to ask of someone who has just
+ * been handed money.
  */
 export const BASE_COIN_CHANCE = 0.02
 
@@ -82,10 +82,49 @@ export function coinAmount(valueMult: number): number {
   return Math.max(1, Math.round(roll * valueMult))
 }
 
+/* ------------------------------------------------- duplicates and merging */
+
+/**
+ * Copies of one character, and what they are worth together.
+ *
+ * A duplicate used to pay a few credits and vanish, which meant a collection
+ * was a thing you passed through on the way to selling it. Copies stack now,
+ * and every doubling of a stack merges it one star higher: two copies make a
+ * ★1, four a ★2, eight a ★3, and so on. A star multiplies what the whole stack
+ * fetches, so holding sixteen copies of a common beats selling sixteen commons
+ * by a wide margin -- which is the only reason anyone would keep them.
+ */
+export const MERGE_MULT = 2.6
+export const MAX_STARS = 6
+
+/** The star a stack of `copies` has merged to: one per doubling. */
+export function starsFor(copies: number): number {
+  if (copies < 2) return 0
+  return Math.min(MAX_STARS, Math.floor(Math.log2(copies)))
+}
+
+/**
+ * What a whole stack sells for: the merged core, plus the copies that have not
+ * found a partner yet at face value.
+ */
+export function stackValue(value: number, copies: number, stars: number): number {
+  const merged = Math.pow(2, stars)
+  const leftover = Math.max(0, copies - merged)
+  return Math.max(1, Math.round(value * Math.pow(MERGE_MULT, stars) + leftover * value))
+}
+
+/** Names for the star tiers, so a card can say what it has become. */
+export const STAR_NAMES = ['', 'Gleaming', 'Radiant', 'Prismatic', 'Astral', 'Eclipse', 'Zenith']
+
 /* ------------------------------------------------------------- constants */
 
-/** Credit compensation rate for rolling a character you already own. */
-export const DUPLICATE_RATE = 0.1
+/**
+ * Credit compensation rate for rolling a character you already own.
+ *
+ * A consolation prize rather than an income: the duplicate itself is the
+ * reward now, because it is what merges a stack up a star.
+ */
+export const DUPLICATE_RATE = 0.04
 
 /**
  * What a pack costs, per card in it.
