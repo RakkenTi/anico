@@ -23,6 +23,8 @@ import {
 import * as game from './game.js'
 import { GameError } from './game.js'
 import { UpstreamError, crawlStatus, searchCharacters, startCrawl } from './catalog.js'
+import { publish, subscribe } from './bus.js'
+import { streamSSE } from 'hono/streaming'
 
 const COOKIE = 'anico_session'
 
@@ -104,6 +106,18 @@ export function createApp(db: DB, config: Config) {
 
   const api = new Hono<{ Variables: { player: Player; owner: Player } }>()
 
+  /**
+   * Answer, and tell this player's other devices.
+   *
+   * Every mutation goes out through here, so a phone and a desktop on one
+   * account never disagree about the balance. The snapshot pushed is the same
+   * authoritative one the caller gets, minus the collection (see bus.ts).
+   */
+  const sync = <T extends { state: unknown }>(c: any, body: T) => {
+    publish(c.get('player').id, body.state)
+    return c.json(body)
+  }
+
   /* ------------------------------------------------------------------ auth */
 
   api.get('/auth/me', (c) => {
@@ -178,17 +192,46 @@ export function createApp(db: DB, config: Config) {
 
   api.get('/state', (c) => c.json(game.fullState(db, c.get('player'))))
 
+  /**
+   * Live snapshots, one stream per open tab.
+   *
+   * The client applies whatever arrives and never merges anything: the server
+   * decided the order, and this is the result. Nothing is sent that the caller
+   * could not ask for with GET /state.
+   */
+  api.get('/events', (c) => {
+    const playerId = c.get('player').id
+    return streamSSE(c, async (stream) => {
+      let alive = true
+      const off = subscribe(playerId, (payload) => {
+        void stream.writeSSE({ data: payload, event: 'state' })
+      })
+      stream.onAbort(() => {
+        alive = false
+        off()
+      })
+      // A comment every half minute, so an idle connection is not tidied away
+      // by whatever proxy the instance is sitting behind.
+      while (alive) {
+        await stream.sleep(30_000)
+        if (!alive) break
+        await stream.writeSSE({ data: '', event: 'ping' })
+      }
+      off()
+    })
+  })
+
   api.get('/catalog', (c) => c.json(crawlStatus(db)))
 
   api.post('/roll', async (c) => {
     const b = await body(c)
     const { snapshot, ...roll } = game.roll(db, c.get('player'), Number(b.packs ?? 0))
-    return c.json({ ...roll, state: snapshot })
+    return sync(c, { ...roll, state: snapshot })
   })
 
   api.post('/auto', async (c) => {
     const b = await c.req.json<{ on?: boolean }>().catch(() => ({}) as { on?: boolean })
-    return c.json({ state: game.setAutoSpin(db, c.get('player'), !!b.on) })
+    return sync(c, { state: game.setAutoSpin(db, c.get('player'), !!b.on) })
   })
 
   api.post('/sandbox', async (c) => {
@@ -202,12 +245,12 @@ export function createApp(db: DB, config: Config) {
 
   api.post('/daily', (c) => {
     const { snapshot, amount, streak } = game.claimDaily(db, c.get('player'))
-    return c.json({ state: snapshot, amount, streak })
+    return sync(c, { state: snapshot, amount, streak })
   })
 
   api.post('/lock', async (c) => {
     const b = await c.req.json<{ characterId?: number; locked?: boolean }>()
-    return c.json({
+    return sync(c, {
       state: game.setLocked(db, c.get('player'), Number(b.characterId), !!b.locked),
     })
   })
@@ -216,16 +259,16 @@ export function createApp(db: DB, config: Config) {
     const b = await body(c)
     const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(Number).filter(Number.isFinite)
     const { snapshot, total, sold } = game.sell(db, c.get('player'), ids)
-    return c.json({ state: snapshot, total, sold })
+    return sync(c, { state: snapshot, total, sold })
   })
 
   api.post('/wish', async (c) => {
     const b = await body(c)
-    return c.json({ state: game.addWish(db, c.get('player'), Number(b.characterId)) })
+    return sync(c, { state: game.addWish(db, c.get('player'), Number(b.characterId)) })
   })
 
   api.delete('/wish/:id', (c) =>
-    c.json({ state: game.removeWish(db, c.get('player'), Number(c.req.param('id'))) }),
+    sync(c, { state: game.removeWish(db, c.get('player'), Number(c.req.param('id'))) }),
   )
 
   api.get('/search', async (c) => {
@@ -243,22 +286,22 @@ export function createApp(db: DB, config: Config) {
 
   api.post('/badge', async (c) => {
     const b = await body(c)
-    return c.json({ state: game.buyBadge(db, c.get('player'), b.key) })
+    return sync(c, { state: game.buyBadge(db, c.get('player'), b.key) })
   })
 
   api.post('/upgrade', async (c) => {
     const b = await body(c)
-    return c.json({ state: game.buyUpgrade(db, c.get('player'), b.key) })
+    return sync(c, { state: game.buyUpgrade(db, c.get('player'), b.key) })
   })
 
   api.patch('/settings', async (c) => {
     const b = await body(c)
-    return c.json({ state: game.updateSettings(db, c.get('player'), b) })
+    return sync(c, { state: game.updateSettings(db, c.get('player'), b) })
   })
 
   api.post('/grant', async (c) => {
     const b = await body(c)
-    return c.json({ state: game.grantCredits(db, c.get('player'), Number(b.amount ?? 1000)) })
+    return sync(c, { state: game.grantCredits(db, c.get('player'), Number(b.amount ?? 1000)) })
   })
 
   api.post('/reset', async (c) => {
@@ -266,7 +309,7 @@ export function createApp(db: DB, config: Config) {
     const owner = c.get('owner')
     const ok = await verifyPlayerPassword(db, owner, String(b.username ?? ''), String(b.password ?? ''))
     if (!ok) return c.json({ error: 'That username and password do not match this account.' }, 403)
-    return c.json({ state: game.resetPlayer(db, c.get('player')) })
+    return sync(c, { state: game.resetPlayer(db, c.get('player')) })
   })
 
   /* ----------------------------------------------------------------- admin */

@@ -277,6 +277,16 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ALTER TABLE player_state ADD COLUMN pending_sell_json TEXT;
     `,
   },
+  {
+    name: '012_live_sync',
+    sql: `
+    -- One account can be played on several devices at once. Every write is
+    -- already atomic (one process, synchronous SQLite), so what was missing
+    -- was telling the other devices: they get the snapshot pushed, and this
+    -- counter tells them whether the collection they are holding is stale.
+    ALTER TABLE player_state ADD COLUMN collection_rev INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

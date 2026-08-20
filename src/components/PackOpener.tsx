@@ -143,13 +143,13 @@ export default function PackOpener({ pack, cards }: Props) {
       <p className="pack-hint">
         {anySealed ? (
           pack.stacks.length > 1 ? (
-            <>Drag across a pack to tear it open — or take all {pack.stacks.length} at once.</>
+            <>Drag a pack to tear it open, or take all {pack.stacks.length} at once.</>
           ) : (
             <>Drag across the pack to tear it open.</>
           )
         ) : (
           <>
-            <b>{left}</b> of {cards.length} left — swipe or tap a top card away
+            <b>{left}</b> of {cards.length} left. Swipe or tap a top card away
             {running ? '.' : <>, or <kbd>Space</kbd> to throw the rest.</>}
           </>
         )}

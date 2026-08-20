@@ -81,6 +81,37 @@ const fail = (msg: string): never => {
   throw new GameError(msg)
 }
 
+/**
+ * Note that the collection changed.
+ *
+ * Other devices are pushed a snapshot without the collection in it -- it can
+ * be five figures of cards and most updates do not touch it -- so this is how
+ * one that happens to be looking at the collection knows to fetch it again.
+ */
+function touchCollection(db: DB, playerId: number): void {
+  db.prepare('UPDATE player_state SET collection_rev = collection_rev + 1 WHERE player_id = ?').run(
+    playerId,
+  )
+}
+
+/**
+ * Spend credits, or refuse.
+ *
+ * Conditional in SQL rather than checked and then written. Requests are
+ * serialised today -- one process, synchronous SQLite -- so a read followed by
+ * a write cannot interleave, but this does not depend on that being true
+ * forever, and two devices pressing buy at the same moment is now an ordinary
+ * thing rather than a curiosity.
+ */
+function spend(db: DB, playerId: number, amount: number): boolean {
+  if (amount <= 0) return true
+  return (
+    db
+      .prepare('UPDATE player_state SET credits = credits - ? WHERE player_id = ? AND credits >= ?')
+      .run(amount, playerId, amount).changes > 0
+  )
+}
+
 interface StateRow {
   player_id: number
   credits: number
@@ -100,6 +131,8 @@ interface StateRow {
   auto_yield: number
   /** Character ids the last summon queued for auto-sell. */
   pending_sell_json: string | null
+  /** Bumped whenever this player's claims change, so other devices can tell. */
+  collection_rev: number
 }
 
 interface RollSessionEntry {
@@ -229,6 +262,9 @@ export interface Snapshot {
   /** Allowed to switch the sandbox on at all. */
   sandboxAllowed: boolean
   credits: number
+  /** Bumped whenever the player's claims change. A device holding a stale
+   *  collection refetches when this moves. */
+  collectionRev: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
   /** Packs torn at a single press. */
@@ -268,6 +304,7 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     sandbox: !!player.sandbox_of,
     sandboxAllowed: !!player.sandbox,
     credits: row.credits,
+    collectionRev: row.collection_rev,
     packSize: size,
     packsPerPull: player.sandbox_of ? 1 : fx.packsPerPull,
     cardsPerPull: player.sandbox_of ? size : fx.cardsPerPull,
@@ -580,10 +617,15 @@ export function roll(
     // The last summon's queue is settled first: everything the player did not
     // lock while they were looking at it.
     const swept = sweepAutoSell(db, player, row, fx)
+    // The price comes off first and on its own terms: another device may have
+    // spent the balance between this request being read and this line running.
+    if (!spend(db, player.id, price)) {
+      fail(`This pull costs ${price.toLocaleString()} credits. Sell something first.`)
+    }
     db.prepare(
       `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?
         WHERE player_id = ?`,
-    ).run(totalComp + coinFound + hiddenFor - price, results.length, player.id)
+    ).run(totalComp + coinFound + hiddenFor, results.length, player.id)
     if (pack) {
       db.prepare(
         `UPDATE player_state SET auto_yield = auto_yield * ? + ? * ?, auto_at = ?
@@ -613,6 +655,7 @@ export function roll(
               series_paid_json = ? WHERE player_id = ?`,
     ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), player.id)
     const queued = queueAutoSell(db, player, settings, session)
+    touchCollection(db, player.id)
     return { ...r, ...swept, queued }
   })()
 
@@ -869,6 +912,7 @@ export function setLocked(db: DB, player: Player, characterId: number, locked: b
     .prepare('UPDATE claims SET locked = ? WHERE player_id = ? AND character_id = ?')
     .run(locked ? 1 : 0, player.id, characterId).changes
   if (changed === 0) fail('You do not own that.')
+  touchCollection(db, player.id)
   return snapshot(db, player, true)
 }
 
@@ -930,6 +974,7 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
       ...sold,
     )
     db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
+    touchCollection(db, player.id)
   })()
   return { snapshot: snapshot(db, player, true), total, sold: rows.length }
 }
@@ -962,13 +1007,14 @@ export function buyBadge(db: DB, player: Player, key: BadgeKey): Snapshot {
   if (level >= BADGE_MAX) fail('That badge line is already finished.')
   if (!badgeUnlocked(key, badges)) fail('That badge is still locked.')
   const cost = badgeCost(def!, level + 1, computeEffects(badges, EMPTY_UPGRADES).priceMult)
-  if (row.credits < cost) fail('Not enough credits.')
   const next: Badges = { ...badges, [key]: level + 1 }
-  db.prepare('UPDATE player_state SET credits = credits - ?, badges_json = ? WHERE player_id = ?').run(
-    cost,
-    JSON.stringify(next),
-    player.id,
-  )
+  db.transaction(() => {
+    if (!spend(db, player.id, cost)) fail('Not enough credits.')
+    db.prepare('UPDATE player_state SET badges_json = ? WHERE player_id = ?').run(
+      JSON.stringify(next),
+      player.id,
+    )
+  })()
   return snapshot(db, player)
 }
 
@@ -986,11 +1032,14 @@ export function buyUpgrade(db: DB, player: Player, key: UpgradeKey): Snapshot {
   const level = upgrades[key] ?? 0
   if (upgradeMaxed(def!, level)) fail('That upgrade is already at its last level.')
   const cost = upgradeCost(def!, level, fx.priceMult)
-  if (row.credits < cost) fail('Not enough credits.')
   const next: Upgrades = { ...upgrades, [key]: level + 1 }
-  db.prepare(
-    'UPDATE player_state SET credits = credits - ?, upgrades_json = ? WHERE player_id = ?',
-  ).run(cost, JSON.stringify(next), player.id)
+  db.transaction(() => {
+    if (!spend(db, player.id, cost)) fail('Not enough credits.')
+    db.prepare('UPDATE player_state SET upgrades_json = ? WHERE player_id = ?').run(
+      JSON.stringify(next),
+      player.id,
+    )
+  })()
   return snapshot(db, player)
 }
 
@@ -1022,7 +1071,8 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
     db.prepare(
       `UPDATE player_state SET credits = 0, last_daily_at = 0, daily_streak = 0,
               total_rolls = 0, total_claims = 0, badges_json = ?, upgrades_json = ?,
-              series_paid_json = '{}', auto_spin = 0, auto_at = 0, auto_yield = 0
+              series_paid_json = '{}', auto_spin = 0, auto_at = 0, auto_yield = 0,
+              pending_sell_json = NULL, collection_rev = collection_rev + 1
         WHERE player_id = ?`,
     ).run(JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), player.id)
   })()

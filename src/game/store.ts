@@ -20,7 +20,14 @@ import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from '
 import { POOL_EVERYTHING } from './pool'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { fmt, fmtCount } from './format'
-import { ApiError, api, type RollResult, type ServerSettings, type Snapshot } from '../api'
+import {
+  ApiError,
+  api,
+  listenForState,
+  type RollResult,
+  type ServerSettings,
+  type Snapshot,
+} from '../api'
 
 const HOUR = 3_600_000
 const EMPTY_SETTINGS: ServerSettings = {
@@ -31,6 +38,9 @@ const EMPTY_SETTINGS: ServerSettings = {
 }
 
 let toastSeq = 1
+
+/** The live stream, if one is open. One per tab, whatever route opened it. */
+let liveOff: (() => void) | null = null
 
 type PackState = NonNullable<GameState['pack']>
 
@@ -87,6 +97,9 @@ interface GameState {
   /* mirrored from the server */
   credits: number
   collection: OwnedCharacter[]
+  /** The instance's collection revision, and the one our copy was fetched at. */
+  collectionRev: number
+  collectionAt: number
   wishes: RolledCharacter[]
   badges: Badges
   upgrades: Upgrades
@@ -150,6 +163,8 @@ interface GameState {
   packBusy: () => boolean
 
   boot: () => Promise<void>
+  /** Fetch the collection again when another device has changed it. */
+  refreshCollection: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
   signUp: (username: string, password: string, invite?: string) => Promise<string | null>
   signOut: () => Promise<void>
@@ -183,8 +198,16 @@ interface GameState {
 }
 
 export const useGame = create<GameState>()((set, get) => {
-  /** Fold an authoritative snapshot into the mirror. */
-  const apply = (s: Snapshot) => {
+  /**
+   * Fold an authoritative snapshot into the mirror.
+   *
+   * `adopt` is for the two moments a session begins -- boot and sign-in --
+   * where the browser takes on the state the server is holding. Everything
+   * else leaves the per-device switches alone: Auto Summon runs on *this*
+   * device, and a snapshot pushed because the desktop pressed the button must
+   * not start or stop the machine on the phone.
+   */
+  const apply = (s: Snapshot, adopt = false) => {
     // Every animation timer reads its cadence from the sound module, so the
     // Swift Hands level is pushed there the moment the server confirms it.
     // Swift Hands is quoted in cards a second; the animation wants a multiple
@@ -198,6 +221,10 @@ export const useGame = create<GameState>()((set, get) => {
       sandboxAllowed: s.sandboxAllowed,
       credits: s.credits,
       collection: s.collection ?? prev.collection,
+      collectionRev: s.collectionRev,
+      // A pushed snapshot carries no collection, so the copy we hold keeps the
+      // revision it was fetched at and the view knows to ask again.
+      collectionAt: s.collection ? s.collectionRev : prev.collectionAt,
       wishes: s.wishes,
       badges: s.badges,
       upgrades: s.upgrades,
@@ -208,7 +235,7 @@ export const useGame = create<GameState>()((set, get) => {
       packPrice: s.packPrice,
       autoSpinMs: s.autoSpinMs,
       cardRate: s.cardRate,
-      autoSpin: s.autoSpin,
+      autoSpin: adopt ? s.autoSpin : prev.autoSpin,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
       totalRolls: s.totalRolls,
@@ -239,6 +266,19 @@ export const useGame = create<GameState>()((set, get) => {
     )
   }
 
+  /**
+   * Open the live stream, once.
+   *
+   * Called from every route into a signed-in session, not just from boot:
+   * signing in on a fresh tab used to leave the tab deaf, so a second device
+   * showed a balance that stopped moving the moment the first one spent
+   * anything.
+   */
+  const connectLive = () => {
+    if (liveOff) return
+    liveOff = listenForState((live) => apply(live))
+  }
+
   /** Run a call, surfacing the server's own message and never wedging the UI. */
   const guard = async <T,>(fn: () => Promise<T>, onError?: (m: string) => void): Promise<T | null> => {
     try {
@@ -267,6 +307,8 @@ export const useGame = create<GameState>()((set, get) => {
 
     credits: 0,
     collection: [],
+    collectionRev: 0,
+    collectionAt: 0,
     wishes: [],
     badges: { ...EMPTY_BADGES },
     upgrades: { ...EMPTY_UPGRADES },
@@ -310,6 +352,13 @@ export const useGame = create<GameState>()((set, get) => {
       return s.sandbox || s.now - s.lastDailyAt >= DAILY_INTERVAL_H * HOUR
     },
 
+    refreshCollection: async () => {
+      const st = get()
+      if (st.collectionAt === st.collectionRev) return
+      const snap = await guard(() => api.state())
+      if (snap) apply(snap)
+    },
+
     boot: async () => {
       try {
         const me = await api.me()
@@ -318,8 +367,9 @@ export const useGame = create<GameState>()((set, get) => {
           return
         }
         const snap = await api.state()
-        apply(snap)
+        apply(snap, true)
         reportOffline(snap)
+        connectLive()
       } catch {
         set({ error: 'Cannot reach the instance.' })
       } finally {
@@ -330,7 +380,8 @@ export const useGame = create<GameState>()((set, get) => {
     signIn: async (username, password) => {
       try {
         await api.login(username, password)
-        apply(await api.state())
+        apply(await api.state(), true)
+        connectLive()
         sfx.tap()
         return null
       } catch (e) {
@@ -341,7 +392,8 @@ export const useGame = create<GameState>()((set, get) => {
     signUp: async (username, password, invite) => {
       try {
         await api.register(username, password, invite)
-        apply(await api.state())
+        apply(await api.state(), true)
+        connectLive()
         sfx.tap()
         return null
       } catch (e) {
@@ -350,6 +402,8 @@ export const useGame = create<GameState>()((set, get) => {
     },
 
     signOut: async () => {
+      liveOff?.()
+      liveOff = null
       await api.logout().catch(() => {})
       set({ authed: false, rolled: [], collection: [], username: '', isAdmin: false, sandbox: false })
     },
@@ -439,10 +493,11 @@ export const useGame = create<GameState>()((set, get) => {
     dismissCoinPop: (id) => set((prev) => ({ coinPops: prev.coinPops.filter((c) => c.id !== id) })),
 
     /**
-     * Switch the machine on or off.
+     * Switch this device's machine on or off.
      *
-     * The server holds the switch, not the browser: Night Shift pays it for
-     * the hours the tab was closed, and it cannot do that for a flag that only
+     * The switch is per device -- two of them can grind in parallel, and they
+     * should -- but the server is told, because Offline Earnings pays for the
+     * hours nothing was running and it cannot know that from a flag that only
      * ever existed in a page somebody navigated away from.
      */
     setAutoSpin: async (on) => {

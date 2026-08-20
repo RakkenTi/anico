@@ -10,15 +10,15 @@ import type { IconName } from '../game/icons'
 /**
  * The shop.
  *
- * Two shelves, each in a fixed order, side by side where there is room and one
- * at a time where there is not.
+ * Rows, not cards. Fifteen things are for sale and a player checks all of them
+ * every time they have money, so the whole list wants to be on one screen: the
+ * card version was three hundred pixels a purchase and turned "what can I
+ * afford" into a scrolling exercise. Each row carries the four things that
+ * decide a purchase (what it is, where it stands, what the next level does,
+ * what it costs); everything else is behind the arrow on the right.
  *
- * It was one list sorted by price, which sounded helpful and read as chaos:
- * every purchase re-sorted the grid, so the card you were about to buy moved,
- * and the thing you had been looking at a second ago was somewhere else. A
- * shop should be a place you learn the shape of. Badges and upgrades are also
- * different kinds of thing -- one ends, one does not -- and giving them the
- * same card made them look like one ladder with two naming conventions.
+ * Rows never re-order. Sorting by price meant the thing you were reaching for
+ * moved the moment you bought something else.
  */
 type Shelf = 'upgrades' | 'badges'
 
@@ -27,6 +27,7 @@ export default function ShopView() {
   const fx = s.effects()
   const priceMult = fx.priceMult
   const [shelf, setShelf] = useState<Shelf>('upgrades')
+  const [open, setOpen] = useState<string | null>(null)
 
   const badgeReady = BADGE_DEFS.some((def) => {
     const level = s.badges[def.key]
@@ -43,21 +44,18 @@ export default function ShopView() {
 
   return (
     <div className="shop-view">
-      {/* What the shop has bought so far, in the numbers that decide how fast
-          the next thing arrives. Progress is meant to be visible: this is the
-          scoreboard the prices below are climbing against. */}
+      {/* Where the shop has got you so far. */}
       <dl className="shop-status">
         <div>
-          <dt>A pack</dt>
+          <dt>Pack</dt>
           <dd>
             {fx.packSize > 0 ? (
               <>
-                <b>{fmtCount(fx.packSize)}</b> cards for{' '}
-                <b className="credits-text">{fmt(packCost(fx.packSize))}</b>
-                {fx.packsPerPull > 1 && <> · {fx.packsPerPull} at a press</>}
+                <b>{fmtCount(fx.packSize)}</b> cards, <b className="credits-text">{fmt(packCost(fx.packSize))}</b>
+                {fx.packsPerPull > 1 && <> ({fx.packsPerPull} at a press)</>}
               </>
             ) : (
-              <>Locked — <b>Sapphire I</b> opens packs</>
+              <>Locked. <b>Sapphire I</b> opens packs</>
             )}
           </dd>
         </div>
@@ -66,37 +64,36 @@ export default function ShopView() {
           <dd>
             {fx.guaranteeRarity ? (
               <>
-                {fx.guaranteeCount > 1
-                  ? `${fx.guaranteeCount} × `
-                  : /^[AEIOU]/.test(RARITY_NAMES[fx.guaranteeRarity])
-                    ? 'an '
-                    : 'a '}
-                <b className="credits-text">{RARITY_NAMES[fx.guaranteeRarity]}</b> in every pack
+                <b className="credits-text">
+                  {fx.guaranteeCount > 1 ? `${fx.guaranteeCount} ` : ''}
+                  {RARITY_NAMES[fx.guaranteeRarity]}
+                </b>{' '}
+                per pack
               </>
             ) : (
-              <>None — <b>Emerald</b> promises a floor</>
+              <>None yet</>
             )}
           </dd>
         </div>
         <div>
-          <dt>Sale value</dt>
+          <dt>Sell value</dt>
           <dd>
-            <b>{fmt(Math.round(fx.sellMult * 100))}%</b> of a card's worth
+            <b>{fmt(Math.round(fx.sellMult * 100))}%</b>
           </dd>
         </div>
         <div>
-          <dt>Hands</dt>
+          <dt>Open speed</dt>
           <dd>
-            <b>{fx.cardRate}</b> cards a second
+            <b>{fx.cardRate}</b> cards/sec
           </dd>
         </div>
         <div>
-          <dt>The Automaton</dt>
+          <dt>Auto summon</dt>
           <dd>
             {fx.autoSpinMs > 0 ? (
               <>
-                a press every <b>{(fx.autoSpinMs / 1000).toFixed(2)}s</b>
-                {fx.offlineRate > 0 && <> · {Math.round(fx.offlineRate * 100)}% away</>}
+                <b>{(fx.autoSpinMs / 1000).toFixed(2)}s</b>
+                {fx.offlineRate > 0 && <> ({Math.round(fx.offlineRate * 100)}% offline)</>}
               </>
             ) : (
               <>Not bought</>
@@ -105,8 +102,8 @@ export default function ShopView() {
         </div>
       </dl>
 
-      {/* Only on narrow screens: wide ones show both shelves at once. */}
-      <div className="shop-switch segmented" role="group" aria-label="Shop shelf">
+      {/* Narrow screens show one shelf at a time; wide ones show both. */}
+      <div className="shop-switch segmented" role="group" aria-label="Shop section">
         <button
           className={`seg ${shelf === 'upgrades' ? 'active' : ''}`}
           onClick={() => setShelf('upgrades')}
@@ -122,120 +119,156 @@ export default function ShopView() {
       </div>
 
       <div className={`shop-shelves show-${shelf}`}>
-        <section className="panel shop-col col-upgrades">
-          <h2 className="section-title">Upgrades</h2>
-          <p className="section-sub">
-            The curve. Six of these have no last level, and every level costs a fixed multiple
-            of the one below it — so what you can afford next is the whole of the difficulty.
-            The first few rungs are sold cheap on purpose.
-            {priceMult < 1 && (
-              <b className="credits-text"> Ruby is knocking {Math.round((1 - priceMult) * 100)}% off.</b>
-            )}
-          </p>
-          <div className="upgrade-list">
+        <section className="shop-col col-upgrades">
+          <header className="shelf-head">
+            <h2>Upgrades</h2>
+            <p>
+              Buy levels to raise your rates. Most have no maximum level, and every level
+              costs more than the last.
+              {priceMult < 1 && (
+                <b className="credits-text"> Ruby: {Math.round((1 - priceMult) * 100)}% off.</b>
+              )}
+            </p>
+          </header>
+          <ul className="shop-rows">
             {UPGRADE_DEFS.map((def) => {
               const level = s.upgrades[def.key] ?? 0
               const maxed = upgradeMaxed(def, level)
               const cost = upgradeCost(def, level, priceMult)
               const affordable = !maxed && s.credits >= cost
+              const id = `u:${def.key}`
               return (
-                <article
-                  className={`upgrade-card ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}
-                  key={def.key}
-                >
-                  <header className="upgrade-head">
-                    <span className="upgrade-icon">
-                      <Icon name={def.icon as IconName} className="icon-lg" />
-                    </span>
-                    <div className="upgrade-title">
-                      <span className="upgrade-name">{def.name}</span>
-                      <span className="upgrade-level">
-                        {level > 0 ? `Level ${level}` : 'Not bought'}
-                        {def.maxLevel ? ` of ${def.maxLevel}` : ' · endless'}
-                      </span>
-                    </div>
-                  </header>
-                  <p className="upgrade-blurb">{def.blurb}</p>
-                  <p className="upgrade-effect">
-                    <span className="now">Now:</span> {def.effect(level)}
-                    {!maxed && (
-                      <>
-                        <br />
-                        <span className="next">Next:</span> {def.effect(level + 1)}
-                      </>
-                    )}
-                  </p>
+                <li key={def.key} className={`shop-row ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}>
                   <button
-                    className="btn btn-buy"
+                    className="row-buy"
                     disabled={maxed || !affordable}
                     onClick={() => s.buyUpgrade(def.key)}
+                    title={def.blurb}
                   >
-                    {maxed ? 'Complete' : `${fmt(cost)} credits`}
+                    <span className="row-icon">
+                      <Icon name={def.icon as IconName} />
+                    </span>
+                    <span className="row-main">
+                      <span className="row-name">
+                        {def.name}
+                        {(maxed || level > 0) && (
+                          <em className="row-lv">{maxed ? 'max' : `Lv ${level}`}</em>
+                        )}
+                      </span>
+                      <span className="row-effect">
+                        {def.effect(level)}
+                        {!maxed && (
+                          <>
+                            {' '}
+                            <span className="row-arrow">&rsaquo;</span>{' '}
+                            <b>{def.effect(level + 1)}</b>
+                          </>
+                        )}
+                      </span>
+                    </span>
+                    <span className="row-cost">{maxed ? 'done' : fmt(cost)}</span>
                   </button>
-                </article>
+                  <button
+                    className="row-more"
+                    aria-expanded={open === id}
+                    aria-label={`About ${def.name}`}
+                    onClick={() => setOpen(open === id ? null : id)}
+                  >
+                    ?
+                  </button>
+                  {open === id && (
+                    <p className="row-detail">
+                      {def.blurb}{' '}
+                      {def.maxLevel ? `Stops at level ${def.maxLevel}.` : 'No maximum level.'}
+                    </p>
+                  )}
+                </li>
               )
             })}
-          </div>
+          </ul>
         </section>
 
-        <section className="panel shop-col col-badges">
-          <h2 className="section-title">Credit Badges</h2>
-          <p className="section-sub">
-            The shape. Six short ladders of six rungs that decide what the game <i>is</i>:
-            whether packs exist, how many wishes you may pin, what a pack promises. Sapphire,
-            Ruby and Emerald want progress in the first three, or any two badges at IV.
-          </p>
-          <div className="badge-list">
+        <section className="shop-col col-badges">
+          <header className="shelf-head">
+            <h2>Badges</h2>
+            <p>
+              One-off unlocks that change how the game works. Six tiers each. Sapphire, Ruby
+              and Emerald need progress in Bronze, Silver and Gold.
+            </p>
+          </header>
+          <ul className="shop-rows">
             {BADGE_DEFS.map((def) => {
               const level = s.badges[def.key]
               const maxed = level >= BADGE_MAX
               const unlocked = badgeUnlocked(def.key, s.badges)
               const cost = maxed ? 0 : badgeCost(def, level + 1, priceMult)
               const affordable = !maxed && unlocked && s.credits >= cost
+              const id = `b:${def.key}`
               return (
-                <article
+                <li
                   key={def.key}
-                  className={`badge-card ${!unlocked ? 'locked' : ''} ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}
+                  className={`shop-row is-badge ${!unlocked ? 'locked' : ''} ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}
                   style={{ ['--badge-color' as string]: def.color }}
                 >
-                  <header className="badge-head">
-                    <span className="badge-medal">
-                      <Icon name={def.icon as IconName} className="icon-lg" />
-                    </span>
-                    <div>
-                      <div className="badge-name">
-                        {def.name} {level > 0 && <span className="badge-level">{ROMAN[level]}</span>}
-                      </div>
-                      <div className="badge-pips">
-                        {Array.from({ length: BADGE_MAX }, (_, i) => (
-                          <span key={i} className={`pip ${i < level ? 'filled' : ''}`} />
-                        ))}
-                      </div>
-                    </div>
-                  </header>
-                  <ul className="badge-levels">
-                    {def.levels.map((text, i) => (
-                      <li key={i} className={i < level ? 'owned' : i === level ? 'next' : ''}>
-                        <span className="lvl-roman">{ROMAN[i + 1]}</span> {text}
-                      </li>
-                    ))}
-                  </ul>
-                  {!unlocked && <div className="badge-req">🔒 {def.prereq}</div>}
                   <button
-                    className="btn btn-buy"
+                    className="row-buy"
                     disabled={maxed || !unlocked || !affordable}
                     onClick={() => s.buyBadge(def.key)}
+                    title={unlocked ? def.levels[Math.min(level, BADGE_MAX - 1)] : def.prereq ?? ''}
                   >
-                    {maxed
-                      ? 'Complete'
-                      : !unlocked
-                        ? 'Locked'
-                        : `Forge ${def.name} ${ROMAN[level + 1]} · ${fmt(cost)}`}
+                    <span className="row-icon badge-icon">
+                      <Icon name={def.icon as IconName} />
+                    </span>
+                    <span className="row-main">
+                      <span className="row-name">
+                        {def.name}
+                        {(maxed || level > 0) && (
+                          <em className="row-lv">{maxed ? 'max' : ROMAN[level]}</em>
+                        )}
+                        <span className="badge-pips">
+                          {Array.from({ length: BADGE_MAX }, (_, i) => (
+                            <span key={i} className={`pip ${i < level ? 'filled' : ''}`} />
+                          ))}
+                        </span>
+                      </span>
+                      <span className="row-effect">
+                        {maxed ? (
+                          'All six tiers bought'
+                        ) : !unlocked ? (
+                          def.prereq
+                        ) : (
+                          <>
+                            <span className="row-arrow">{ROMAN[level + 1]}</span>{' '}
+                            <b>{def.levels[level]}</b>
+                          </>
+                        )}
+                      </span>
+                    </span>
+                    <span className="row-cost">
+                      {maxed ? 'done' : !unlocked ? 'locked' : fmt(cost)}
+                    </span>
                   </button>
-                </article>
+                  <button
+                    className="row-more"
+                    aria-expanded={open === id}
+                    aria-label={`All ${def.name} tiers`}
+                    onClick={() => setOpen(open === id ? null : id)}
+                  >
+                    ?
+                  </button>
+                  {open === id && (
+                    <ol className="row-detail badge-levels">
+                      {def.levels.map((text, i) => (
+                        <li key={i} className={i < level ? 'owned' : i === level ? 'next' : ''}>
+                          <span className="lvl-roman">{ROMAN[i + 1]}</span> {text}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </li>
               )
             })}
-          </div>
+          </ul>
         </section>
       </div>
     </div>
