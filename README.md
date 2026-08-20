@@ -1,8 +1,9 @@
 # Anico 🎴
 
-A self-hosted, multi-player reimagining of **Mudae** as a standalone collecting game: no
-Discord, no commands, just a web app you run on your own box. Roll for anime characters,
-claim your favourites, build a collection, and grow a credit economy.
+A self-hosted, multi-player anime character collecting game: no Discord, no commands,
+just a web app you run on your own box. Summon characters, claim your favourites, build a
+collection, and spend the credits it earns on a badge tree that makes the next summon
+worth more.
 
 One deployment is an **instance**. Players share the instance but their collections are
 independent: two people can each own the same character, and nothing one player does can
@@ -56,11 +57,12 @@ Either way, once it is up:
 
 1. Open the instance and **create the first account**. It becomes the **admin** and
    gets sandbox access. No credentials are baked into the image.
-2. The catalog starts filling in the background. It walks the reachable AniList pool
-   (330 pages, 15s apart) in about **85 minutes**, and resumes where it left off if you
-   restart. The pace is deliberate: it keeps the instance well inside AniList's request
-   budget and leaves room for player searches. You can play immediately; early rolls
-   just draw from a smaller pool, most popular first.
+2. The catalog starts filling in the background. It walks AniList in four sweeps — anime
+   then manga, headline cast then supporting — 800 requests 15s apart, so a **complete**
+   catalog takes about **3½ hours** and resumes where it left off if you restart. The
+   pace is deliberate: it keeps the instance well inside AniList's request budget and
+   leaves room for player searches. You can play immediately; the first sweep is
+   most-popular-first, so the characters people actually hunt land in the first hour.
 3. Invite the others: **Settings, Instance, Create an invite link**. Each invite works
    once, and registration is closed to anyone without one.
 
@@ -88,8 +90,8 @@ and login appears to do nothing.
 | `DATA_DIR` | `/data` | Where `anico.db` lives. Back this directory up |
 | `COOKIE_SECURE` | `true` | Session cookie's `Secure` flag. `false` for plain-HTTP LAN |
 | `CRAWL_ON_BOOT` | `true` | Fill the character catalog on startup |
-| `CRAWL_DELAY_MS` | `15000` | Gap between catalog requests. The default walks the whole catalog in about 85 minutes at ~4 requests/minute, leaving AniList's budget to player searches |
-| `MAX_DB_BYTES` | `1073741824` | The crawl stops rather than grow the database past this. A full catalog settles near 30 MB, so the 1 GB default is headroom, not a limit you meet |
+| `CRAWL_DELAY_MS` | `15000` | Gap between catalog requests. The default walks all four sweeps in about 3½ hours at ~4 requests/minute, leaving AniList's budget to player searches |
+| `MAX_DB_BYTES` | `1073741824` | The crawl stops rather than grow the database past this. A full four-sweep catalog settles well under 100 MB, so the 1 GB default is headroom, not a limit you meet |
 | `CLIENT_DIR` | `/app/dist/client` | Where the built client is served from |
 
 `ANICO_IMAGE`, `COOKIE_SECURE` and `WATCHTOWER_POLL_INTERVAL` are read from `.env` by
@@ -218,10 +220,12 @@ Run `npm start` and `npm run dev` together for hot reload against a live API. `n
 lint` runs oxlint.
 
 `npm run shots` drives the running instance with a real browser and writes screenshots to
-`shots/` at a desktop, a phone and a small phone size. Every mobile problem this app has
-had was found by looking rather than by reasoning, and it captures the states that only
-exist mid-gesture — a pack half torn, a card mid-throw — which are exactly the ones that
-went wrong. It uses `playwright-core`, which ships no browsers of its own and borrows a
+`shots/` at a desktop, a phone and a small phone size: the summon screen, a pack being
+torn open, the collection in bulk mode, the wishlist and the shop. Every mobile problem
+this app has had was found by looking rather than by reasoning, and it captures the
+states that only exist mid-gesture — a pack half torn, a card mid-throw — which are
+exactly the ones that went wrong. It needs an account that already owns Sapphire to reach
+the pack states; without one it shoots the single-summon screen and moves on. It uses `playwright-core`, which ships no browsers of its own and borrows a
 Chromium already on the machine; `npx playwright install chromium` provides one if there
 is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
 
@@ -235,57 +239,67 @@ is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
   ([ADR 0003](./docs/adr/0003-the-server-owns-the-rules.md)).
 - **Database**: SQLite in the app container, no separate service
   ([ADR 0001](./docs/adr/0001-sqlite-in-one-container.md)).
-- **Catalog**: the instance's own table of characters, filled from AniList. Rolls are a
-  local `SELECT`, so play does not depend on AniList being reachable, and one instance
-  never has to share its ~90 requests/minute among its players.
+- **Catalog**: the instance's own table of characters, filled from AniList in four
+  sweeps, because no single query can paginate past 5000 entries. Rolls are a local
+  `SELECT`, so play does not depend on AniList being reachable, and one instance never
+  has to share its ~90 requests/minute among its players.
 
 The project's vocabulary is in [`CONTEXT.md`](./CONTEXT.md); the decisions worth not
 re-litigating are in [`docs/adr/`](./docs/adr/).
 
-## How Mudae's systems map here
+## The game
 
-| Mudae | Anico |
+**Summon.** One card at a time, free and unlimited: nothing is on a cooldown and there is
+no allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)). Claim the ones
+you want, sell the ones you do not, and pick who shows up in *Settings, Roll for*
+(Waifus / Husbandos / Everyone).
+
+**Packs are what you save for.** A fresh account has the single summon and nothing else.
+The **Sapphire** badge unlocks a sealed ×10 and grows it to ×15, ×20 and ×50; **Ruby IV**
+adds five more. A pack comes wrapped in seamless foil, tinted by the best card inside:
+drag across it and a rip travels along the seam, accumulating as you pull — a partial
+tear stays torn, so you can saw at it exactly as you would a real one. Underneath, all
+the cards are face up in a stack showing a sliver of each; throw the top one aside to
+reach the next, as fast as you like. <kbd>Space</kbd> before the tear opens the whole
+thing for you; after a hand tear it throws one card a press. **Every card in a pack is
+yours the moment it is rolled**, however you choose to open it, so how you open it is
+ceremony.
+
+**The shop is the whole progression.** Six badge lines, four levels each, bought with
+credits:
+
+| Badge | What it buys |
 | --- | --- |
-| `$w` / `$h` / `$m` roll commands | **Roll** button + a *Roll for* setting (Waifus / Husbandos / Everyone) |
-| Claiming with a reaction, ~3 h claim interval | **Claim** button. Unlimited in Fun mode, once an hour in Normal |
-| Opening a `$pack` | A Fun-mode ×10 is a sealed pack of ten: tear it with <kbd>Space</kbd> or swipe it open card by card. All ten are granted |
-| 10 rolls per hour | Unlimited in Fun mode. In Normal, 10 single summons an hour refilling on the hour, raised by Sapphire and Ruby badges and by nothing in settings |
-| Kakera value from character popularity | Credit value derived from AniList favourites on a power curve (≈35 for obscure picks, ≈865 for Levi) |
-| Kakera reactions dropping on rolls | **Coins** (Copper up to Solar, weighted rarity) drop alongside rolls; tap to collect. About one summon in twenty-five |
-| `$divorce` for kakera | **Sell** any character at the credit value it had when you claimed it |
-| One claim per character per server | **Not copied.** Collections are per player ([ADR 0002](./docs/adr/0002-collections-are-per-player.md)) |
-| Silver compensation for duplicates | Rolling a character you own pays 10% of its value (20% with Silver IV) |
-| `$wish` / wishlist pings | **Wishes** tab: search by name, pin characters; wishes can barge into your rolls |
-| Kakera badges (`$kakera`) | **Shop**: the Bronze/Silver/Gold/Sapphire/Ruby/Emerald tree with Mudae's prerequisite chart |
-| `$dailykakera` | **Daily offering** in the header, every 20 h, with a streak bonus |
-| `$resetclaimtimer` (Emerald badge) | The **Claim Reset ritual**, unlocked by Emerald I |
-| `$harem` | **Collection** tab: search, filters, sorting, total worth, detail view |
+| **Bronze** | Wish slots, and +100 credits when you claim a wished character |
+| **Silver** | The chance your wishes barge into a roll, and double duplicate compensation |
+| **Gold** | Coin drop chance, and a doubled daily offering |
+| **Sapphire** | **Packs**: ×10 at I, then ×15, ×20 and ×50 |
+| **Ruby** | More wish slots, wish chance and coin chance · at IV, −25% on every badge and +5 cards a pack |
+| **Emerald** | A **guarantee**: every pack holds a Rare or better, rising to Mythic · at IV, claims also pay the character's credit value |
 
-## Beyond Mudae
+Sapphire, Ruby and Emerald need progress in the first three lines, or any two badges
+raised to IV.
 
-- **Two modes**, yours alone to pick. **Fun** (the default) has no cooldowns at all:
-  summon and claim as much as you like, and the ×10 arrives as a **sealed pack**.
-  **Normal** is the paced game, with an hourly summon budget, one ×10 a day and one
-  claim an hour
-- **Packs**: a Fun-mode ×10 comes wrapped in seamless foil, tinted by the best card
-  inside. Drag across it and a rip travels along the seam, accumulating as you pull —
-  a partial tear stays torn, so you can saw at it exactly as you would a real one.
-  Underneath, all ten cards are face up in a stack showing a sliver of each; throw the
-  top one aside to reach the next, as fast as you like. <kbd>Space</kbd> before the tear
-  opens the whole thing for you; after a hand tear it throws one card a press. Every
-  card is yours either way, so how you open it is ceremony
-- **×10 summons** in Normal mode deal face up in a staggered spread, once a day, and
-  spend no hourly summons
+**Everything else.**
+
+- **Credit value**: a character's worth, from its AniList favourites on a power curve
+  (≈35 for obscure picks, ≈865 for Levi). Rarity frame, sell price and duplicate
+  compensation all descend from it
 - **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer
   on Mythic
+- **Wishes**: pin characters by name and they can barge into any roll
+- **Coins**: Copper up to Solar, weighted by rarity, dropping alongside about one summon
+  in twenty-five. Tap to gather
+- **Selling**: any character, at the credit value it had when you claimed it. **Bulk
+  mode** in the Collection picks many at once — with *select all* honouring whatever the
+  filters are showing — and sells the lot in one go
 - **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time bonuses
-- **Daily streaks**: consecutive offerings grow the payout
+- **Daily offering**: every 20 h, with a streak bonus
 - **Stats page**: animated charts over your collection, rolls and claims
 - **Sandbox**: an admin-granted privilege to switch into a *scratch profile* with its own
-  credits and its own empty collection. Nothing done in it touches the collection you care
-  about, and none of it is kept: leaving deletes it, and so does restarting the instance.
-  It lifts limits and unlocks bulk
-  operations, enforced server side
+  credits and its own empty collection. Nothing done in it touches the collection you
+  care about, and none of it is kept: leaving deletes it, and so does restarting the
+  instance. It summons a hundred at a time and claims them all, enforced server side
 
 *This is an unaffiliated fan project. Character data © their respective owners, served by
 AniList. Sound effects (CC0) by [Kenney](https://kenney.nl/assets).*

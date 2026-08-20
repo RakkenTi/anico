@@ -218,12 +218,10 @@ export function createApp(db: DB, config: Config) {
     return c.json({ state: snapshot, amount, streak })
   })
 
-  api.post('/ritual', (c) => c.json({ state: game.claimRitual(db, c.get('player')) }))
-
   api.post('/sell', async (c) => {
     const b = await body(c)
     const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map(Number).filter(Number.isFinite)
-    const { snapshot, total, sold } = game.sell(db, c.get('player'), ids, !!b.bulk)
+    const { snapshot, total, sold } = game.sell(db, c.get('player'), ids)
     return c.json({ state: snapshot, total, sold })
   })
 
@@ -252,11 +250,6 @@ export function createApp(db: DB, config: Config) {
   api.post('/badge', async (c) => {
     const b = await body(c)
     return c.json({ state: game.buyBadge(db, c.get('player'), b.key) })
-  })
-
-  api.post('/item', async (c) => {
-    const b = await body(c)
-    return c.json({ state: game.buyConsumable(db, c.get('player'), b.key) })
   })
 
   api.patch('/settings', async (c) => {

@@ -124,7 +124,6 @@
 [data-layout='ledger'] .modal,
 [data-layout='ledger'] .toast,
 [data-layout='ledger'] .badge-card,
-[data-layout='ledger'] .item-card,
 [data-layout='ledger'] .theme-swatch,
 [data-layout='ledger'] .coin-drop,
 [data-layout='ledger'] .claim-bar,
@@ -177,8 +176,7 @@
 /* Denser everything: the whole point is rows-per-screen. */
 [data-layout='ledger'] .collection-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 8px; }
 [data-layout='ledger'] .wish-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; }
-[data-layout='ledger'] .badge-grid,
-[data-layout='ledger'] .item-grid { gap: 8px; }
+[data-layout='ledger'] .badge-grid { gap: 8px; }
 [data-layout='ledger'] .roll-spread { gap: 8px; }
 [data-layout='ledger'] .char-name { font-family: var(--sans); font-size: 0.8rem; }
 [data-layout='ledger'] .card-frame { box-shadow: none; }
@@ -260,6 +258,11 @@
 [data-layout='stage'] .toast-stack {
   bottom: calc(max(16px, env(safe-area-inset-bottom)) + 88px);
 }
+/* Same clearance for the bulk-sell bar, which is sticky rather than fixed but
+   would still come to rest underneath the dock. */
+[data-layout='stage'] .bulk-bar {
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 88px);
+}
 
 [data-layout='stage'] .main { margin-top: 18px; }
 
@@ -279,12 +282,14 @@
   }
 }
 [data-layout='stage'] .btn-summon { min-height: 54px; font-size: 1.05rem; }
-[data-layout='stage'] .roll-reveal,
 [data-layout='stage'] .card-back {
   width: min(100%, clamp(190px, calc(64vh - 250px), 330px));
   width: min(100%, clamp(190px, calc(64dvh - 250px), 330px));
 }
-[data-layout='stage'] .roll-spread {
+/* :not(.single) because a lone card sizes itself from the height left over,
+   in index.css, and this rule would otherwise tie with it on specificity and
+   win on order -- which is how one card ended up the width of the screen. */
+[data-layout='stage'] .roll-spread:not(.single) {
   max-width: clamp(320px, calc(166vh - 620px), 820px);
   max-width: clamp(320px, calc(166dvh - 620px), 820px);
 }
@@ -309,9 +314,16 @@
 }
 [data-layout='stage'] .settings-view { margin: 0 auto; }
 
+/* On a phone every pixel the chrome takes comes straight off the card, which
+   is the only thing on the summon screen anyone came to look at. The marquee
+   shrinks to a wordmark and the strip above the stage loses its padding. */
 @media (max-width: 620px) {
   [data-layout='stage'] .tab { padding: 8px 13px 7px; }
-  [data-layout='stage'] .brand-name { font-size: 1.7rem; }
+  [data-layout='stage'] .app { padding-bottom: 120px; }
+  [data-layout='stage'] .header { padding: 10px 2px 2px; gap: 6px; }
+  [data-layout='stage'] .brand-name { font-size: 1.25rem; letter-spacing: 0.2em; }
+  [data-layout='stage'] .header-stats { padding: 5px 6px; }
+  [data-layout='stage'] .main { margin-top: 10px; }
 }
 
 /* ------------------------------------------------------------

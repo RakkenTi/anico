@@ -9,9 +9,8 @@ detail and no specification.
 set of accounts. Players share an instance. Nothing is shared *between* instances, and an
 instance is the unit an owner runs on their own hardware.
 
-Never called a "server" in prose. Mudae uses "server" for the Discord guild that a claim
-is exclusive to, and reusing that word here would make the sentence "your collection is
-per server" mean two incompatible things.
+Never called a "server" in prose: that word means the process, and "your collection is
+per server" would read as being about the deployment rather than the machine.
 
 **Server** — the HTTP process serving the instance. The word means the process and
 nothing else.
@@ -31,8 +30,8 @@ the first account exists, registration is closed except through an invite.
 **Sandbox** — a scratch *profile*, not a state the account is in. The admin grants the
 privilege; the player switches it on, and gets a separate empty collection with its own
 credits. Nothing done there touches their real one, and none of it survives switching
-back or restarting the instance. No roll limits, no cooldowns, and bulk operations (×100
-summons, claim all, sell all). An admin privilege, not a setting a player can grant
+back or restarting the instance. Every badge is already paid for there: ×100 summons and
+claim all, without buying anything. An admin privilege, not a setting a player can grant
 themselves.
 
 ## The catalog
@@ -44,31 +43,38 @@ favourites, series. Characters exist on an instance whether or not anyone owns t
 kept as the source rolls draw from. It is a cache in origin and a database in use: once
 warm, play does not depend on AniList being reachable.
 
+**Segment** — one sweep of the crawl: a media type (anime or manga) and a rank of cast
+(headline or supporting). AniList refuses to paginate past 5000 entries, so no single
+query can reach the whole catalog; the segments are how it is reached anyway, and they
+run one after another into the same table.
+
 **Series** — the show or work a character appears in. Owning several characters from one
 series is a **series set**, which pays a one-time bonus at 3, 5 and 10.
 
 ## Playing
 
-**Roll** — one draw from the catalog, presented as a card. Two budgets, deliberately
-unconnected: single summons are an hourly allowance the shop can grow, and the **×10
-summon** is its own once-a-day event that spends no hourly summons.
+**Roll** — one draw from the catalog, presented as a card. Free and unlimited: a summon
+costs nothing and waits for nothing (see ADR 0004). The only question a summon asks is
+how many cards it deals, which is what the shop sells.
 
-**Claim** — a player taking ownership of a rolled character. Claims are gated by their
-own cooldown, one an hour, separate from both roll budgets.
+**Claim** — a player taking ownership of a rolled character. Also free and unlimited; a
+single summon is the only place it is asked, because a pack grants its own contents.
 
-**Mode** — how strictly time is kept, chosen per player. **Fun** is the default and has
-no cooldowns at all; its ×10 arrives as a **pack**. **Normal** is the paced game.
-Switching is not a cheat vector because the permissive mode is the default: the only
-thing a switch can do is add limits.
+**Pack** — a sealed multi-card summon, unlocked and sized by the **Sapphire** badge.
+Every card in it is granted the moment it is rolled, so opening it decides nothing and
+cannot be lost to a closed tab: tearing it with space and throwing the cards off one by
+one reach the same place. Presentation, deliberately. The cards are face up throughout —
+a pack is a thing you unwrap, not a guess.
 
-**Pack** — a Fun-mode ×10, sealed. Every card in it is granted the moment it is rolled,
-so opening it decides nothing and cannot be lost to a closed tab: tearing it with space
-and throwing the cards off one by one reach the same place. Presentation, deliberately.
-The cards are face up throughout — a pack is a thing you unwrap, not a guess.
+**Guarantee** — the rarity floor **Emerald** promises every pack: a Rare or better at I,
+rising to Mythic at IV. Honoured by swapping the weakest card of a draw for one good
+enough, so a guarantee never makes a pack bigger, and skipped outright when the catalog
+holds nobody that good yet.
 
-**Pacing** — the roll and claim rates that Normal mode keeps. Fixed by the instance and
-identical for everyone on it. They were once per-player sliders, which on a shared
-instance only meant each player set their own difficulty.
+**Bulk mode** — the Collection's selection state. Cards are picked rather than opened,
+"select all" takes everything the filters are showing, and the lot is sold in one go.
+Available to every player, because the screen where a collection actually gets pruned is
+a phone.
 
 **Coin** — a minted drop that sometimes accompanies a summon, worth a band of credits
 when gathered. Roughly one summon in twenty-five. Called a gem until it was rethemed.
@@ -94,8 +100,13 @@ presentation of credit value, not a separate fact about a character.
 **Gem** — what a **Coin** was called before it was rethemed. Kept here only so the
 term is recognisable in older commits and comments.
 
+**Pacing** — *retired.* The hourly summon budget, the daily ×10 and the hourly claim,
+which Normal mode kept and Fun mode ignored. Both modes are gone (ADR 0004); the word
+survives only in older commits.
+
 **Wish** — a character a player has pinned. Wishes can barge into any roll.
 
 **Badge** — a permanent upgrade bought with credits, in the Bronze through Emerald tree.
-Badges change the rules of the loop (roll budget, cooldowns, drop rates) rather than
-paying out once.
+Badges change the rules of the loop (pack size, guarantees, wish slots, drop rates)
+rather than paying out once. The tree is the entire progression: nothing else in the game
+is earned rather than given.

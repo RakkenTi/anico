@@ -23,14 +23,23 @@ export default function CollectionView() {
   const wishes = useGame((s) => s.wishes)
   const sell = useGame((s) => s.sell)
   const sellMany = useGame((s) => s.sellMany)
-  const testing = useGame((s) => s.sandbox)
-  const [confirmBulk, setConfirmBulk] = useState(false)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('value')
   const [gender, setGender] = useState<GenderFilter>('all')
   const [rarity, setRarity] = useState<RarityFilter>('all')
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null)
   const [selected, setSelected] = useState<OwnedCharacter | null>(null)
+  /**
+   * Bulk mode: tapping a card picks it instead of opening it.
+   *
+   * Selling one card at a time meant a modal and two taps each, which is fine
+   * for a mistake and unusable for a cull. The mode is explicit rather than a
+   * long-press, because on a phone a long-press is also how you scroll by
+   * accident.
+   */
+  const [bulk, setBulk] = useState(false)
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [confirming, setConfirming] = useState(false)
 
   const seriesCounts = useMemo(() => {
     const m = new Map<string, number>()
@@ -58,14 +67,29 @@ export default function CollectionView() {
   }, [collection, search, sort, gender, rarity, seriesFilter])
 
   const totalWorth = collection.reduce((s, c) => s + c.creditValue, 0)
-  // Bulk sell acts on exactly what the filters are showing, so "sell every
-  // common" is a filter away; with no filters on, it empties the collection.
-  const narrowed =
-    search.trim() !== '' || gender !== 'all' || rarity !== 'all' || seriesFilter !== null
-  const shownWorth = filtered.reduce((s, c) => s + c.creditValue, 0)
+  const pickedWorth = collection.reduce((s, c) => (picked.has(c.id) ? s + c.creditValue : s), 0)
+  // "Select all" means all of what is on screen, so a filter is how you say
+  // "every common" or "everything from this series" without tapping each one.
+  const allShownPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id))
+
+  const leaveBulk = () => {
+    setBulk(false)
+    setPicked(new Set())
+    setConfirming(false)
+  }
+
+  const toggle = (id: number) => {
+    setConfirming(false)
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   return (
-    <div className="collection-view">
+    <div className={`collection-view ${bulk ? 'is-bulk' : ''}`}>
       {/* Hierarchy: title + key numbers first, controls second, filters
           third (quiet until active), then the grid itself. */}
       <header className="col-head">
@@ -73,12 +97,12 @@ export default function CollectionView() {
           <h2>Collection</h2>
           <p className="col-meta">
             <b>{collection.length}</b> characters · worth{' '}
-            <b className="credits-text">{totalWorth.toLocaleString()} credits</b>
+            <b className="credits-text">{totalWorth.toLocaleString()}</b> credits
           </p>
         </div>
         <div className="col-controls">
           <input
-            className="input"
+            className="input col-search"
             type="search"
             placeholder="Search name or series…"
             value={search}
@@ -95,36 +119,13 @@ export default function CollectionView() {
             <option value="newest">Newest first</option>
             <option value="name">Name A–Z</option>
           </select>
-          {testing && collection.length > 0 && (
-            confirmBulk ? (
-              <span className="confirm-row">
-                <button
-                  className="btn btn-danger"
-                  onClick={() => {
-                    sellMany(filtered.map((c) => c.id))
-                    setConfirmBulk(false)
-                  }}
-                >
-                  Sell {filtered.length} for {shownWorth.toLocaleString()} credits
-                </button>
-                <button className="btn btn-ghost" onClick={() => setConfirmBulk(false)}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                className="btn btn-ghost"
-                disabled={filtered.length === 0}
-                onClick={() => setConfirmBulk(true)}
-                title={
-                  narrowed
-                    ? 'Sandbox: sell every character matching the current filters'
-                    : 'Sandbox: sell your entire collection'
-                }
-              >
-                Sell all{narrowed ? ' shown' : ''} ({filtered.length})
-              </button>
-            )
+          {collection.length > 0 && (
+            <button
+              className={`btn ${bulk ? 'btn-quiet' : 'btn-ghost'} col-bulk-toggle`}
+              onClick={() => (bulk ? leaveBulk() : setBulk(true))}
+            >
+              {bulk ? 'Done' : 'Select'}
+            </button>
           )}
         </div>
       </header>
@@ -179,9 +180,60 @@ export default function CollectionView() {
               character={c}
               compact
               wished={wishes.some((w) => w.id === c.id)}
-              onClick={() => setSelected(c)}
+              selectable={bulk}
+              selected={picked.has(c.id)}
+              onClick={() => (bulk ? toggle(c.id) : setSelected(c))}
             />
           ))}
+        </div>
+      )}
+
+      {/* The bar rides the bottom of the screen while bulk mode is on, because
+          the selection happens at the top of a long scroll and the decision
+          about it happens wherever you finish. */}
+      {bulk && (
+        <div className="bulk-bar" role="region" aria-label="Bulk selection">
+          <div className="bulk-count">
+            <b>{picked.size}</b> selected
+            {picked.size > 0 && (
+              <span className="credits-text"> · +{pickedWorth.toLocaleString()} credits</span>
+            )}
+          </div>
+          <div className="bulk-actions">
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setConfirming(false)
+                setPicked((prev) => {
+                  const next = new Set(prev)
+                  if (allShownPicked) filtered.forEach((c) => next.delete(c.id))
+                  else filtered.forEach((c) => next.add(c.id))
+                  return next
+                })
+              }}
+            >
+              {allShownPicked ? 'Clear shown' : `Select all (${filtered.length})`}
+            </button>
+            <button
+              className="btn btn-danger"
+              disabled={picked.size === 0}
+              onClick={() => {
+                if (!confirming) {
+                  setConfirming(true)
+                  return
+                }
+                sellMany([...picked])
+                leaveBulk()
+              }}
+            >
+              {confirming
+                ? `Confirm: sell ${picked.size}`
+                : `Sell ${picked.size} · +${pickedWorth.toLocaleString()}`}
+            </button>
+            <button className="btn btn-quiet" onClick={leaveBulk}>
+              Done
+            </button>
+          </div>
         </div>
       )}
 

@@ -12,17 +12,29 @@ interface Props {
   footer?: React.ReactNode
   compact?: boolean
   wished?: boolean
+  /** Bulk mode: the card carries a checkbox instead of opening a detail view. */
+  selectable?: boolean
+  selected?: boolean
   onClick?: () => void
 }
 
-export default function CharacterCard({ character, footer, compact, wished, onClick }: Props) {
+export default function CharacterCard({
+  character,
+  footer,
+  compact,
+  wished,
+  selectable,
+  selected,
+  onClick,
+}: Props) {
   const gender = GENDER_META[character.gender] ?? GENDER_META.Other
   const rarity = rarityOf(character.creditValue)
   return (
     <div
-      className={`char-card rarity-${rarity.key} ${compact ? 'compact' : ''} ${wished ? 'wished' : ''} ${onClick ? 'clickable' : ''}`}
+      className={`char-card rarity-${rarity.key} ${compact ? 'compact' : ''} ${wished ? 'wished' : ''} ${onClick ? 'clickable' : ''} ${selectable ? 'selectable' : ''} ${selected ? 'picked' : ''}`}
       onClick={onClick}
-      role={onClick ? 'button' : undefined}
+      role={selectable ? 'checkbox' : onClick ? 'button' : undefined}
+      aria-checked={selectable ? !!selected : undefined}
     >
       <div className="card-frame">
         <div className="char-image-wrap">
@@ -34,9 +46,14 @@ export default function CharacterCard({ character, footer, compact, wished, onCl
             <b>{rarity.kanji}</b> {rarity.name}
           </span>
           {wished && <span className="wish-mark" title="On your wishlist">★</span>}
+          {selectable && (
+            <span className={`pick-mark ${selected ? 'on' : ''}`} aria-hidden="true">
+              {selected ? '✓' : ''}
+            </span>
+          )}
         </div>
         <div className="char-info">
-          {/* Hovering the name reveals native spelling + known aliases (Mudae-style) */}
+          {/* Hovering the name reveals native spelling and known aliases. */}
           <div
             className="char-name"
             title={

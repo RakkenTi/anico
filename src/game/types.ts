@@ -34,24 +34,6 @@ export interface RollResult {
   compensation: number
 }
 
-export interface Settings {
-  rollGender: RollGender
-  /** Approximate roll pool size; maps to the top N/250 pages of series by popularity */
-  poolSize: number
-  rollsPerReset: number
-  rollResetMinutes: number
-  claimIntervalMinutes: number
-  /** When true, characters you already own are skipped while rolling */
-  skipOwned: boolean
-  /** Sandbox: no roll limits, no cooldowns, for testing the loop */
-  testingMode: boolean
-  theme: ThemeKey
-  layout: LayoutKey
-  soundEnabled: boolean
-  /** 0–1 master volume for the synthesized sound kit */
-  soundVolume: number
-}
-
 export interface PendingCoins {
   tier: string
   amount: number

@@ -1,19 +1,52 @@
-import { CONSUMABLES, useGame, type ConsumableKey } from '../game/store'
+import { useGame } from '../game/store'
 import { BADGE_DEFS, ROMAN, badgeCost, badgeUnlocked } from '../game/badges'
+import { RARITY_NAMES } from '../game/economy'
 
 export default function ShopView() {
   const s = useGame()
   const discounted = s.badges.ruby >= 4
+  const fx = s.effects()
 
   return (
     <div className="shop-view">
       <div className="panel">
         <h2 className="section-title">Credit Badges</h2>
         <p className="section-sub">
-          Mudae's badge tree, reforged. Bronze, Silver and Gold are open to all;
-          Sapphire, Ruby and Emerald demand progress, or any two badges raised to IV.
+          Everything credits are for. Bronze, Silver and Gold are open to all; Sapphire,
+          Ruby and Emerald demand progress in the first three, or any two badges raised
+          to IV.
           {discounted && <b className="credits-text"> Ruby IV discount active: −25% on all badges.</b>}
         </p>
+        {/* The two things a badge can buy that the game does not simply give
+            away, said plainly before the tree: how many cards a pull is worth,
+            and how good one of them is promised to be. */}
+        <dl className="shop-status">
+          <div>
+            <dt>Pack size</dt>
+            <dd>
+              {fx.packSize > 0 ? (
+                <>
+                  <b>×{fx.packSize}</b> cards a pack, every one of them yours
+                </>
+              ) : (
+                <>Locked — <b>Sapphire I</b> opens packs</>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Pack guarantee</dt>
+            <dd>
+              {fx.guaranteeRarity ? (
+                <>
+                  every pack holds a{' '}
+                  <b className="credits-text">{RARITY_NAMES[fx.guaranteeRarity]}</b> or better
+                </>
+              ) : (
+                <>None — <b>Emerald</b> promises a rarity floor</>
+              )}
+            </dd>
+          </div>
+        </dl>
         <div className="badge-grid">
           {BADGE_DEFS.map((def) => {
             const level = s.badges[def.key]
@@ -54,36 +87,6 @@ export default function ShopView() {
                   onClick={() => s.buyBadge(def.key)}
                 >
                   {maxed ? 'Complete' : !unlocked ? 'Locked' : `Forge ${def.name} ${ROMAN[level + 1]} for ${cost.toLocaleString()} credits`}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="panel">
-        <h2 className="section-title">Offerings</h2>
-        <p className="section-sub">One-shot items for the impatient.</p>
-        <div className="item-grid">
-          {(Object.keys(CONSUMABLES) as ConsumableKey[]).map((key) => {
-            const item = CONSUMABLES[key]
-            const unusable =
-              key === 'rollRefill'
-                ? s.rollsLeft >= s.maxRolls() || s.sandbox
-                : s.claimReady()
-            return (
-              <div className="item-card" key={key}>
-                <span className="item-icon">{item.icon}</span>
-                <div className="item-body">
-                  <div className="item-name">{item.name}</div>
-                  <p className="item-desc">{item.description}</p>
-                </div>
-                <button
-                  className="btn btn-buy"
-                  disabled={s.credits < item.cost || unusable}
-                  onClick={() => s.buyConsumable(key)}
-                >
-                  {unusable ? 'n/a' : `${item.cost.toLocaleString()} credits`}
                 </button>
               </div>
             )

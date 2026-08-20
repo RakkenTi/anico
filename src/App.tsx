@@ -27,14 +27,12 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('roll')
   const credits = useGame((s) => s.credits)
-  const rollsLeft = useGame((s) => s.rollsLeft)
+  const packSize = useGame((s) => s.packSize)
   const collectionSize = useGame((s) => s.collection.length)
   const now = useGame((s) => s.now)
-  const nextClaimAt = useGame((s) => s.nextClaimAt)
   const lastDailyAt = useGame((s) => s.lastDailyAt)
   const dailyStreak = useGame((s) => s.dailyStreak)
   const testing = useGame((s) => s.sandbox)
-  const settings = useGame((s) => s.settings)
   const username = useGame((s) => s.username)
   const claimDaily = useGame((s) => s.claimDaily)
   const booting = useGame((s) => s.booting)
@@ -60,9 +58,6 @@ export default function App() {
     return () => clearInterval(id)
   }, [tick])
 
-  const fun = settings.mode === 'fun'
-  const free = testing || fun
-  const claimReady = free || now >= nextClaimAt
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt
 
@@ -86,9 +81,10 @@ export default function App() {
           <span className="stat stat-credits" title="Credit balance">
             {credits.toLocaleString()} <em>credits</em>
           </span>
-          <span className="stat" title="Summons remaining">{free ? '∞' : rollsLeft} summons</span>
-          <span className={`stat ${claimReady ? 'stat-ready' : ''}`} title="Claim status">
-            {free ? 'claim any time' : claimReady ? 'claim ready' : `claim ${formatDuration(nextClaimAt - now)}`}
+          {/* What the shop has bought so far, which is the only number here
+              that can go up by playing well rather than by playing more. */}
+          <span className="stat" title={packSize > 0 ? 'Cards a pack holds' : 'Packs unlock with the Sapphire badge'}>
+            {packSize > 0 ? `×${packSize} packs` : 'packs locked'}
           </span>
           <span className="stat" title="Collection size">{collectionSize} owned</span>
           {/* Reads as a button rather than another read-out: the old version sat

@@ -153,6 +153,33 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     UPDATE player_state SET pending_coins_json = NULL;
     `,
   },
+  {
+    name: '006_no_pacing',
+    sql: `
+    -- Fun is the only mode there is now, so the key that chose between them is
+    -- gone, and with it every timer the other mode existed to keep.
+    UPDATE player_state SET settings_json = json_remove(settings_json, '$.mode');
+
+    -- The default pool became the whole catalog. Anyone still sitting on the
+    -- old default was never asked, so they move with it; a pool somebody
+    -- deliberately narrowed is left exactly where they put it.
+    UPDATE player_state SET settings_json = json_set(settings_json, '$.poolSize', 1000000)
+     WHERE json_extract(settings_json, '$.poolSize') = 10000;
+
+    -- Five columns that only ever held a cooldown. Nothing reads them any more.
+    ALTER TABLE player_state DROP COLUMN rolls_left;
+    ALTER TABLE player_state DROP COLUMN rolls_reset_at;
+    ALTER TABLE player_state DROP COLUMN next_claim_at;
+    ALTER TABLE player_state DROP COLUMN last_multi_at;
+    ALTER TABLE player_state DROP COLUMN last_ritual_at;
+
+    -- The crawl is a different walk now: several segments instead of one, and
+    -- a step counter that no longer means what the old page number meant.
+    -- Clearing progress restarts it from the top, which costs one crawl and
+    -- nothing else, because every row it writes is an upsert.
+    DELETE FROM meta WHERE key IN ('crawl_page', 'crawl_done');
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {
