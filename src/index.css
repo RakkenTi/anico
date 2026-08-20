@@ -1383,10 +1383,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 /* ------------------------------------------------ pack opening */
-/* A fun-mode x10 arrives wrapped. The lid tears under the cursor rather than
-   on a click, and the cards beneath are face up from the start: opening one is
-   a matter of throwing the top card aside to get at the next, not of guessing.
-   Sized to match a single summon, because that is the card you are looking at. */
+/* A fun-mode x10 arrives wrapped. The lid tears under the cursor rather than on
+   a click, and until it does the wrapper is genuinely opaque: the server
+   settled the contents long ago, but that is no reason to spoil them. Sized to
+   match a single summon, because what is inside is a card. */
 .pack-opener {
   display: flex;
   flex-direction: column;
@@ -1396,9 +1396,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .pack-area {
   position: relative;
-  /* Same measure as .roll-reveal: a pack card is a card, at card size. No
-     forced aspect ratio here. The top card is in normal flow and gives the
-     stack its exact height, so nothing is letterboxed or clipped. */
+  /* Same measure as .roll-reveal. No forced aspect ratio: the top card is in
+     normal flow and gives the stack its exact height. */
   width: min(100%, clamp(210px, calc(64vh - 160px), 330px));
   width: min(100%, clamp(210px, calc(64dvh - 160px), 330px));
   touch-action: none;
@@ -1406,100 +1405,131 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   cursor: grab;
 }
 .pack-area:active { cursor: grabbing; }
-.pack-area.sealed { cursor: grab; }
+.pack-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 8px; }
 
 .pack-stack { position: relative; }
 .pack-card.behind {
   position: absolute;
   inset: 0;
-  /* Each card behind sits a little lower and a little narrower, so the pile
-     shows its depth instead of looking like a single card. */
-  transform: translateY(calc(var(--depth) * 7px)) scale(calc(1 - var(--depth) * 0.018));
-  transform-origin: 50% 100%;
-  filter: brightness(calc(1 - var(--depth) * 0.055));
+  /* A few pixels to the right each, so the pile shows a sliver of every card
+     under the top one without any of them being readable. */
+  transform: translateX(calc(var(--depth) * 4px)) translateY(calc(var(--depth) * 1px));
+  filter: brightness(calc(1 - var(--depth) * 0.045));
   pointer-events: none;
 }
 .pack-card.top {
   position: relative;
-  filter: none;
   border-radius: 4px;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+  /* Springs back when a drag is abandoned. Suppressed inline while a pointer
+     is down, so the card tracks the cursor exactly instead of lagging it. */
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
-/* No transition while a finger is on it: the card has to track the cursor
-   exactly, or the drag feels like it is being negotiated rather than obeyed. */
-.pack-card.top.flying { transition: transform 0.3s cubic-bezier(0.3, 0, 0.7, 1), opacity 0.3s ease-in; }
-.pack-empty {
+/* Already off the stack and only finishing: each one leaves on its own, so a
+   fast hand can send several away before the first has landed. */
+.pack-card.departing {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  border: 1px dashed var(--line);
-  border-radius: 5px;
-  font-family: var(--sans);
-  font-size: 0.7rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  pointer-events: none;
+  animation: throwOut 0.32s cubic-bezier(0.32, 0, 0.68, 1) forwards;
+}
+@keyframes throwOut {
+  from {
+    transform: translate3d(var(--from-x, 0), var(--from-y, 0), 0) rotate(var(--from-rot, 0deg));
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(calc(var(--dir) * 760px), -46px, 0) rotate(calc(var(--dir) * 26deg));
+    opacity: 0;
+  }
 }
 
 /* --- the wrapper ------------------------------------------------------- */
-.pack-wrap { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+/* Two pieces that overlap generously, so no jagged edge can ever leave a gap
+   for the card underneath to show through. */
+.pack-wrap { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
 .pack-body,
 .pack-lid {
   position: absolute;
   left: 0;
   right: 0;
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.14) 0%, transparent 44%),
-    linear-gradient(200deg, var(--accent-soft) 0%, var(--well) 58%);
+    linear-gradient(148deg, rgba(255, 255, 255, 0.16) 0%, transparent 46%),
+    linear-gradient(202deg, var(--accent-soft) 0%, var(--well) 62%);
   border: 1px solid var(--line-strong);
 }
-/* The lid is the strip you pull off; the body is what stays behind, and both
-   carry the same zigzag so the parting edge looks torn rather than cut. */
+.pack-body {
+  top: 20%;
+  bottom: 0;
+  border-radius: 0 0 6px 6px;
+  /* Torn top edge, never rising above 26% of the pack. */
+  clip-path: polygon(
+    0 5%, 8% 1%, 16% 6%, 24% 2%, 32% 7%, 40% 1%, 48% 6%,
+    56% 2%, 64% 7%, 72% 1%, 80% 6%, 88% 2%, 96% 6%, 100% 3%,
+    100% 100%, 0 100%
+  );
+  z-index: 1;
+}
 .pack-lid {
   top: 0;
-  height: 27%;
+  /* Tall enough that its shallowest tooth still sits below the body's highest
+     one: 34% * 0.82 = 27.9%, against the body's 26% worst case. */
+  height: 34%;
   border-radius: 6px 6px 0 0;
   display: grid;
   place-items: center;
   clip-path: polygon(
-    0 0, 100% 0, 100% 78%,
-    92% 92%, 84% 80%, 76% 94%, 68% 82%, 60% 95%, 52% 81%,
-    44% 93%, 36% 80%, 28% 94%, 20% 82%, 12% 93%, 4% 81%, 0 90%
+    0 96%, 8% 84%, 16% 98%, 24% 86%, 32% 100%, 40% 85%, 48% 97%,
+    56% 82%, 64% 96%, 72% 84%, 80% 99%, 88% 86%, 96% 97%, 100% 88%,
+    100% 0, 0 0
   );
   z-index: 2;
 }
-.pack-body {
-  top: 24%;
-  bottom: 0;
-  border-radius: 0 0 6px 6px;
-  clip-path: polygon(
-    0 6%, 4% 2%, 12% 8%, 20% 1%, 28% 7%, 36% 0, 44% 8%,
-    52% 1%, 60% 9%, 68% 2%, 76% 8%, 84% 0, 92% 7%, 100% 3%,
-    100% 100%, 0 100%
-  );
-  /* Recedes as the tear runs, so the cards climb out of the wrapper. */
-  opacity: calc(1 - var(--tear) * 0.9);
-  z-index: 1;
+/* The perforation you are meant to pull from. */
+.pack-strip {
+  position: absolute;
+  top: 15%;
+  left: 6%;
+  right: 6%;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--line-strong) 0 4px, transparent 4px 9px);
+}
+.pack-mark {
+  position: absolute;
+  inset: 40% 0 auto 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  opacity: calc(1 - var(--tear) * 1.4);
 }
 .pack-brand {
   font-family: var(--display, var(--sans));
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 800;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
   color: var(--text);
 }
-/* The seam glows as the pull gets close to committing. */
+.pack-sub {
+  font-family: var(--sans);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+/* The seam brightens as the pull nears the point of no return. */
 .pack-rip {
   position: absolute;
-  top: 25%;
+  top: 23%;
   left: 0;
   right: 0;
   height: 2px;
-  z-index: 3;
+  z-index: 4;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: calc(var(--tear) * 1.1);
+  opacity: calc(var(--tear) * 1.2);
   filter: blur(1px);
 }
 
@@ -1525,7 +1555,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pack-card.top.flying { transition-duration: 0.12s; }
+  .pack-card.departing { animation-duration: 0.14s; }
+  .pack-card.top { transition-duration: 0.1s; }
 }
 
 /* ------------------------------------------------ mode picker */

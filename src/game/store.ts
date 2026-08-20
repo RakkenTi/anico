@@ -374,19 +374,26 @@ export const useGame = create<GameState>()((set, get) => {
       set({ pack: { ...s.pack, state: 'open', revealed: s.rolled.length } })
     },
 
-    /** Throw the top card aside, uncovering the one under it. */
+    /**
+     * Throw the top card aside, uncovering the one under it.
+     *
+     * Deliberately does not end the pack when the last card goes: the card is
+     * still in the air at that point, and the view calls tearPack once it has
+     * actually landed. Throws can therefore overlap without one cutting the
+     * previous one's animation short.
+     */
     revealNext: () => {
       const s = get()
       if (!s.pack || s.pack.state !== 'sliced') return
       const next = s.pack.revealed + 1
-      const done = next >= s.rolled.length
+      if (next > s.rolled.length) return
       // Follow whatever is now on top, so the bar under the stack describes
       // the card being looked at rather than the one just discarded.
-      const entry = s.rolled[done ? s.rolled.length - 1 : next]
-      if (entry && !done) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
+      const entry = s.rolled[Math.min(next, s.rolled.length - 1)]
+      if (entry) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
       set({
-        selected: done ? s.rolled.length - 1 : next,
-        pack: { ...s.pack, revealed: next, state: done ? 'open' : 'sliced' },
+        selected: Math.min(next, s.rolled.length - 1),
+        pack: { ...s.pack, revealed: next },
       })
     },
 

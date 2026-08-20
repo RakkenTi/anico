@@ -3,11 +3,12 @@ import { useGame } from '../game/store'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
 
-/** Drag distance that counts as a finished tear, and as a thrown card. */
+/** Drag distance that finishes a tear, and that counts as a thrown card. */
 const TEAR_PX = 150
-const THROW_PX = 90
-/** How long a thrown card takes to leave, and an auto-tear to finish. */
-const THROW_MS = 300
+const THROW_PX = 80
+/** How long a card takes to leave, and the gap between auto-thrown ones. */
+const THROW_MS = 320
+const AUTO_STEP_MS = 110
 const AUTOTEAR_MS = 420
 
 interface Props {
@@ -20,20 +21,19 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /**
  * A ten-card pack, opened by hand.
  *
- * The wrapper tears under the cursor rather than on a click: the lid follows
- * the drag and only comes away once it has travelled far enough, so a hesitant
- * pull springs back. Underneath, the cards are face up from the start and
- * stacked with each one peeking past the last; you throw the top card aside to
- * get at the next.
+ * The wrapper is opaque until it is torn: what is inside is a surprise even
+ * though the server settled it long ago, and the lid comes away under the
+ * pointer rather than on a click. Underneath, the cards are face up in a stack
+ * offset by a few pixels each, and the top one is thrown aside to reach the
+ * next.
  *
- * None of it decides anything. The whole pack was granted server-side the
- * moment it was rolled, so this is the ceremony of opening one and quitting
- * halfway costs nothing.
+ * Throws do not queue behind each other. Each departing card animates on its
+ * own while the stack has already moved on, so a fast hand can send five cards
+ * away before the first has landed.
  */
 export default function PackOpener({ pack, cards }: Props) {
-  const tearPack = useGame((s) => s.tearPack)
   const slicePack = useGame((s) => s.slicePack)
-  const revealNext = useGame((s) => s.revealNext)
+  const tearPack = useGame((s) => s.tearPack)
 
   const sealed = pack.state === 'sealed'
   const thrown = pack.revealed
@@ -41,29 +41,62 @@ export default function PackOpener({ pack, cards }: Props) {
 
   /* ------------------------------------------------------------- tearing */
 
-  // 0 is sealed, 1 is off. Driven straight from the pointer while dragging.
   const [tear, setTear] = useState(0)
   const [tearOff, setTearOff] = useState({ x: 0, y: 0 })
   const raf = useRef(0)
 
-  const animateTear = useCallback(
-    (from: number, to: number, ms: number, done?: () => void) => {
-      cancelAnimationFrame(raf.current)
-      const start = performance.now()
-      const step = (now: number) => {
-        const t = clamp((now - start) / ms, 0, 1)
-        const eased = 1 - Math.pow(1 - t, 3)
-        setTear(from + (to - from) * eased)
-        if (t < 1) raf.current = requestAnimationFrame(step)
-        else done?.()
-      }
-      raf.current = requestAnimationFrame(step)
+  const animateTear = useCallback((from: number, to: number, ms: number, done?: () => void) => {
+    cancelAnimationFrame(raf.current)
+    const start = performance.now()
+    const step = (now: number) => {
+      const t = clamp((now - start) / ms, 0, 1)
+      setTear(from + (to - from) * (1 - Math.pow(1 - t, 3)))
+      if (t < 1) raf.current = requestAnimationFrame(step)
+      else done?.()
+    }
+    raf.current = requestAnimationFrame(step)
+  }, [])
+  useEffect(() => () => cancelAnimationFrame(raf.current), [])
+
+  /* ------------------------------------------------- throwing cards away */
+
+  // Cards mid-flight, keyed by their index in the spread. The stack has
+  // already moved past them; these are only here to finish leaving.
+  const [departing, setDeparting] = useState<
+    { key: number; dir: number; fromX: number; fromY: number; fromRot: number }[]
+  >([])
+
+  const throwTop = useCallback(
+    (dir: number, from = { x: 0, y: 0, rot: 0 }) => {
+      const st = useGame.getState()
+      if (!st.pack || st.pack.state !== 'sliced') return
+      const idx = st.pack.revealed
+      if (idx >= st.rolled.length) return
+      setDeparting((d) => [
+        ...d,
+        { key: idx, dir, fromX: from.x, fromY: from.y, fromRot: from.rot },
+      ])
+      st.revealNext()
+      window.setTimeout(() => setDeparting((d) => d.filter((x) => x.key !== idx)), THROW_MS)
     },
     [],
   )
-  useEffect(() => () => cancelAnimationFrame(raf.current), [])
 
-  // Space is the shortcut for people who would rather not drag anything.
+  // Space: tear it, then flick the whole stack away in a quick alternating fan.
+  const autoTimer = useRef(0)
+  const autoOpen = useCallback(() => {
+    let i = 0
+    const step = () => {
+      const st = useGame.getState()
+      if (!st.pack || st.pack.state !== 'sliced' || st.pack.revealed >= st.rolled.length) return
+      throwTop(i % 2 === 0 ? 1 : -1)
+      i++
+      autoTimer.current = window.setTimeout(step, AUTO_STEP_MS)
+    }
+    step()
+  }, [throwTop])
+  useEffect(() => () => clearTimeout(autoTimer.current), [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' && e.key !== ' ') return
@@ -71,38 +104,31 @@ export default function PackOpener({ pack, cards }: Props) {
       if (el instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
       e.preventDefault()
       if (sealed) {
-        setTearOff({ x: 40, y: -30 })
-        animateTear(tear, 1, AUTOTEAR_MS, slicePack)
+        setTearOff({ x: 46, y: -26 })
+        animateTear(tear, 1, AUTOTEAR_MS, () => {
+          slicePack()
+          autoOpen()
+        })
       } else {
-        tearPack()
+        autoOpen()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sealed, tear, animateTear, slicePack, tearPack])
+  }, [sealed, tear, animateTear, slicePack, autoOpen])
 
-  /* ------------------------------------------------- throwing cards off */
+  // The grid waits for the last card to actually land.
+  useEffect(() => {
+    if (pack.state === 'sliced' && thrown >= cards.length && departing.length === 0) tearPack()
+  }, [pack.state, thrown, cards.length, departing.length, tearPack])
+
+  /* -------------------------------------------------------------- input */
 
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
-  const [flying, setFlying] = useState<{ x: number; rot: number } | null>(null)
   const origin = useRef<{ x: number; y: number } | null>(null)
   const surface = useRef<HTMLDivElement>(null)
 
-  const throwCard = useCallback(
-    (dir: number) => {
-      if (flying) return
-      setFlying({ x: dir * 780, rot: dir * 24 })
-      setDrag(null)
-      window.setTimeout(() => {
-        setFlying(null)
-        revealNext()
-      }, THROW_MS)
-    },
-    [flying, revealNext],
-  )
-
   const onPointerDown = (e: React.PointerEvent) => {
-    if (flying) return
     origin.current = { x: e.clientX, y: e.clientY }
     surface.current?.setPointerCapture(e.pointerId)
   }
@@ -112,7 +138,6 @@ export default function PackOpener({ pack, cards }: Props) {
     const dx = e.clientX - origin.current.x
     const dy = e.clientY - origin.current.y
     if (sealed) {
-      // The lid comes away along whichever direction the pull is going.
       setTearOff({ x: dx, y: dy })
       setTear(clamp(Math.hypot(dx, dy) / TEAR_PX, 0, 1))
     } else {
@@ -121,37 +146,40 @@ export default function PackOpener({ pack, cards }: Props) {
   }
 
   const release = (e: React.PointerEvent) => {
-    if (!origin.current) return
     const start = origin.current
+    if (!start) return
     origin.current = null
     surface.current?.releasePointerCapture(e.pointerId)
     const dx = e.clientX - start.x
     const dy = e.clientY - start.y
-    const moved = Math.hypot(dx, dy)
 
     if (sealed) {
-      if (tear >= 0.6) animateTear(tear, 1, 160, slicePack)
+      if (tear >= 0.6) animateTear(tear, 1, 150, slicePack)
       else animateTear(tear, 0, 220)
       return
     }
-    // A tap counts: swiping is the flourish, not a toll, and it is awkward
-    // with a mouse and impossible from a keyboard.
-    if (Math.abs(dx) > THROW_PX) throwCard(Math.sign(dx))
-    else if (moved < 8) throwCard(1)
-    else setDrag(null)
+    setDrag(null)
+    if (Math.abs(dx) > THROW_PX) {
+      throwTop(Math.sign(dx), { x: dx, y: dy * 0.35, rot: dx * 0.045 })
+    } else if (Math.hypot(dx, dy) < 8) {
+      // A tap counts. Swiping is the flourish, not a toll, and it is awkward
+      // with a mouse and impossible from a keyboard.
+      throwTop(1)
+    }
   }
 
   const top = cards[thrown]
-  const style = flying
-    ? { transform: `translate3d(${flying.x}px, -40px, 0) rotate(${flying.rot}deg)`, opacity: 0 }
-    : drag
-      ? { transform: `translate3d(${drag.x}px, ${drag.y * 0.35}px, 0) rotate(${drag.x * 0.045}deg)` }
-      : undefined
+  const topStyle = drag
+    ? {
+        transform: `translate3d(${drag.x}px, ${drag.y * 0.35}px, 0) rotate(${drag.x * 0.045}deg)`,
+        transition: 'none',
+      }
+    : undefined
 
   return (
     <div className="pack-opener">
       <div
-        className={`pack-area ${sealed ? 'sealed' : ''}`}
+        className={`pack-area ${sealed ? 'is-sealed' : ''}`}
         ref={surface}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -162,11 +190,10 @@ export default function PackOpener({ pack, cards }: Props) {
           else setDrag(null)
         }}
         style={{ ['--tear' as string]: tear }}
+        role="button"
+        tabIndex={0}
+        aria-label={sealed ? 'Sealed pack: drag to tear it open' : `${remaining} cards left`}
       >
-        {/* The stack sits under the wrapper the whole time, so tearing reveals
-            it rather than swapping one thing for another. */}
-        {/* The cards behind sit absolutely, so only the top one carries height
-            and the stack is exactly as tall as a real card. */}
         <div className="pack-stack">
           {cards
             .slice(thrown + 1)
@@ -181,14 +208,33 @@ export default function PackOpener({ pack, cards }: Props) {
               </div>
             ))
             .reverse()}
+
           {top && (
             <div
-              className={`pack-card top ${flying ? 'flying' : ''}`}
-              style={{ ['--depth' as string]: 0, zIndex: cards.length + 1, ...style }}
+              className="pack-card top"
+              style={{ ['--depth' as string]: 0, zIndex: cards.length + 1, ...topStyle }}
             >
               <CharacterCard character={top.char} wished={top.wished} />
             </div>
           )}
+
+          {/* Each of these is already off the stack; it is only finishing. */}
+          {departing.map((d) => (
+            <div
+              key={d.key}
+              className="pack-card departing"
+              style={{
+                ['--dir' as string]: d.dir,
+                ['--from-x' as string]: `${d.fromX}px`,
+                ['--from-y' as string]: `${d.fromY}px`,
+                ['--from-rot' as string]: `${d.fromRot}deg`,
+                zIndex: cards.length + 2 + d.key,
+              }}
+              aria-hidden="true"
+            >
+              <CharacterCard character={cards[d.key].char} wished={cards[d.key].wished} />
+            </div>
+          ))}
         </div>
 
         {sealed && (
@@ -197,11 +243,15 @@ export default function PackOpener({ pack, cards }: Props) {
             <span
               className="pack-lid"
               style={{
-                transform: `translate3d(${tearOff.x * tear}px, ${tearOff.y * tear - tear * 70}px, 0) rotate(${tearOff.x * tear * 0.06}deg)`,
-                opacity: 1 - tear * 0.85,
+                transform: `translate3d(${tearOff.x * tear}px, ${tearOff.y * tear - tear * 90}px, 0) rotate(${tearOff.x * tear * 0.07}deg)`,
+                opacity: 1 - tear * 0.9,
               }}
             >
+              <span className="pack-strip" />
+            </span>
+            <span className="pack-mark">
               <span className="pack-brand">ANICO</span>
+              <span className="pack-sub">{cards.length} cards</span>
             </span>
             <span className="pack-rip" />
           </div>
@@ -215,8 +265,8 @@ export default function PackOpener({ pack, cards }: Props) {
           </>
         ) : (
           <>
-            <b>{remaining}</b> of {cards.length} left — swipe the top card away, or{' '}
-            <kbd>Space</kbd> to lay them all out.
+            <b>{remaining}</b> of {cards.length} left — swipe or tap the top card away, or{' '}
+            <kbd>Space</kbd> to fan the rest out.
           </>
         )}
       </p>
