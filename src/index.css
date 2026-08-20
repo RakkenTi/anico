@@ -25,6 +25,10 @@
   --accent-soft: rgba(224, 74, 53, 0.12);
   --value: #d4af37;
   --value-soft: #e8cf7a;
+  /* Affordable, as opposed to expensive: gold is what things cost, green is
+     what you can pay for. The shop used one colour for both. */
+  --ok: #5fc27e;
+  --line-ok: rgba(95, 194, 126, 0.45);
   --ready: #ffb4a6;
   --pink: #e87a9e;
   --blue: #6fa3e0;
@@ -56,6 +60,8 @@
   --accent-soft: rgba(194, 64, 46, 0.1);
   --value: #8a6d1a;
   --value-soft: #7c621a;
+  --ok: #2f7d4a;
+  --line-ok: rgba(47, 125, 74, 0.5);
   --ready: #c2402e;
   --pink: #c05577;
   --blue: #3d6cae;
@@ -84,6 +90,8 @@
   --accent-soft: rgba(42, 194, 168, 0.1);
   --value: #ffb454;
   --value-soft: #ffc678;
+  --ok: #3ddc97;
+  --line-ok: rgba(61, 220, 151, 0.45);
   --ready: #7fe8d4;
   --pink: #e87a9e;
   --blue: #6fa3e0;
@@ -1129,8 +1137,8 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .shop-switch .seg { display: inline-flex; align-items: center; gap: 7px; }
 .ready-dot {
   width: 7px; height: 7px; border-radius: 50%;
-  background: var(--value);
-  box-shadow: 0 0 6px var(--value);
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
 }
 
 .shelf-head { margin: 0 0 8px; }
@@ -1150,7 +1158,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   background: var(--well);
 }
 .shop-row.is-badge { border-left: 3px solid var(--badge-color); }
-.shop-row.affordable { border-color: var(--line-value); }
+.shop-row.affordable { border-color: var(--line-ok); }
 .shop-row.maxed,
 .shop-row.locked { opacity: 0.6; }
 
@@ -1221,7 +1229,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   color: var(--value-soft);
   white-space: nowrap;
 }
-.shop-row.affordable .row-cost { color: var(--value); }
+.shop-row.affordable .row-cost { color: var(--ok); }
 .row-buy:disabled .row-cost { color: var(--text-dim); }
 
 .row-more {
@@ -1975,9 +1983,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   /* A card's own measure. No forced aspect ratio: the top card is in normal
      flow and gives the stack its exact height. */
   width: var(--pack-w);
-  touch-action: none;
-  user-select: none;
-  cursor: grab;
+  /* The wrapper's own lettering scales with it: five packs across a phone are
+     a third the width of one, and a fixed 1.35rem ANICO ran off both edges
+     into its neighbours. */
+  container-type: inline-size;
 }
 /* How many cards are still under the one on top. The stack itself only ever
    mounts the top two dozen, so this is the part of it that is a number. */
@@ -1997,7 +2006,15 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   text-align: center;
   pointer-events: none;
 }
-.pack-area:active { cursor: grabbing; }
+/* One gesture for the whole pull: the grid is the surface, not each pack.
+   Five stacks on a phone are five thumb-widths to aim at, and the more packs
+   you buy the worse that gets. */
+.pack-grid {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.pack-grid:active { cursor: grabbing; }
 /* A pack has to fit between the header and the floating tab dock without
    scrolling, and the stack fans past its right edge, so leave room for that
    too. The width is derived from what is actually left over rather than from a
@@ -2028,21 +2045,28 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
       clamp(96px, calc((100dvh - 460px - env(safe-area-inset-bottom, 0px)) / 1.5), 190px)
     );
   }
-  /* Three or more wrap onto a second row, so each one gets half the height. */
+  /* Three or four fit two across; five or six go three across, so the pull is
+     never more than two rows tall and the hint and the button stay on screen. */
   .pack-grid.packs-3,
-  .pack-grid.packs-4,
-  .pack-grid.packs-5,
-  .pack-grid.packs-6 {
+  .pack-grid.packs-4 {
     --pack-w: min(
       calc(50% - 36px),
       clamp(84px, calc((100dvh - 470px - env(safe-area-inset-bottom, 0px)) / 3), 128px)
     );
     gap: 16px 10px;
   }
+  .pack-grid.packs-5,
+  .pack-grid.packs-6 {
+    --pack-w: min(
+      calc(33% - 26px),
+      clamp(66px, calc((100dvh - 460px - env(safe-area-inset-bottom, 0px)) / 3.4), 104px)
+    );
+    gap: 14px 10px;
+  }
   .pack-hint { font-size: 0.78rem; max-width: 30ch; }
   .pack-opener { gap: 12px; }
 }
-.pack-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 8px; }
+.pack-grid:focus-visible { outline: 2px solid var(--accent); outline-offset: 8px; border-radius: 6px; }
 
 .pack-stack { position: relative; }
 .pack-card.behind {
@@ -2054,6 +2078,14 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
      past its own edge and lie across the pack beside it. */
   --fan: min(var(--depth), 8);
   transform: translate(calc(var(--fan) * 4px), calc(var(--fan) * -3px));
+}
+/* A crowded grid leans less: the pile is decoration once the gesture belongs
+   to the whole screen, and at five across it was resting on its neighbour. */
+.pack-grid.packs-4 .pack-card.behind,
+.pack-grid.packs-5 .pack-card.behind,
+.pack-grid.packs-6 .pack-card.behind {
+  --fan: min(var(--depth), 5);
+  transform: translate(calc(var(--fan) * 3px), calc(var(--fan) * -2px));
   filter: brightness(calc(1 - min(var(--depth), 10) * 0.045));
   pointer-events: none;
 }
@@ -2144,7 +2176,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .pack-brand {
   font-family: var(--display, var(--sans));
-  font-size: 1.35rem;
+  font-size: clamp(0.5rem, 13cqw, 1.35rem);
   font-weight: 800;
   letter-spacing: 0.32em;
   text-indent: 0.32em;
@@ -2153,7 +2185,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .pack-sub {
   font-family: var(--sans);
-  font-size: 0.64rem;
+  font-size: clamp(0.42rem, 6cqw, 0.64rem);
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;

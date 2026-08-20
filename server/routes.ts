@@ -23,7 +23,7 @@ import {
 import * as game from './game.js'
 import { GameError } from './game.js'
 import { UpstreamError, crawlStatus, searchCharacters, startCrawl } from './catalog.js'
-import { publish, subscribe } from './bus.js'
+import { publish, streamsFor, subscribe } from './bus.js'
 import { streamSSE } from 'hono/streaming'
 
 const COOKIE = 'anico_session'
@@ -200,15 +200,23 @@ export function createApp(db: DB, config: Config) {
    * could not ask for with GET /state.
    */
   api.get('/events', (c) => {
-    const playerId = c.get('player').id
+    const player = c.get('player')
+    const playerId = player.id
     return streamSSE(c, async (stream) => {
       let alive = true
+      // The first stream is the account coming back: settle whatever the
+      // machine earned while nothing at all was connected, and push the
+      // receipt to this device.
+      const arriving = streamsFor(playerId) === 0 ? game.markOnline(db, player) : null
       const off = subscribe(playerId, (payload) => {
         void stream.writeSSE({ data: payload, event: 'state' })
       })
+      if (arriving) await stream.writeSSE({ data: JSON.stringify(arriving), event: 'state' })
       stream.onAbort(() => {
         alive = false
         off()
+        // The last one out starts the offline clock.
+        if (streamsFor(playerId) === 0) game.markOffline(db, player)
       })
       // A comment every half minute, so an idle connection is not tidied away
       // by whatever proxy the instance is sitting behind.

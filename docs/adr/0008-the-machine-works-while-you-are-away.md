@@ -33,6 +33,15 @@ right direction to be wrong in. The average is also *net* — the pack price is
 already subtracted — so the machine finances itself out there and never has to
 be checked against a balance it would have spent hours ago anyway.
 
+## Away means the account, not the tab
+
+One account can be signed in on several devices, so "the tab was closed" is not a fact
+about a player. The clock runs from the moment the *last* device disconnects and stops the
+moment the first one arrives: an idle phone still holding a stream is being played, and
+paying the machine for those hours would be paying twice for the same time. The server
+counts live streams to decide (see ADR 0009), so no client has to be trusted to say
+whether anybody is home.
+
 ## What this forces elsewhere
 
 - **The switch survives a refresh**, because the server holds it. Turning the

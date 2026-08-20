@@ -276,7 +276,12 @@ export const useGame = create<GameState>()((set, get) => {
    */
   const connectLive = () => {
     if (liveOff) return
-    liveOff = listenForState((live) => apply(live))
+    liveOff = listenForState((live) => {
+      apply(live)
+      // The stream is also where an offline settlement arrives, when this
+      // device is the one that brought the account back.
+      reportOffline(live)
+    })
   }
 
   /** Run a call, surfacing the server's own message and never wedging the UI. */

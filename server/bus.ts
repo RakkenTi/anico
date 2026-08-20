@@ -61,6 +61,18 @@ export function publish(playerId: number, snapshot: unknown): void {
   }
 }
 
+/**
+ * Streams this player has open, across every device.
+ *
+ * Zero means nobody is watching, which is what "offline" has to mean when an
+ * account can be signed in on a phone and a desktop at once: Offline Earnings
+ * pays for the hours *nothing* was connected, not for the hours one particular
+ * tab happened to be closed.
+ */
+export function streamsFor(playerId: number): number {
+  return rooms.get(playerId)?.size ?? 0
+}
+
 /** Streams currently open, for the admin panel and for tests. */
 export function streamCount(): number {
   let n = 0

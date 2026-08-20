@@ -19,10 +19,10 @@ A summon is free and unlimited. Packs cost credits and hold more cards: 10 at th
 Sapphire badge, 60 by the last, and thousands once Pack Size has a few levels on it. Buy
 Extra Packs and you open several at once, side by side.
 
-Packs are sealed. Drag across the foil to tear it, then swipe the cards off the stack one
-at a time, or hit <kbd>Space</kbd> to empty everything at your current open speed. It is
-only ceremony: every card is yours the moment the pack is bought, so closing the tab
-mid-tear costs you nothing.
+Packs are sealed. One drag tears every wrapper in the pull at once, and each swipe after
+that takes the top card off every stack, so five packs are the same gesture as one.
+<kbd>Space</kbd> empties the lot at your current open speed. It is only ceremony: every
+card is yours the moment the pack is bought, so closing the tab mid-tear costs nothing.
 
 ![Three sealed packs](./docs/img/packs.jpg)
 
@@ -55,9 +55,10 @@ to need names: past ten thousand everything is quoted as 4.18B or 12.4Qa.
 ### Let it run
 
 **Auto Summon** presses the button for you: it tears the wrappers, swipes the cards away
-and presses again, faster with every level. It works on any screen, so you can browse
-your collection while it grinds. Add **Offline Earnings** and it keeps paying while the
-tab is closed, at a fraction of its speed, for as many hours as you have bought.
+and presses again, faster with every level. It works on any screen, so you can browse your
+collection while it grinds. Add **Offline Earnings** and it keeps paying while the game is
+closed, at a fraction of its speed, for as many hours as you have bought. Closed means the
+whole account: an idle tab on another device still counts as playing.
 
 ### Play on two devices
 

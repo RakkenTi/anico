@@ -48,6 +48,7 @@ import {
 } from '../src/game/upgrades.js'
 import { drawAboveValue, drawFromPool, getCharacter, type PoolPick } from './catalog.js'
 import { autoSellFloor, sanitizeSettings, type ServerSettings } from './rules.js'
+import { streamsFor } from './bus.js'
 import type { Player } from './auth.js'
 
 const HOUR = 3_600_000
@@ -334,15 +335,19 @@ export function fullState(db: DB, player: Player): Snapshot {
 }
 
 /**
- * Pay the Automaton for the time the tab was closed.
+ * Pay the Automaton for the time nobody was connected.
  *
  * It cannot deal cards to an empty room, so what it does out there is open
  * packs and sell them: `auto_yield` is a smoothed average of what a pull has
  * recently been worth to this player, and the machine is paid that per pull at
- * a fraction of its normal rate, for as many hours as Night Shift bought. No
- * cards are granted, nothing is drawn, and the whole settlement is three
+ * a fraction of its normal rate, for as many hours as Offline Earnings bought.
+ * No cards are granted, nothing is drawn, and the whole settlement is three
  * multiplications -- a player who leaves for a week does not cost the instance
  * a week of rolls when they come back.
+ *
+ * "Away" means the whole account, not one tab. An account with a phone still
+ * streaming is being played, however idle that phone is, so the clock only
+ * runs from the moment the last device disconnects.
  */
 export function settleOffline(
   db: DB,
@@ -355,6 +360,12 @@ export function settleOffline(
   const stamp = () =>
     db.prepare('UPDATE player_state SET auto_at = ? WHERE player_id = ?').run(now, player.id)
   if (!row.auto_spin || fx.autoSpinMs <= 0 || fx.offlineRate <= 0 || row.auto_yield <= 0) {
+    stamp()
+    return null
+  }
+  // Somebody is connected right now, so the account is not away. Move the
+  // clock up rather than paying for time another device spent playing.
+  if (streamsFor(player.id) > 0) {
     stamp()
     return null
   }
@@ -377,6 +388,25 @@ export function settleOffline(
       WHERE player_id = ?`,
   ).run(credits, pulls, now, player.id)
   return { pulls, credits, minutes: Math.round(elapsed / 60_000) }
+}
+
+/**
+ * A device arrived, and it is the only one.
+ *
+ * Settles whatever the machine earned while the account had nobody connected,
+ * then starts the clock again. Returns the payout so it can be pushed to the
+ * device that just turned up rather than appearing silently in the balance.
+ */
+export function markOnline(db: DB, player: Player): Snapshot | null {
+  const away = settleOffline(db, player)
+  db.prepare('UPDATE player_state SET auto_at = ? WHERE player_id = ?').run(Date.now(), player.id)
+  if (!away) return null
+  return { ...snapshot(db, player), offline: away }
+}
+
+/** The last device left. Offline time runs from here. */
+export function markOffline(db: DB, player: Player): void {
+  db.prepare('UPDATE player_state SET auto_at = ? WHERE player_id = ?').run(Date.now(), player.id)
 }
 
 /** Switch the machine on or off. Stored server-side so a closed tab keeps it. */

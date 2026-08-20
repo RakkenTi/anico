@@ -78,7 +78,11 @@ opening it decides nothing and cannot be lost to a closed tab: tearing it with s
 throwing the cards off one by one reach the same place. Presentation, deliberately. The
 cards are face up throughout — a pack is a thing you unwrap, not a guess.
 
-**Pull** — one press of a pack button, and everything it produces. There are two presses
+**Pull** — one press of a pack button, and everything it produces. Opened by hand, a pull
+takes *one* gesture however many packs it holds: a single drag tears every wrapper, and
+each swipe afterwards takes the top card off every stack. Aiming at one of five stacks on
+a phone, and then at each in turn, got worse the more packs you bought, which is backwards
+for an upgrade. There are two presses
 once **Both Hands** is bought: one pack, or all of them, torn side by side with their own
 wrappers and their own piles. The word exists because "pack" stopped being the unit of a
 press. The free single card is neither: it costs nothing and is always there.
@@ -124,16 +128,18 @@ exclusive: by the time you saw a card it was already money (ADR 0006).
 sweep, skipped by a bulk sale and refused by the sell endpoint, so the word means the same
 thing everywhere. Checked when the sweep runs, not when the card landed.
 
-**Automaton** — the shop's machine for pressing the summon button. An autoclicker rather
+**Auto Summon** (the *Automaton* in older commits) — the shop's machine for pressing the
+summon button. An autoclicker rather
 than a shortcut: it tears the wrappers, swipes the cards away and presses again. Runs in
 the player's own browser, on whatever screen the player is looking at, and is charged and
 refused by the server exactly as a player would be. Away from the summon view there is
 nobody to tear a wrapper, so it settles them itself and carries on.
 
-**Night shift** — the upgrade that keeps the Automaton working with the tab closed, at a
-fraction of its speed and for a bounded number of hours. Paid from a smoothed average of
-what a pull has recently been worth to that player rather than by replaying the loop
-(ADR 0008). Whether the machine is switched on is a column, not a flag in a page.
+**Offline earnings** — the upgrade that keeps Auto Summon working while the game is
+closed, at a fraction of its speed and for a bounded number of hours. Paid from a smoothed
+average of what a pull has recently been worth to that player rather than by replaying the
+loop (ADR 0008). *Away* means the whole account: the clock runs from the moment the last
+device disconnects, so an idle phone still holding a stream is being played, not left.
 
 **Collection** — the characters one player has claimed. Collections are **per player and
 isolated**: two players on the same instance can each own the same character, and no
