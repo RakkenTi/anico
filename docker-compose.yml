@@ -1,27 +1,85 @@
-# Project name, so the volume and network are not named after the folder.
+# Project name, so the containers and network are not named after the folder.
 name: anico
 
-# Runs a published image: this file is all a server needs. Set ANICO_IMAGE in
-# a .env file beside it (see .env.example). To build from source instead:
+# Runs a published image: this file plus .env is all a server needs. To build
+# from source instead:
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Run ./setup.sh once before the first `up`: the data directory is a bind mount,
+# and the container runs as uid 1000, so the host directory has to be owned by
+# that uid or the server cannot write its database.
 services:
   anico:
     image: ${ANICO_IMAGE:?Set ANICO_IMAGE in .env, e.g. ghcr.io/yourname/anico:latest}
     container_name: anico
     restart: unless-stopped
     ports:
-      # Caddy talks to this. Bound to localhost so nothing else can.
+      # Caddy talks to this. Bound to localhost so nothing else on the box can.
+      # Running Caddy in Docker instead? Drop this block, add your proxy's
+      # network under `networks:` below, and point it at `anico:8080`.
       - "127.0.0.1:8080:8080"
     volumes:
-      - anico-data:/data
+      # A directory you can see and back up, rather than a named volume buried
+      # under /var/lib/docker. setup.sh creates it with the right owner.
+      - ./anico-data:/data
     environment:
       # The database and everything else lives here.
       DATA_DIR: /data
       # Cookies are Secure by default because Caddy terminates TLS in front.
       # Set to "false" only for a plain-HTTP LAN instance.
       COOKIE_SECURE: "${COOKIE_SECURE:-true}"
-      # Fill the character catalog on first boot (about six minutes, once).
+      # Fill the character catalog on first boot. Deliberately slow: about 85
+      # minutes at the default pace, resuming across restarts.
       CRAWL_ON_BOOT: "true"
+      CRAWL_DELAY_MS: "${CRAWL_DELAY_MS:-15000}"
+      MAX_DB_BYTES: "${MAX_DB_BYTES:-1073741824}"
+    labels:
+      # Restart me if my healthcheck starts failing (see autoheal below).
+      autoheal: "true"
+      # Keep my image current (see watchtower below).
+      com.centurylinklabs.watchtower.enable: "true"
 
-volumes:
-  anico-data:
+  # Restarts any container whose healthcheck has gone unhealthy. The image ships
+  # a healthcheck already; this is what acts on it. Without this, a wedged
+  # process that still holds the port stays up forever, because Docker's own
+  # restart policy only reacts to a container that has actually exited.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: anico-autoheal
+    restart: unless-stopped
+    environment:
+      # Only touch containers labelled autoheal=true, never the whole host.
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: "15"
+      AUTOHEAL_START_PERIOD: "60"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # Pulls newer images and recreates the containers that use them.
+  #
+  # WATCHTOWER_LABEL_ENABLE keeps it to the three containers above: on a box
+  # running other self-hosted apps, an unscoped watchtower would update all of
+  # them.
+  #
+  # Polling every 60s is tuned for pushing often and wanting the instance to
+  # follow along: a push to master is live a minute or two after the image
+  # publishes. The cost is that an update can land mid-session, and that the
+  # database migrations in a new image apply the moment it arrives.
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: anico-watchtower
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_TIMEOUT: "60s"
+      # Seconds between checks. Mutually exclusive with WATCHTOWER_SCHEDULE:
+      # setting both makes watchtower refuse to start.
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL:-60}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"

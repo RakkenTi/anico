@@ -14,17 +14,20 @@ fetched by the server and cached in the instance's own database.
 ## Running an instance
 
 Every push to `master` publishes a multi-arch image to GHCR, so a server needs
-**two files**: `docker-compose.yml` and a `.env` next to it.
+**three files**: `docker-compose.yml`, `setup.sh`, and a `.env` next to them.
 
-The repo is private, so copy the two files from your checkout rather than fetching
-them over HTTP:
+The repo is private, so copy them from your checkout rather than fetching them over HTTP:
 
 ```sh
 ssh server 'mkdir -p /srv/anico'
-scp docker-compose.yml server:/srv/anico/
-scp .env.example server:/srv/anico/.env      # already points at ghcr.io/rakkenti/anico:latest
-ssh server 'cd /srv/anico && docker compose up -d'
+scp docker-compose.yml setup.sh .env.example server:/srv/anico/
+ssh server 'cd /srv/anico && ./setup.sh && docker compose up -d'
 ```
+
+[`setup.sh`](./setup.sh) is the part worth not skipping. It checks Docker is reachable,
+writes a `.env` from the example, and — the reason it exists — creates `./anico-data`
+owned by the uid the container actually runs as. It asks the image rather than assuming,
+and it is safe to re-run.
 
 The image itself is a public package, so the server pulls it anonymously and needs no
 `docker login`. Package visibility is set separately from the repo's, which is why this
@@ -37,8 +40,9 @@ personal access token carrying the `read:packages` scope:
 echo $GHCR_TOKEN | docker login ghcr.io -u RakkenTi --password-stdin
 ```
 
-Upgrading is `docker compose pull && docker compose up -d`. The database lives in a
-named volume and is untouched by an image change.
+Upgrading is `docker compose pull && docker compose up -d`, or nothing at all if you
+leave watchtower running (see below). The database lives in `./anico-data` and is
+untouched by an image change.
 
 **Building from source instead** (no GHCR needed): clone the repo and overlay the
 build file:
@@ -92,45 +96,99 @@ container environment variables.
 
 ### Where the data lives
 
-The compose file mounts a **named volume**, not a host directory:
+The compose file bind-mounts a directory beside itself, so the database is somewhere you
+can see, back up and rsync without going through Docker:
 
 | | |
 | --- | --- |
-| Volume | `anico_anico-data` |
-| On the host | `/var/lib/docker/volumes/anico_anico-data/_data` |
+| On the host | `./anico-data` |
 | In the container | `/data`, holding `anico.db` and its `-wal` / `-shm` sidecars |
 
-It survives `docker compose down`, image upgrades and container recreation. It is deleted
-by `docker compose down -v`, which is the one command worth being careful with.
+It survives `docker compose down`, image upgrades and container recreation, and unlike a
+named volume it is not removed by `docker compose down -v`.
 
-Prefer the database in a directory you can see? Swap the mount in `docker-compose.yml`:
-
-```yaml
-    volumes:
-      - ./data:/data
-```
-
-The container runs as uid 1000, and a bind mount keeps the host directory's ownership
-rather than the image's, so create it first or the server cannot write:
+The container runs as **uid 1000**, and a bind mount keeps the host directory's ownership
+rather than the image's. A directory created by root leaves the server unable to write its
+own database, which is what `setup.sh` exists to prevent. By hand it is:
 
 ```sh
-mkdir -p data && sudo chown 1000:1000 data
+mkdir -p anico-data && sudo chown -R 1000:1000 anico-data
+```
+
+Coming from an older instance that used the `anico_anico-data` named volume? Copy it
+across once before switching:
+
+```sh
+docker compose down
+docker run --rm -v anico_anico-data:/from -v "$PWD/anico-data":/to \
+  alpine sh -c 'cp -a /from/. /to/'
+sudo chown -R 1000:1000 anico-data
+docker compose up -d
 ```
 
 ### Backups
 
-The entire instance is one SQLite file: accounts, collections, catalog. Stop the
-container so the write-ahead log is folded in, then archive the volume:
+The entire instance is one SQLite file, so **stop the container and copy `./anico-data`**.
+Nothing more elaborate is needed, and a host-level backup that shuts containers down one
+at a time and archives their directories covers this instance correctly as-is.
+
+Stopping first is what makes it safe rather than merely convenient. The server closes the
+database on `SIGTERM`, which folds the write-ahead log into `anico.db` and removes the
+`-wal` / `-shm` sidecars, leaving one self-contained file:
+
+```console
+$ ls anico-data          # running
+anico.db  anico.db-shm  anico.db-wal
+$ docker compose stop && ls anico-data
+anico.db
+```
+
+The close takes about 10 ms, so it lands well inside the 10 s Docker allows before it
+resorts to `SIGKILL`. Copying `anico.db` from a **running** instance is the case to
+avoid: in WAL mode recent writes may still be in `anico.db-wal`, so the copy can silently
+miss everything since the last checkpoint.
+
+Restoring is the reverse — drop the file back with the container stopped:
 
 ```sh
 docker compose stop
-docker run --rm -v anico_anico-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/anico-$(date +%F).tar.gz -C /data .
+cp /path/to/backup/anico.db anico-data/anico.db
+rm -f anico-data/anico.db-wal anico-data/anico.db-shm
+sudo chown 1000:1000 anico-data/anico.db
 docker compose start
 ```
 
-Restoring is the same command with `tar xzf`. Copying `anico.db` while the instance is
-running works only if you take the `-wal` and `-shm` files with it.
+### Staying up to date, and staying up
+
+The compose file ships two small helpers beside the instance:
+
+| | |
+| --- | --- |
+| **watchtower** | Checks for a newer image every 60 s and recreates the containers using it |
+| **autoheal** | Restarts any container whose healthcheck has gone unhealthy |
+
+Autoheal earns its place because Docker's own `restart: unless-stopped` only reacts to a
+container that has *exited*. A process that has wedged while still holding its port stays
+"up" forever. The image ships a healthcheck; autoheal is what acts on it.
+
+Watchtower polls every minute, which suits pushing to `master` often and wanting the
+instance to follow: a push is live a minute or two after the image publishes. Raise
+`WATCHTOWER_POLL_INTERVAL` in `.env` to slow it down. Note that
+`WATCHTOWER_POLL_INTERVAL` and `WATCHTOWER_SCHEDULE` are mutually exclusive — set both
+and watchtower refuses to start.
+
+Both are scoped by label, so neither touches anything else on the box — watchtower runs
+with `WATCHTOWER_LABEL_ENABLE`, and only the three containers in this file carry the
+label. Two things to know before leaving them on:
+
+- Both need `/var/run/docker.sock`, which is **equivalent to root on the host**. They are
+  not reachable from the network, but that is the trade being made.
+- Watchtower updating `:latest` means **database migrations run unattended**, and at a
+  60 s poll they land within a minute or two of a push. Migrations are forward-only with
+  no automatic rollback, so a bad one reaches the instance before you do. Pin a version
+  tag in `.env` if you would rather approve each upgrade.
+
+Drop either service from `docker-compose.yml` if you would rather not run it.
 
 ## Development
 
