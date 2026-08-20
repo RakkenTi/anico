@@ -36,7 +36,7 @@ export interface Snapshot {
   totalClaims: number
   badges: Badges
   settings: ServerSettings
-  pendingGem: { tier: string; amount: number } | null
+  pendingCoins: { tier: string; amount: number } | null
   /** A face-down spread waiting on a pick: shape only, never its contents. */
   covered: { count: number; revealed: number | null } | null
   wishes: RolledCharacter[]
@@ -106,7 +106,7 @@ export const api = {
   roll: (count: number) => post<{ results: RollResult[]; state: Snapshot }>('/roll', { count }),
   claim: (characterId: number) => post<{ state: Snapshot; notes: string[] }>('/claim', { characterId }),
   claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
-  gem: () => post<{ state: Snapshot }>('/gem'),
+  coins: () => post<{ state: Snapshot }>('/coins'),
   flip: (index: number) => post<{ result: RollResult; state: Snapshot }>('/flip', { index }),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),

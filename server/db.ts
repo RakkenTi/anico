@@ -143,6 +143,16 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     CREATE INDEX idx_players_sandbox_of ON players(sandbox_of);
     `,
   },
+  {
+    name: '005_coins',
+    sql: `
+    -- Gems became coins. The column only ever holds an undelivered drop, so
+    -- clearing it costs a player at most one pending pickup and saves carrying
+    -- tier keys that no longer exist.
+    ALTER TABLE player_state RENAME COLUMN pending_gem_json TO pending_coins_json;
+    UPDATE player_state SET pending_coins_json = NULL;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

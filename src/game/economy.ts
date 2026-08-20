@@ -32,9 +32,9 @@ export function rarityOf(value: number): Rarity {
   return RARITIES.find((r) => value >= r.min) ?? RARITIES[RARITIES.length - 1]
 }
 
-/* ------------------------------------------------------------------ gems */
+/* ----------------------------------------------------------------- coins */
 
-export interface GemTier {
+export interface CoinTier {
   key: string
   label: string
   color: string
@@ -43,44 +43,54 @@ export interface GemTier {
   weight: number
 }
 
-/** Gem tiers modeled on Mudae's kakera reaction colors. Each drops a
-    band of credits when gathered. */
-export const GEM_TIERS: GemTier[] = [
-  { key: 'P', label: 'Purple Gem', color: '#b07cf7', min: 1, max: 5, weight: 35 },
-  { key: 'B', label: 'Blue Gem', color: '#5aa2ff', min: 8, max: 25, weight: 25 },
-  { key: 'T', label: 'Teal Gem', color: '#43d9c6', min: 25, max: 50, weight: 14 },
-  { key: 'G', label: 'Green Gem', color: '#6fdd6b', min: 50, max: 90, weight: 10 },
-  { key: 'Y', label: 'Yellow Gem', color: '#f5d647', min: 90, max: 140, weight: 7 },
-  { key: 'O', label: 'Orange Gem', color: '#ff9d3c', min: 140, max: 220, weight: 4.5 },
-  { key: 'R', label: 'Red Gem', color: '#ff5d5d', min: 220, max: 350, weight: 2.8 },
-  { key: 'W', label: 'Rainbow Gem', color: '#e88bff', min: 350, max: 500, weight: 1.4 },
-  { key: 'L', label: 'Light Gem', color: '#fff3b0', min: 500, max: 800, weight: 0.3 },
+/**
+ * Coin drops, a ladder of minted metals. Each drops a band of credits when
+ * gathered. The ladder keeps a spread of hues rather than nine shades of
+ * brown, so a drop still reads at a glance which tier it was.
+ */
+export const COIN_TIERS: CoinTier[] = [
+  { key: 'copper', label: 'Copper Coin', color: '#b87333', min: 1, max: 5, weight: 35 },
+  { key: 'bronze', label: 'Bronze Coin', color: '#cd7f32', min: 8, max: 25, weight: 25 },
+  { key: 'silver', label: 'Silver Coin', color: '#c3ccd9', min: 25, max: 50, weight: 14 },
+  { key: 'electrum', label: 'Electrum Coin', color: '#dcc98a', min: 50, max: 90, weight: 10 },
+  { key: 'gold', label: 'Gold Coin', color: '#f2b632', min: 90, max: 140, weight: 7 },
+  { key: 'rose', label: 'Rose Gold Coin', color: '#e9a6a0', min: 140, max: 220, weight: 4.5 },
+  { key: 'platinum', label: 'Platinum Coin', color: '#dfe9f5', min: 220, max: 350, weight: 2.8 },
+  { key: 'mythril', label: 'Mythril Coin', color: '#9fe8ff', min: 350, max: 500, weight: 1.4 },
+  { key: 'solar', label: 'Solar Coin', color: '#fff3b0', min: 500, max: 800, weight: 0.3 },
 ]
 
-export function gemTier(key: string): GemTier {
-  return GEM_TIERS.find((t) => t.key === key) ?? GEM_TIERS[0]
+export function coinTier(key: string): CoinTier {
+  return COIN_TIERS.find((t) => t.key === key) ?? COIN_TIERS[0]
 }
 
-/** Base chance for a gem to drop alongside a roll. */
-export const BASE_GEM_CHANCE = 0.22
+/**
+ * Base chance for a coin to drop alongside a roll.
+ *
+ * Roughly one summon in twenty-five. Coins used to land on nearly a quarter of
+ * all rolls, which made them background noise rather than an event; the badge
+ * bonuses are scaled to match, so a maxed loadout still roughly triples the
+ * rate instead of drowning the base.
+ */
+export const BASE_COIN_CHANCE = 0.04
 
 /**
- * Roll for a gem drop. `chance` is the final drop probability;
- * `upgradeLow` (Sapphire IV) bumps Purple/Blue drops one tier up.
+ * Roll for a coin drop. `chance` is the final drop probability;
+ * `upgradeLow` (Sapphire IV) bumps Copper/Bronze drops one tier up.
  */
-export function rollGemDrop(
+export function rollCoinDrop(
   chance: number,
   upgradeLow: boolean,
 ): { tier: string; amount: number } | null {
   if (Math.random() >= chance) return null
-  const total = GEM_TIERS.reduce((s, t) => s + t.weight, 0)
+  const total = COIN_TIERS.reduce((s, t) => s + t.weight, 0)
   let pick = Math.random() * total
-  for (const t of GEM_TIERS) {
+  for (const t of COIN_TIERS) {
     pick -= t.weight
     if (pick <= 0) {
       let tier = t
-      if (upgradeLow && (t.key === 'P' || t.key === 'B')) {
-        tier = gemTier(t.key === 'P' ? 'B' : 'T')
+      if (upgradeLow && (t.key === 'copper' || t.key === 'bronze')) {
+        tier = coinTier(t.key === 'copper' ? 'bronze' : 'silver')
       }
       const amount = Math.round(tier.min + Math.random() * (tier.max - tier.min))
       return { tier: tier.key, amount }

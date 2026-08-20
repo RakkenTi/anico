@@ -196,7 +196,7 @@ export function createApp(db: DB, config: Config) {
     return c.json({ state: snapshot, claimed, bonus })
   })
 
-  api.post('/gem', (c) => c.json({ state: game.collectGem(db, c.get('player')) }))
+  api.post('/coins', (c) => c.json({ state: game.collectCoins(db, c.get('player')) }))
 
   api.post('/flip', async (c) => {
     const b = await body(c)

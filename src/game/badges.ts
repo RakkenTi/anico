@@ -66,10 +66,10 @@ export const BADGE_DEFS: BadgeDef[] = [
     color: '#d4af37',
     baseCost: 250,
     levels: [
-      '+5% gem drop chance',
-      '+5% gem drop chance',
-      '+5% gem drop chance',
-      '+5% gem drop chance · daily offering doubled',
+      '+1.5% coin drop chance',
+      '+1.5% coin drop chance',
+      '+1.5% coin drop chance',
+      '+1.5% coin drop chance · daily offering doubled',
     ],
     prereq: null,
   },
@@ -80,10 +80,10 @@ export const BADGE_DEFS: BadgeDef[] = [
     color: '#5a8cff',
     baseCost: 400,
     levels: [
-      '+1 roll per reset',
-      '+1 roll per reset',
-      '+1 roll per reset',
-      '+1 roll per reset · Purple/Blue gems upgrade one tier',
+      '+1 summon per hour',
+      '+1 summon per hour',
+      '+1 summon per hour',
+      '+1 summon per hour · Copper/Bronze coins upgrade one tier',
     ],
     prereq: 'Bronze I + Silver I + Gold I, or any two badges at IV',
   },
@@ -96,8 +96,8 @@ export const BADGE_DEFS: BadgeDef[] = [
     levels: [
       '+2 wish slots',
       '+50% chance for your wishes to appear in rolls',
-      '+10% gem drop chance',
-      '+2 rolls per reset · all badge prices −25%',
+      '+3% coin drop chance',
+      '+2 summons per hour · all badge prices −25%',
     ],
     prereq: 'Bronze II + Silver II + Gold II, or any two badges at IV',
   },
@@ -144,9 +144,9 @@ export function badgeCost(def: BadgeDef, nextLevel: number, discounted: boolean)
 export interface BadgeEffects {
   wishSlots: number
   wishChanceMult: number
-  gemChanceBonus: number
+  coinChanceBonus: number
   extraRolls: number
-  gemUpgrade: boolean
+  coinUpgrade: boolean
   dailyMult: number
   wishClaimBonus: number
   dupCompMult: number
@@ -161,9 +161,9 @@ export function computeEffects(b: Badges): BadgeEffects {
   return {
     wishSlots: BASE_WISH_SLOTS + b.bronze + (b.ruby >= 1 ? 2 : 0),
     wishChanceMult: 1 + 0.25 * b.silver + (b.ruby >= 2 ? 0.5 : 0),
-    gemChanceBonus: 0.05 * b.gold + (b.ruby >= 3 ? 0.1 : 0),
+    coinChanceBonus: 0.015 * b.gold + (b.ruby >= 3 ? 0.03 : 0),
     extraRolls: b.sapphire + (b.ruby >= 4 ? 2 : 0),
-    gemUpgrade: b.sapphire >= 4,
+    coinUpgrade: b.sapphire >= 4,
     dailyMult: b.gold >= 4 ? 2 : 1,
     wishClaimBonus: b.bronze >= 4 ? 100 : 0,
     dupCompMult: b.silver >= 4 ? 2 : 1,

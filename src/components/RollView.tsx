@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGame, formatDuration } from '../game/store'
-import { gemTier } from '../game/economy'
+import { coinTier } from '../game/economy'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import CharacterCard from './CharacterCard'
 
@@ -276,14 +276,14 @@ export default function RollView() {
           </button>
         )}
 
-        {s.pendingGem && (
+        {s.pendingCoins && (
           <button
-            className="gem-drop"
-            onClick={s.collectGem}
-            style={{ ['--gem-color' as string]: gemTier(s.pendingGem.tier).color }}
+            className="coin-drop"
+            onClick={s.collectCoins}
+            style={{ ['--coin-color' as string]: coinTier(s.pendingCoins.tier).color }}
           >
-            <span className="gem-mark" aria-hidden="true" />
-            {gemTier(s.pendingGem.tier).label}: tap to gather <b>+{s.pendingGem.amount}</b>
+            <span className="coin-mark" aria-hidden="true">¢</span>
+            {coinTier(s.pendingCoins.tier).label}: tap to gather <b>+{s.pendingCoins.amount}</b>
           </button>
         )}
 
