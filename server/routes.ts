@@ -17,6 +17,7 @@ import {
   playerForToken,
   register,
   setSandboxActive,
+  verifyPlayerPassword,
   type Player,
 } from './auth.js'
 import * as game from './game.js'
@@ -270,7 +271,13 @@ export function createApp(db: DB, config: Config) {
     return c.json({ state: game.grantCredits(db, c.get('player'), Number(b.amount ?? 1000)) })
   })
 
-  api.post('/reset', (c) => c.json({ state: game.resetPlayer(db, c.get('player')) }))
+  api.post('/reset', async (c) => {
+    const b = await body(c)
+    const owner = c.get('owner')
+    const ok = await verifyPlayerPassword(db, owner, String(b.username ?? ''), String(b.password ?? ''))
+    if (!ok) return c.json({ error: 'That username and password do not match this account.' }, 403)
+    return c.json({ state: game.resetPlayer(db, c.get('player')) })
+  })
 
   /* ----------------------------------------------------------------- admin */
 
@@ -309,6 +316,23 @@ export function createApp(db: DB, config: Config) {
   api.post('/admin/invites', adminOnly, (c) =>
     c.json({ code: createInvite(db, c.get('owner').id) }),
   )
+
+  /**
+   * Withdraw an invite that has not been used. A used one stays: it is the
+   * record of how an account came to exist, and deleting it would orphan that.
+   */
+  api.delete('/admin/invites/:code', adminOnly, (c) => {
+    const code = c.req.param('code')
+    const row = db.prepare('SELECT used_by FROM invites WHERE code = ?').get(code) as
+      | { used_by: number | null }
+      | undefined
+    if (!row) return c.json({ error: 'No such invite.' }, 404)
+    if (row.used_by !== null) {
+      return c.json({ error: 'That invite has already been used, so it is a record now.' }, 400)
+    }
+    db.prepare('DELETE FROM invites WHERE code = ?').run(code)
+    return c.json({ ok: true })
+  })
 
   api.patch('/admin/users/:id', adminOnly, async (c) => {
     const b = await body(c)

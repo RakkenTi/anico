@@ -27,7 +27,17 @@ export default function SettingsView() {
   const sandboxAllowed = useGame((s) => s.sandboxAllowed)
   const setSandbox = useGame((s) => s.setSandbox)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [resetName, setResetName] = useState('')
+  const [resetPass, setResetPass] = useState('')
+  const [resetError, setResetError] = useState<string | null>(null)
+  const [resetting, setResetting] = useState(false)
 
+  const closeReset = () => {
+    setConfirmReset(false)
+    setResetName('')
+    setResetPass('')
+    setResetError(null)
+  }
 
   const fx = effects()
 
@@ -234,24 +244,63 @@ export default function SettingsView() {
         <h2 className="section-title">Danger zone</h2>
         <div className="setting-row">
           {confirmReset ? (
-            <div className="confirm-row">
-              <button
-                className="btn btn-danger"
-                onClick={() => {
-                  resetSave()
-                  setConfirmReset(false)
-                }}
-              >
-                Yes, erase everything
-              </button>
-              <button className="btn btn-ghost" onClick={() => setConfirmReset(false)}>Cancel</button>
-            </div>
+            /* Typing the account's own credentials, rather than clicking twice:
+               this erases a collection built over weeks and cannot be undone. */
+            <form
+              className="reset-confirm"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                if (resetting) return
+                setResetting(true)
+                setResetError(null)
+                const failure = await resetSave(resetName, resetPass)
+                setResetting(false)
+                if (failure) setResetError(failure)
+                else closeReset()
+              }}
+            >
+              <p className="reset-warn">
+                This erases your collection, credits, wishes and badges. There is no undo.
+                Confirm with the username and password for this account.
+              </p>
+              <input
+                type="text"
+                autoComplete="username"
+                placeholder="Username"
+                value={resetName}
+                onChange={(e) => setResetName(e.target.value)}
+              />
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="Password"
+                value={resetPass}
+                onChange={(e) => setResetPass(e.target.value)}
+              />
+              {resetError && <p className="reset-error">{resetError}</p>}
+              <div className="confirm-row">
+                <button
+                  className="btn btn-danger"
+                  disabled={resetting || !resetName.trim() || !resetPass}
+                >
+                  {resetting ? 'Erasing…' : 'Erase everything'}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={closeReset}>
+                  Cancel
+                </button>
+              </div>
+            </form>
           ) : (
-            <button className="btn btn-danger" onClick={() => setConfirmReset(true)}>
-              Reset save data
-            </button>
+            <>
+              <button className="btn btn-danger" onClick={() => setConfirmReset(true)}>
+                Reset save data
+              </button>
+              <p className="setting-hint">
+                Erases your collection, credits, wishes and badges. There is no undo, so it asks
+                for your password.
+              </p>
+            </>
           )}
-          <p className="setting-hint">Erases your collection, credits, wishes and badges. There is no undo.</p>
         </div>
       </div>
 

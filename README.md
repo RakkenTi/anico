@@ -239,10 +239,10 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 | Mudae | Anico |
 | --- | --- |
 | `$w` / `$h` / `$m` roll commands | **Roll** button + a *Roll for* setting (Waifus / Husbandos / Everyone) |
-| Claiming with a reaction, ~3 h claim interval | **Claim** button, once an hour |
-| 10 rolls per hour | 10 single summons an hour, refilling on the hour. Sapphire and Ruby badges raise the count; nothing in settings does |
+| Claiming with a reaction, ~3 h claim interval | **Claim** button. Unlimited in Fun mode, once an hour in Normal |
+| 10 rolls per hour | Unlimited in Fun mode. In Normal, 10 single summons an hour refilling on the hour, raised by Sapphire and Ruby badges and by nothing in settings |
 | Kakera value from character popularity | Credit value derived from AniList favourites on a power curve (≈35 for obscure picks, ≈865 for Levi) |
-| Kakera reactions dropping on rolls | Gems (Purple to Light tiers, weighted rarity) drop alongside rolls; tap to collect |
+| Kakera reactions dropping on rolls | **Coins** (Copper up to Solar, weighted rarity) drop alongside rolls; tap to collect. About one summon in twenty-five |
 | `$divorce` for kakera | **Sell** any character at the credit value it had when you claimed it |
 | One claim per character per server | **Not copied.** Collections are per player ([ADR 0002](./docs/adr/0002-collections-are-per-player.md)) |
 | Silver compensation for duplicates | Rolling a character you own pays 10% of its value (20% with Silver IV) |
@@ -254,14 +254,21 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 
 ## Beyond Mudae
 
-- **×10 summons** with a staggered card spread; pick any card to claim. Once a day, and
-  it spends no hourly summons, so a day's big pull never eats the rolls you were saving
+- **Two modes**, yours alone to pick. **Fun** (the default) has no cooldowns at all:
+  summon and claim as much as you like, and the ×10 deals face down so you turn exactly
+  one card over. **Normal** is the paced game, with an hourly summon budget, one ×10 a
+  day and one claim an hour
+- **×10 summons** with a staggered card spread. Face down in Fun mode, one pick only;
+  face up in Normal, once a day, spending no hourly summons
 - **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer
   on Mythic
 - **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time bonuses
 - **Daily streaks**: consecutive offerings grow the payout
 - **Stats page**: animated charts over your collection, rolls and claims
-- **Sandbox**: an admin-granted per-account privilege that lifts limits and unlocks bulk
+- **Sandbox**: an admin-granted privilege to switch into a *scratch profile* with its own
+  credits and its own empty collection. Nothing done in it touches the collection you care
+  about, and none of it is kept: leaving deletes it, and so does restarting the instance.
+  It lifts limits and unlocks bulk
   operations, enforced server side
 
 *This is an unaffiliated fan project. Character data © their respective owners, served by

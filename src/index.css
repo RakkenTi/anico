@@ -186,7 +186,45 @@ body {
 button.stat { cursor: pointer; }
 button.stat:hover:not(:disabled) { color: var(--accent); }
 button.stat:disabled { cursor: default; color: var(--text-dim); }
-.stat-daily.stat-ready { color: var(--ready); }
+/* The daily collect sat in a row of plain read-outs and read as one. It keeps
+   the row's rhythm but takes a border, a fill and a coin so it is legible as
+   something you press. */
+.stat-daily {
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--well);
+  margin: 2px 0 2px 10px;
+  padding: 4px 12px;
+  gap: 7px;
+}
+.stat-daily:disabled { opacity: 0.75; }
+.stat-daily.daily-ready {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent-down);
+  animation: dailyNudge 2.6s ease-in-out infinite;
+}
+.stat-daily.daily-ready:hover { background: var(--accent-down); color: var(--on-accent); }
+.daily-coin {
+  width: 15px; height: 15px;
+  flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--value);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.stat-daily.daily-ready .daily-coin { background: var(--on-accent); }
+@keyframes dailyNudge {
+  0%, 88%, 100% { transform: translateY(0); }
+  94% { transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat-daily.daily-ready { animation: none; }
+}
 .streak { color: var(--value-soft); }
 
 /* ------------------------------------------------ tabs */
@@ -488,8 +526,11 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
-  max-width: clamp(360px, calc(166vh - 460px), 820px);
-  max-width: clamp(360px, calc(166dvh - 460px), 820px);
+  /* Ten cards in a 5x2 grid used to stop well short of the pane. Both the
+     height-tracking term and the cap grow so the cards fill the space they
+     were given, while the clamp still keeps a spread inside the viewport. */
+  max-width: clamp(360px, calc(190vh - 470px), 1040px);
+  max-width: clamp(360px, calc(190dvh - 470px), 1040px);
 }
 /* Mega spreads (>20 cards, sandbox ×100): dual-pane layout with the page
    locked to the viewport. html.mega-lock removes page scrolling entirely;
@@ -1427,3 +1468,20 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 @media (max-width: 620px) {
   .mode-choice { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------ guarded reset */
+.reset-confirm { display: flex; flex-direction: column; gap: 10px; max-width: 380px; }
+.reset-confirm input {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--well);
+  color: var(--text);
+}
+.reset-confirm input:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+.reset-warn { margin: 0; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
+.reset-error { margin: 0; font-size: 0.82rem; color: var(--red); font-weight: 700; }
+
+.invite-revoke { margin-left: auto; }
