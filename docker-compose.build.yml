@@ -1,0 +1,7 @@
+# Overlay for building from a source checkout instead of pulling a published
+# image. Use with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  anico:
+    build: .
+    image: ${ANICO_IMAGE:-anico:local}

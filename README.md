@@ -13,18 +13,41 @@ fetched by the server and cached in the instance's own database.
 
 ## Running an instance
 
+Every push to `master` publishes a multi-arch image to GHCR, so a server needs
+**two files**: `docker-compose.yml` and a `.env` next to it.
+
 ```sh
+mkdir anico && cd anico
+curl -O https://raw.githubusercontent.com/YOURNAME/anico/master/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/YOURNAME/anico/master/.env.example
+# edit .env: set ANICO_IMAGE to ghcr.io/yourname/anico:latest
 docker compose up -d
 ```
 
-That is the whole setup. It builds the image, creates a named volume for the database, and
-listens on `127.0.0.1:8080`. Then:
+If the GHCR package is private (the default for a new one), either make it public
+in the repo's package settings, or log the server in first:
 
-1. Open the instance and **create the first account**. It becomes the **admin** and gets
-   sandbox access. No credentials are baked into the image.
+```sh
+echo $GHCR_TOKEN | docker login ghcr.io -u yourname --password-stdin
+```
+
+Upgrading is `docker compose pull && docker compose up -d`. The database lives in a
+named volume and is untouched by an image change.
+
+**Building from source instead** (no GHCR needed) — clone the repo and overlay the
+build file:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+Either way, once it is up:
+
+1. Open the instance and **create the first account**. It becomes the **admin** and
+   gets sandbox access. No credentials are baked into the image.
 2. The catalog starts filling in the background. It walks the reachable AniList pool
-   (330 pages, ~1.1s apart) in about **six minutes**, and resumes where it left off if you
-   restart. You can play immediately; early rolls just draw from a smaller pool.
+   (330 pages, ~1.1s apart) in about **six minutes**, and resumes where it left off if
+   you restart. You can play immediately; early rolls just draw from a smaller pool.
 3. Invite the others: **Settings, Instance, Create an invite link**. Each invite works
    once, and registration is closed to anyone without one.
 
@@ -53,6 +76,9 @@ and login appears to do nothing.
 | `COOKIE_SECURE` | `true` | Session cookie's `Secure` flag. `false` for plain-HTTP LAN |
 | `CRAWL_ON_BOOT` | `true` | Fill the character catalog on startup |
 | `CLIENT_DIR` | `/app/dist/client` | Where the built client is served from |
+
+`ANICO_IMAGE` and `COOKIE_SECURE` are read from `.env` by compose itself; the rest are
+container environment variables.
 
 ### Backups
 
