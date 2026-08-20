@@ -98,6 +98,8 @@ interface StateRow {
   auto_at: number
   /** Smoothed net credits one pull is worth to this player. */
   auto_yield: number
+  /** Character ids the last summon queued for auto-sell. */
+  pending_sell_json: string | null
 }
 
 interface RollSessionEntry {
@@ -107,8 +109,8 @@ interface RollSessionEntry {
   compensation: number
   /** Set when this card joined a stack: the star that stack now carries. */
   stars?: number
-  /** Set when the auto-sell setting sold this card the moment it arrived. */
-  autoSold?: boolean
+  /** Set when the auto-sell setting has this card down to be sold. */
+  willSell?: boolean
 }
 /**
  * One summon's results, in flight.
@@ -140,6 +142,8 @@ function loadoutOf(row: StateRow): { badges: Badges; upgrades: Upgrades; fx: Ret
 
 export interface OwnedCharacter extends PoolPick {
   claimedAt: number
+  /** Kept on purpose: never auto-sold, and never picked up by a bulk sale. */
+  locked: boolean
   /** How many of this character the player holds. */
   copies: number
   /** The star the stack has merged to, one per doubling. */
@@ -151,7 +155,7 @@ export interface OwnedCharacter extends PoolPick {
 function collectionOf(db: DB, playerId: number, sellMult: number, mergeMult: number): OwnedCharacter[] {
   const rows = db
     .prepare(
-      `SELECT c.*, cl.claimed_at, cl.credit_value AS claimed_value, cl.copies, cl.stars
+      `SELECT c.*, cl.claimed_at, cl.credit_value AS claimed_value, cl.copies, cl.stars, cl.locked
          FROM claims cl JOIN characters c ON c.id = cl.character_id
         WHERE cl.player_id = ? ORDER BY cl.claimed_at DESC`,
     )
@@ -169,6 +173,7 @@ function collectionOf(db: DB, playerId: number, sellMult: number, mergeMult: num
     aliases: JSON.parse(r.aliases_json),
     covers: JSON.parse(r.covers_json),
     claimedAt: r.claimed_at,
+    locked: !!r.locked,
     copies: r.copies,
     stars: r.stars,
     stackValue: Math.round(stackValue(r.claimed_value, r.copies, r.stars, mergeMult) * sellMult),
@@ -358,8 +363,8 @@ export interface RollResult {
   compensation: number
   /** The star of the stack this card joined, if it joined one. */
   stars?: number
-  /** Sold on arrival by the auto-sell setting. */
-  autoSold?: boolean
+  /** Queued by the auto-sell setting: sold when the next summon starts. */
+  willSell?: boolean
   /**
    * Granted by the pack that just produced it. Distinct from `owned`, which a
    * pack sets on everything it hands over: without this a brand new card and a
@@ -391,7 +396,8 @@ function packSizeFor(fx: ReturnType<typeof computeEffects>, sandbox: boolean): n
 export function roll(
   db: DB,
   player: Player,
-  count: number,
+  /** Packs to tear. Zero is the free single card; more is capped at Both Hands. */
+  packsWanted: number,
 ): {
   results: RollResult[]
   pack: boolean
@@ -402,8 +408,11 @@ export function roll(
   claimed: number
   bonus: number
   coins: number
-  autoSold: number
-  autoSoldFor: number
+  /** Cards this summon queued for auto-sell, to be sold when the next one starts. */
+  queued: number
+  /** Cards the *previous* summon's queue just sold, and what they fetched. */
+  swept: number
+  sweptFor: number
   merged: number
   /** Anything worth saying out loud about what was granted. */
   notes: string[]
@@ -417,8 +426,8 @@ export function roll(
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const { fx } = loadoutOf(row)
   const sandbox = !!player.sandbox_of
-  const wanted = Math.max(1, Math.round(count))
-  const multi = wanted > 1
+  const wanted = Math.max(0, Math.floor(packsWanted))
+  const multi = wanted >= 1
   const packSize = packSizeFor(fx, sandbox)
 
   let total = 1
@@ -429,9 +438,10 @@ export function roll(
       fail('Packs are locked. The Sapphire badge in the shop opens them.')
     }
     if (sandbox) {
-      total = Math.min(SANDBOX_MAX_DRAW, wanted)
+      total = SANDBOX_MAX_DRAW
     } else {
-      packs = Math.max(1, fx.packsPerPull)
+      // One pack or all of them, and never more than Both Hands has bought.
+      packs = Math.max(1, Math.min(wanted, fx.packsPerPull))
       total = packSize * packs
       price = packCost(total)
       // A pack is what credits are for. The single summon is always free, so an
@@ -567,6 +577,9 @@ export function roll(
   const now = Date.now()
 
   const opened = db.transaction(() => {
+    // The last summon's queue is settled first: everything the player did not
+    // lock while they were looking at it.
+    const swept = sweepAutoSell(db, player, row, fx)
     db.prepare(
       `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?
         WHERE player_id = ?`,
@@ -599,8 +612,8 @@ export function roll(
       `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
               series_paid_json = ? WHERE player_id = ?`,
     ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), player.id)
-    const sold = autoSell(db, player, settings, fx, session)
-    return { ...r, ...sold }
+    const queued = queueAutoSell(db, player, settings, session)
+    return { ...r, ...swept, queued }
   })()
 
   return {
@@ -611,8 +624,9 @@ export function roll(
     claimed: opened.claimed,
     bonus: opened.bonus,
     coins: coinFound,
-    autoSold: opened.autoSold,
-    autoSoldFor: opened.autoSoldFor,
+    queued: opened.queued,
+    swept: opened.swept,
+    sweptFor: opened.sweptFor,
     merged: opened.merged,
     // Wishes fulfilled, series sets completed, the Emerald dowry. A handful at
     // most: a pack of a hundred should not arrive with a hundred toasts.
@@ -770,37 +784,74 @@ function takeAll(
 }
 
 /**
- * Sell what the player asked not to be bothered with.
+ * Queue what the player asked not to be bothered with.
+ *
+ * Nothing is sold on arrival any more. A card that lands below the auto-sell
+ * floor is written down as a candidate and sold when the *next* summon starts,
+ * which is the whole gap in which a player can look at a spread and lock
+ * anything they want to keep. Selling on arrival meant auto-sell and the lock
+ * button could not both exist: by the time you saw the card it was money.
  *
  * Only ever single copies: a stack is the one thing in this game worth
- * holding, so nothing that has started to merge is ever sold automatically,
- * and neither is a wish come true.
+ * holding, so nothing that has started to merge is ever queued, and neither is
+ * a wish come true.
  */
-function autoSell(
+function queueAutoSell(
   db: DB,
   player: Player,
   settings: ServerSettings,
-  fx: ReturnType<typeof computeEffects>,
   session: RollSession,
-): { autoSold: number; autoSoldFor: number } {
+): number {
   const floor = autoSellFloor(settings.autoSell)
-  if (floor <= 0) return { autoSold: 0, autoSoldFor: 0 }
   const ids = new Set<number>()
-  for (const entry of session.results) {
-    if (entry.wished) continue
-    if (entry.char.creditValue >= floor) continue
-    ids.add(entry.char.id)
+  if (floor > 0) {
+    for (const entry of session.results) {
+      if (entry.wished) continue
+      if (entry.char.creditValue >= floor) continue
+      entry.willSell = true
+      ids.add(entry.char.id)
+    }
   }
-  if (ids.size === 0) return { autoSold: 0, autoSoldFor: 0 }
-  const list = [...ids]
+  db.prepare('UPDATE player_state SET pending_sell_json = ? WHERE player_id = ?').run(
+    ids.size > 0 ? JSON.stringify([...ids]) : null,
+    player.id,
+  )
+  return ids.size
+}
+
+/**
+ * Sell the last summon's queue.
+ *
+ * Locked characters are skipped and stay skipped -- the queue is a list of
+ * candidates, and the lock is checked here rather than when the card landed,
+ * so locking something works right up until the moment the next summon starts.
+ * So is merging: a card that found a partner in the meantime is a stack now.
+ */
+function sweepAutoSell(
+  db: DB,
+  player: Player,
+  row: StateRow,
+  fx: ReturnType<typeof computeEffects>,
+): { swept: number; sweptFor: number } {
+  const none = { swept: 0, sweptFor: 0 }
+  if (!row.pending_sell_json) return none
+  let list: number[] = []
+  try {
+    list = JSON.parse(row.pending_sell_json)
+  } catch {
+    list = []
+  }
+  db.prepare('UPDATE player_state SET pending_sell_json = NULL WHERE player_id = ?').run(player.id)
+  if (list.length === 0) return none
   const holes = list.map(() => '?').join(',')
   const rows = db
     .prepare(
-      `SELECT character_id, credit_value, copies, stars FROM claims
-        WHERE player_id = ? AND copies = 1 AND stars = 0 AND character_id IN (${holes})`,
+      `SELECT character_id, credit_value FROM claims
+        WHERE player_id = ? AND locked = 0 AND copies = 1 AND stars = 0
+          AND character_id IN (${holes})`,
     )
-    .all(player.id, ...list) as { character_id: number; credit_value: number; copies: number; stars: number }[]
-  if (rows.length === 0) return { autoSold: 0, autoSoldFor: 0 }
+    .all(player.id, ...list) as { character_id: number; credit_value: number }[]
+  if (rows.length === 0) return none
   const total = rows.reduce((n, r) => n + Math.round(r.credit_value * fx.sellMult), 0)
   const sold = rows.map((r) => r.character_id)
   const soldHoles = sold.map(() => '?').join(',')
@@ -809,10 +860,16 @@ function autoSell(
     ...sold,
   )
   db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
-  for (const entry of session.results) {
-    if (sold.includes(entry.char.id)) entry.autoSold = true
-  }
-  return { autoSold: rows.length, autoSoldFor: total }
+  return { swept: rows.length, sweptFor: total }
+}
+
+/** Keep a character, or stop keeping it. A locked stack is never sold. */
+export function setLocked(db: DB, player: Player, characterId: number, locked: boolean): Snapshot {
+  const changed = db
+    .prepare('UPDATE claims SET locked = ? WHERE player_id = ? AND character_id = ?')
+    .run(locked ? 1 : 0, player.id, characterId).changes
+  if (changed === 0) fail('You do not own that.')
+  return snapshot(db, player, true)
 }
 
 /* ------------------------------------------------------- economy and timers */
@@ -852,11 +909,11 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
   const rows = db
     .prepare(
       `SELECT character_id, credit_value, copies, stars FROM claims
-        WHERE player_id = ? AND character_id IN (${placeholders})`,
+        WHERE player_id = ? AND locked = 0 AND character_id IN (${placeholders})`,
     )
     .all(player.id, ...ids) as
     | { character_id: number; credit_value: number; copies: number; stars: number }[]
-  if (rows.length === 0) fail('You do not own that.')
+  if (rows.length === 0) fail('Nothing there to sell — locked, or not yours.')
   const { fx } = loadoutOf(loadState(db, player.id))
   // A stack sells whole, at what the merge made it worth. Selling half a stack
   // would mean un-merging it, and a star that can be taken apart again is a
@@ -865,10 +922,12 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
     (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars, fx.mergeMult) * fx.sellMult),
     0,
   )
+  const sold = rows.map((r) => r.character_id)
+  const soldHoles = sold.map(() => '?').join(',')
   db.transaction(() => {
-    db.prepare(`DELETE FROM claims WHERE player_id = ? AND character_id IN (${placeholders})`).run(
+    db.prepare(`DELETE FROM claims WHERE player_id = ? AND character_id IN (${soldHoles})`).run(
       player.id,
-      ...ids,
+      ...sold,
     )
     db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
   })()

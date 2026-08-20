@@ -22,16 +22,24 @@ const AUTOTEAR_MS = 420
 const STAGGER_MS = 130
 
 /**
- * How long the machine is allowed to spend emptying one pull, in seconds.
+ * The longest a pull may take to empty, in seconds.
  *
- * Swift Hands buys cards a second, and a pull that outruns that budget is laid
- * out at once instead of thrown card by card. Two hundred cards at four a
- * second is fifty seconds of watching a pack whose contents were settled
- * before the wrapper came off; the throw is a flourish, not a toll.
+ * Swift Hands buys cards a second and that is what it delivers: a hundred
+ * cards at twelve a second take eight seconds, and buying the next level makes
+ * them take six. Only when the pack has outgrown the hands entirely does this
+ * cap bind and the cards come faster than they were paid for -- two hundred at
+ * four a second would be fifty seconds of watching a pack whose contents were
+ * settled before the wrapper came off.
+ *
+ * There used to be a cliff here instead: past `cardRate x 6` cards the whole
+ * pull was laid out in one frame. Three packs of twenty-six at twelve a second
+ * is seventy-eight cards against a budget of seventy-two, which is how an
+ * upgrade bought to make opening faster ended up skipping the opening -- and
+ * how buying *more* of it made no difference at all.
  */
-const THROW_BUDGET_S = 6
-/** Even a slow pair of hands throws this many rather than skipping the show. */
-const THROW_FLOOR = 12
+const MAX_OPEN_S = 8
+/** Below this the browser cannot draw a frame per card anyway, so they leave in twos. */
+const MIN_STEP_MS = 28
 
 interface Props {
   pack: NonNullable<ReturnType<typeof useGame.getState>['pack']>
@@ -65,17 +73,21 @@ export default function PackOpener({ pack, cards }: Props) {
    */
   const gen = useGame((s) => s.rollCount)
 
-  /**
-   * Whether the whole pull gets thrown card by card, or laid out at once.
+  /*
+   * The cadence, for the pull as a whole.
    *
-   * One decision for the whole pull rather than per pack, so four packs of
-   * fifty do not each decide they are small enough to animate.
+   * Swift Hands is quoted per pull, not per pack, so the wrappers share the
+   * rate rather than each running at it: four packs opening at twelve a second
+   * each would be forty-eight a second, and the number on the upgrade would
+   * mean nothing. The cap only lifts the rate, never lowers it.
    */
-  const budget = Math.max(THROW_FLOOR, Math.round(cardRate * THROW_BUDGET_S))
-  const instant = cards.length > budget
-  // Cards a second *per stack*, so the pull as a whole empties at the rate
-  // Swift Hands promises however many wrappers it arrived in.
-  const stepMs = Math.max(24, Math.round((1000 * pack.stacks.length) / Math.max(1, cardRate)))
+  const stacks = Math.max(1, pack.stacks.length)
+  const rate = Math.max(1, cardRate, cards.length / MAX_OPEN_S)
+  const rawStep = (1000 * stacks) / rate
+  // Faster than a frame or two is not something anybody can see as separate
+  // cards, so at that point they leave in small handfuls instead.
+  const batch = rawStep >= MIN_STEP_MS ? 1 : Math.ceil(MIN_STEP_MS / rawStep)
+  const stepMs = Math.max(MIN_STEP_MS, Math.round(rawStep * batch))
 
   /** Set once the player (or the machine) has asked for the whole thing. */
   const [auto, setAuto] = useState(false)
@@ -122,7 +134,7 @@ export default function PackOpener({ pack, cards }: Props) {
             thrown={st.revealed}
             cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
             auto={running}
-            instant={instant}
+            batch={batch}
             stepMs={stepMs}
           />
         ))}
@@ -164,13 +176,13 @@ interface StackProps {
   cards: RollResult[]
   /** The machine (or Space) is emptying this pack without being asked again. */
   auto: boolean
-  /** Too many cards to throw one by one: lay them out once the foil is off. */
-  instant: boolean
+  /** Cards that leave together, once one at a time would outrun the display. */
+  batch: number
   /** Milliseconds between automatic throws from this stack. */
   stepMs: number
 }
 
-function PackStack({ index, state, thrown, cards, auto, instant, stepMs }: StackProps) {
+function PackStack({ index, state, thrown, cards, auto, batch, stepMs }: StackProps) {
   const slicePack = useGame((s) => s.slicePack)
   const tearPack = useGame((s) => s.tearPack)
 
@@ -245,14 +257,13 @@ function PackStack({ index, state, thrown, cards, auto, instant, stepMs }: Stack
       const st = useGame.getState()
       const mine = st.pack?.stacks[index]
       if (!mine || mine.state !== 'sliced' || mine.revealed >= stackCards(st, index).length) return
-      throwTop(i % 2 === 0 ? 1 : -1)
-      i++
+      for (let n = 0; n < batch; n++) {
+        throwTop(i % 2 === 0 ? 1 : -1)
+        i++
+      }
       timer.current = window.setTimeout(throwLoop, stepMs)
     }
-    // Past the throwing budget the cards land in the spread all at once. The
-    // foil still comes off first: a pack that is simply replaced by a grid
-    // never looks opened, it looks skipped.
-    const empty = () => (instant ? tearPack(index) : throwLoop())
+    const empty = () => throwLoop()
     const begin = () => {
       if (useGame.getState().pack?.stacks[index]?.state === 'sealed') {
         animateTear(1, AUTOTEAR_MS, () => {
@@ -267,7 +278,7 @@ function PackStack({ index, state, thrown, cards, auto, instant, stepMs }: Stack
     // four packs tearing in perfect unison reads as one animation, not four.
     timer.current = window.setTimeout(begin, index * STAGGER_MS)
     return () => clearTimeout(timer.current)
-  }, [auto, index, instant, stepMs, animateTear, slicePack, tearPack, throwTop])
+  }, [auto, index, batch, stepMs, animateTear, slicePack, throwTop])
   useEffect(() => () => clearTimeout(timer.current), [])
 
   // This pack is done once its last card has actually landed.

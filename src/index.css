@@ -1111,88 +1111,140 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .modal-facts dd { margin: 0; }
 
 /* ------------------------------------------------ shop */
-/* One shelf, not two. Badges and upgrades used to be separate panels stacked
-   vertically, which put the badge tree -- the half that decides whether packs
-   exist at all -- below the fold on every screen narrower than a desktop. */
-.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 14px; }
+/* Two shelves rather than one sorted list. Sorting by price meant every
+   purchase re-ordered the grid under the cursor; the two kinds of thing also
+   read as one ladder with two naming conventions when they shared a card. */
+.shop-shelves { display: grid; gap: 16px; align-items: start; }
+@media (min-width: 1040px) {
+  .shop-shelves { grid-template-columns: 1fr 1fr; }
+  /* Both classes, because .segmented sets a display of its own further down. */
+  .shop-switch.segmented { display: none; }
+  .shop-col { display: block; }
+}
+/* Narrow: one shelf at a time, chosen by the switch above them. */
+@media (max-width: 1039px) {
+  .shop-shelves.show-upgrades .col-badges,
+  .shop-shelves.show-badges .col-upgrades { display: none; }
+}
+.shop-switch { margin: 0 0 14px; }
+.shop-switch .seg { display: inline-flex; align-items: center; gap: 7px; }
+/* Something on that shelf is affordable right now. */
+.ready-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--value);
+  box-shadow: 0 0 6px var(--value);
+}
 
-.shop-card {
+.upgrade-list,
+.badge-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 12px; }
+
+/* An upgrade: a rate, its next value, and a price. */
+.upgrade-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px 16px;
+  gap: 9px;
+  padding: 13px 15px 15px;
   background: var(--well);
   border: 1px solid var(--line);
   border-radius: 4px;
-  /* Off-screen shop cards are cheap to skip: the grid can hold twenty of them
-     and only a handful are ever in view. */
   content-visibility: auto;
-  contain-intrinsic-size: auto 220px;
+  contain-intrinsic-size: auto 210px;
 }
-/* A badge wears its metal on the edge, so the two kinds are still tellable
-   apart at a glance now that they share a grid. */
-.shop-card.kind-badge { border-left: 3px solid var(--badge-color); background: var(--surface-2); }
-.shop-card.locked { opacity: 0.72; }
-.shop-card.maxed { border-color: var(--line-value); opacity: 0.85; }
-/* The one thing a shop is asked: what can I buy right now. */
-.shop-card.affordable { border-color: var(--line-value); box-shadow: inset 0 0 0 1px var(--line-value); }
-
-.shop-head { display: flex; gap: 12px; align-items: center; }
-.shop-medal {
-  width: 44px; height: 44px;
+.upgrade-card.maxed { border-color: var(--line-value); opacity: 0.85; }
+.upgrade-card.affordable { border-color: var(--line-value); box-shadow: inset 0 0 0 1px var(--line-value); }
+.upgrade-head { display: flex; align-items: center; gap: 11px; }
+.upgrade-icon {
+  width: 38px; height: 38px;
   flex: none;
   display: grid;
   place-items: center;
-  border: 1px solid var(--badge-color, var(--line-strong));
-  border-radius: 50%;
-  background: var(--well);
-  color: var(--badge-color, var(--accent));
-  font-size: 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 16px;
 }
-.shop-card.kind-upgrade .shop-medal { border-radius: 4px; }
-.shop-card.locked .shop-medal { opacity: 0.6; }
-.shop-card.maxed .shop-medal {
-  background: color-mix(in srgb, var(--badge-color, var(--value)) 18%, var(--well));
-}
-.shop-title { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.shop-name {
-  font-family: var(--serif); font-weight: 700; font-size: 1.02rem; letter-spacing: 0.04em;
-  display: flex; align-items: center; gap: 7px;
-}
-.shop-standing {
+.upgrade-title { display: flex; flex-direction: column; min-width: 0; }
+.upgrade-name { font-family: var(--serif); font-weight: 700; font-size: 1.02rem; letter-spacing: 0.03em; }
+.upgrade-level {
   font-size: 0.72rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.badge-pips { display: flex; gap: 3px; margin-top: 4px; }
-.pip { width: 16px; height: 4px; border-radius: 1px; background: var(--line); }
-.pip.filled { background: var(--badge-color); }
-
-.shop-effect {
+.upgrade-blurb { margin: 0; color: var(--text-dim); font-size: 0.79rem; line-height: 1.5; }
+.upgrade-effect {
   margin: 0 0 auto;
   font-size: 0.82rem;
   line-height: 1.55;
   border-left: 2px solid var(--line-strong);
   padding-left: 10px;
 }
-.shop-effect .now,
-.shop-effect .next {
+.upgrade-effect .now,
+.upgrade-effect .next {
   font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
   margin-right: 4px;
 }
-.shop-effect .next { color: var(--value-soft); }
-.shop-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
+.upgrade-effect .next { color: var(--value-soft); }
 
-/* The numbers the shop moves, above the shelf itself. */
+/* A badge: a metal, a ladder of six rungs, and how far up it you are. */
+.badge-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--badge-color);
+  border-radius: 4px;
+  background: var(--surface-2);
+  padding: 14px 15px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+.badge-card.locked { opacity: 0.72; }
+.badge-card.maxed { border-color: var(--line-value); opacity: 0.85; }
+.badge-card.affordable { box-shadow: inset 0 0 0 1px var(--line-value); }
+.badge-head { display: flex; gap: 11px; align-items: center; }
+/* The medal used to be a coloured dot in a ring, which read as a status light
+   rather than a badge. It holds the line's icon now; the ring and the metal
+   colour are what still say which line it is. */
+.badge-medal {
+  width: 42px; height: 42px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--badge-color);
+  border-radius: 50%;
+  background: var(--well);
+  color: var(--badge-color);
+  font-size: 16px;
+}
+.badge-card.locked .badge-medal { opacity: 0.6; }
+.badge-card.maxed .badge-medal { background: color-mix(in srgb, var(--badge-color) 18%, var(--well)); }
+.badge-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.05em; }
+.badge-level { color: var(--badge-color); }
+.badge-pips { display: flex; gap: 3px; margin-top: 5px; }
+.pip { width: 15px; height: 4px; border-radius: 1px; background: var(--line); }
+.pip.filled { background: var(--badge-color); }
+
+.badge-levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.badge-levels li {
+  font-size: 0.78rem; color: var(--text-dim); line-height: 1.4;
+  padding-left: 8px; border-left: 2px solid transparent;
+}
+.badge-levels li.owned { color: var(--text); border-left-color: var(--badge-color); }
+.badge-levels li.next { color: var(--text); border-left-color: var(--line-strong); }
+.lvl-roman { display: inline-block; min-width: 20px; color: var(--badge-color); font-weight: 700; }
+.badge-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
+
+/* The numbers the shop moves, above both shelves. */
 .shop-status {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 28px;
-  margin: 0 0 18px;
+  margin: 0 0 16px;
   padding: 12px 14px;
   background: var(--well);
   border: 1px solid var(--line);
@@ -1206,6 +1258,28 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   color: var(--text-dim);
 }
 .shop-status dd { margin: 3px 0 0; font-size: 0.88rem; }
+
+/* Kept on purpose. The mark sits opposite the wish star, which is the other
+   thing on a card that means "this one matters". */
+.lock-mark {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 4;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 3px;
+  background: rgba(8, 10, 16, 0.72);
+  border: 1px solid var(--line-value);
+}
+.char-card.locked .card-frame { border-color: var(--line-value); }
+/* A card the next summon will sell, unless you say otherwise. */
+.spread-tag.selling { background: rgba(8, 10, 16, 0.82); color: var(--text-dim); border-color: var(--line-strong); }
+.lock-btn { flex: none; }
+.claim-bar .lock-btn { margin-left: auto; }
+.modal-actions { display: flex; gap: 8px; align-items: stretch; }
+.modal-actions .btn-sell { flex: 1; }
 
 /* Bulk views hold still.
    A spread of two hundred and a collection of ten thousand are both places

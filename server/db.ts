@@ -264,6 +264,19 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ALTER TABLE player_state DROP COLUMN roll_session_json;
     `,
   },
+  {
+    name: '011_locks',
+    sql: `
+    -- A card can be kept on purpose. Locked stacks are never auto-sold and are
+    -- skipped by a bulk sale, which is the only way a lock is worth anything.
+    ALTER TABLE claims ADD COLUMN locked INTEGER NOT NULL DEFAULT 0;
+
+    -- Auto-sell stopped selling on arrival and started queueing: what a summon
+    -- marks is sold when the next one starts, so there is a gap in which to
+    -- look at a spread and lock what is worth keeping.
+    ALTER TABLE player_state ADD COLUMN pending_sell_json TEXT;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

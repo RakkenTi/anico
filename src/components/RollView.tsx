@@ -4,6 +4,7 @@ import { useGame } from '../game/store'
 import type { AutoSell } from '../api'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import { fmt, fmtCount } from '../game/format'
+import { packCost } from '../game/economy'
 import CharacterCard from './CharacterCard'
 import Icon from './Icon'
 import PackOpener from './PackOpener'
@@ -16,6 +17,9 @@ export default function RollView() {
   // bigger from there. Zero means the only summon available is a single card.
   const packSize = s.packSize
   const affordable = s.canAffordPack()
+  // One pack costs a share of the pull: the primary button is a single wrapper.
+  const onePackPrice = packCost(s.packSize)
+  const onePackAffordable = s.packSize > 0 && (s.sandbox || s.credits >= onePackPrice)
   const busy = s.packBusy()
   const pullSize = s.cardsPerPull
   const entry = s.rolled[s.selected]
@@ -151,13 +155,14 @@ export default function RollView() {
                   <CharacterCard
                     character={r.char}
                     wished={r.wished}
+                    locked={r.locked}
                     compact
                     onClick={() => s.selectRolled(i)}
                     overlay={
                       r.wished && r.fresh ? (
                         <span className="spread-tag wished">a wish</span>
-                      ) : r.autoSold ? (
-                        <span className="spread-tag">sold</span>
+                      ) : r.willSell && !r.locked ? (
+                        <span className="spread-tag selling">for sale</span>
                       ) : r.fresh ? (
                         <span className="spread-tag fresh">new</span>
                       ) : r.owned ? (
@@ -183,36 +188,63 @@ export default function RollView() {
       </div>
 
       <aside className="roll-rail">
+        {/* Three sizes of press. The single card is free and always there --
+            an empty purse is never a dead end -- but once packs exist the one
+            you reach for is a pack, not a card, so that is the primary. */}
         <div className="roll-actions">
-          <button
-            className="btn btn-primary btn-summon"
-            onClick={() => s.roll(1)}
-            disabled={s.rolling || dealing || busy}
-          >
-            {s.rolling ? 'Summoning…' : 'Summon'}
-          </button>
-          {packSize > 0 && (
-            <button
-              className="btn btn-quiet btn-summon btn-pack"
-              onClick={() => s.roll(pullSize)}
-              disabled={s.rolling || dealing || busy || !affordable}
-              title={
-                testing
-                  ? `Sandbox: summon ${packSize} at once`
-                  : affordable
-                    ? `Open a sealed pack of ${packSize}. Every card in it is yours.`
-                    : `This pull costs ${fmt(s.packPrice)} credits.`
-              }
-            >
-              <span className="pack-x">
-                ×{fmtCount(pullSize)}
-                {s.packsPerPull > 1 && <em className="pack-mult"> {s.packsPerPull} packs</em>}
-              </span>
-              {!testing && (
-                <span className="pack-price">
-                  <Icon name="token" /> {fmt(s.packPrice)}
+          {packSize > 0 ? (
+            <>
+              <button
+                className="btn btn-primary btn-summon btn-pack"
+                onClick={() => s.roll(1)}
+                disabled={s.rolling || dealing || busy || !onePackAffordable}
+                title={
+                  testing
+                    ? `Sandbox: summon ${packSize} at once`
+                    : `Open one sealed pack of ${fmtCount(packSize)}. Every card in it is yours.`
+                }
+              >
+                <span className="pack-x">
+                  {s.rolling ? 'Summoning…' : <>Summon ×{fmtCount(packSize)}</>}
                 </span>
+                {!testing && (
+                  <span className="pack-price">
+                    <Icon name="token" /> {fmt(onePackPrice)}
+                  </span>
+                )}
+              </button>
+              {s.packsPerPull > 1 && !testing && (
+                <button
+                  className="btn btn-quiet btn-summon btn-pack"
+                  onClick={() => s.roll(s.packsPerPull)}
+                  disabled={s.rolling || dealing || busy || !affordable}
+                  title={`Tear all ${s.packsPerPull} packs at once: ${fmtCount(pullSize)} cards.`}
+                >
+                  <span className="pack-x">
+                    ×{fmtCount(pullSize)}
+                    <em className="pack-mult"> {s.packsPerPull} packs</em>
+                  </span>
+                  <span className="pack-price">
+                    <Icon name="token" /> {fmt(s.packPrice)}
+                  </span>
+                </button>
               )}
+              <button
+                className="btn btn-ghost btn-free"
+                onClick={() => s.roll(0)}
+                disabled={s.rolling || dealing || busy}
+                title="One card, free, always available"
+              >
+                Free summon ×1
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-primary btn-summon"
+              onClick={() => s.roll(0)}
+              disabled={s.rolling || dealing || busy}
+            >
+              {s.rolling ? 'Summoning…' : 'Summon'}
             </button>
           )}
         </div>
@@ -222,11 +254,9 @@ export default function RollView() {
             <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
           ) : packSize > 0 ? (
             <span className="testing-note">
-              Single summons are free ·{' '}
-              {s.packsPerPull > 1
-                ? `${s.packsPerPull} packs, ${fmtCount(pullSize)} cards`
-                : `a pack of ${fmtCount(packSize)}`}{' '}
-              costs {fmt(s.packPrice)}
+              A pack of {fmtCount(packSize)} costs {fmt(onePackPrice)}
+              {s.packsPerPull > 1 && <> · all {s.packsPerPull} at once, {fmt(s.packPrice)}</>} · a
+              single card is always free
             </span>
           ) : (
             /* The one thing the shop is for, said where the button would be. */
@@ -282,14 +312,29 @@ export default function RollView() {
               <span className="claim-bar-value" title="Credit value">{fmt(entry.char.creditValue)}</span>
             </div>
             <span className="claim-bar-note">
-              {entry.autoSold
-                ? 'sold on arrival, as you asked'
-                : entry.fresh
-                  ? 'yours, and in your collection'
-                  : entry.compensation > 0
-                    ? `another copy — compensated ${fmt(entry.compensation)} credits`
-                    : 'bound to your collection'}
+              {entry.locked
+                ? 'locked — nothing sells this'
+                : entry.willSell
+                  ? 'for sale when you summon again'
+                  : entry.fresh
+                    ? 'yours, and in your collection'
+                    : entry.compensation > 0
+                      ? `another copy — compensated ${fmt(entry.compensation)} credits`
+                      : 'bound to your collection'}
             </span>
+            {/* The whole reason auto-sell waits for the next summon: this is
+                the gap in which somebody can look at a spread and say no. */}
+            <button
+              className={`btn ${entry.locked ? 'btn-primary' : 'btn-ghost'} lock-btn`}
+              onClick={() => s.lock(entry.char.id, !entry.locked)}
+              title={
+                entry.locked
+                  ? 'Unlock: this can be sold again'
+                  : 'Lock: never auto-sold, and skipped by a bulk sale'
+              }
+            >
+              {entry.locked ? '🔒 Locked' : 'Lock'}
+            </button>
           </div>
         )}
 

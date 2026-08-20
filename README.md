@@ -250,12 +250,12 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 
 ## The game
 
-**Summon.** One card at a time, free and unlimited: nothing is on a cooldown
-and there is no allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)).
-Every summon grants what it turns up — there is no claim button, so a free card
-cannot be lost to a closed tab and **auto-sell** sees single summons as readily
-as packs. Sell what you do not want, and pick who shows up in *Settings, Roll
-for* (Waifus / Husbandos / Everyone).
+**Summon.** Three sizes of press: one pack, all your packs at once, or a single
+card that is free and unlimited — nothing is on a cooldown and there is no
+allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)), so an
+empty purse is never a dead end. Every summon grants what it turns up; there is
+no claim button. Pick who shows up in *Settings, Roll for* (Waifus / Husbandos /
+Everyone).
 
 **Packs are what credits are for.** A fresh account has the single summon and
 nothing else. The **Sapphire** badge unlocks a sealed ×10 and grows it to ×60;
@@ -285,19 +285,21 @@ the machine and appraised into credits at what the dealt cards averaged
 laid out, *Best first* sorts it by value so the one card worth finding in a
 hundred is at the top.
 
-**The shop is one shelf, ordered by price.** Every line costs a multiple of its
-own last level, and the multiple is always larger than the effect it buys: that
-difference is the difficulty curve. The first five rungs of the endless lines
-are sold at a fraction of list price, fading out by the sixth — the opening
-should be a ramp rather than a wall. Numbers grow past what digits are good for,
-so anything over ten thousand is quoted with a suffix — 4.18B, 12.4Qa.
+**The shop has two shelves**, side by side on a wide screen and one at a time
+behind a switch on a narrow one, each in a fixed order that never rearranges
+itself. Every line costs a multiple of its own last level, and the multiple is
+always larger than the effect it buys: that difference is the difficulty curve.
+The first five rungs of the endless lines are sold at a fraction of list price,
+fading out by the sixth — the opening should be a ramp rather than a wall.
+Numbers grow past what digits are good for, so anything over ten thousand is
+quoted with a suffix — 4.18B, 12.4Qa.
 
 *Upgrades* are the curve. Six of the nine never end:
 
 | Upgrade | What each level buys | Ends? |
 | --- | --- | --- |
 | **Appraisal** | Everything sells for 1.22× more | no |
-| **Swift Hands** | +4 cards a second out of a pack | no |
+| **Swift Hands** | +4 cards a second out of a pack — a pull empties at exactly that rate | no |
 | **Deeper Packs** | A pack 1.3× as deep | no |
 | **Fortune** | Coins fall more often and are worth 1.25× more | no |
 | **Both Hands** | One more pack torn at the same press | no |
@@ -348,9 +350,13 @@ the moment you come back
   stack sells for — further with every level of **Alchemy** — so holding beats
   selling by a wide margin
   ([ADR 0006](./docs/adr/0006-duplicates-are-copies.md))
-- **Auto-sell**: pick a rarity in the summon view and anything below it is sold
-  as it lands, from a single summon as readily as from a pack. It never sells a
-  wish, and never a stack that has begun to merge
+- **Auto-sell**: pick a rarity in the summon view and anything below it is
+  queued as it lands and sold when you next summon — the gap is your chance to
+  look at the spread and **lock** anything worth keeping. It never sells a wish,
+  never a stack that has begun to merge, and never a locked card
+- **Lock**: a card kept on purpose. Locked stacks are skipped by the auto-sell
+  sweep and by bulk sales, and cannot be sold until you unlock them. The button
+  is on the bar under a selected card and in its detail view
 - **Coins**: one coin, worth a band of credits, landing on about one summon in
   fifty. Gathered where they fall
 - **Selling**: any character, at what Appraisal says it is worth. **Bulk mode**

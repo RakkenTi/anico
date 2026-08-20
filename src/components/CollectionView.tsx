@@ -94,7 +94,8 @@ export default function CollectionView() {
   const pickedWorth = collection.reduce((s, c) => (picked.has(c.id) ? s + worth(c) : s), 0)
   // "Select all" means all of what is on screen, so a filter is how you say
   // "every common" or "everything from this series" without tapping each one.
-  const allShownPicked = filtered.length > 0 && filtered.every((c) => picked.has(c.id))
+  const sellable = filtered.filter((c) => !c.locked)
+  const allShownPicked = sellable.length > 0 && sellable.every((c) => picked.has(c.id))
 
   const leaveBulk = () => {
     setBulk(false)
@@ -103,6 +104,8 @@ export default function CollectionView() {
   }
 
   const toggle = (id: number) => {
+    // A locked card cannot be sold, so it cannot be picked for a sale either.
+    if (collection.find((c) => c.id === id)?.locked) return
     setConfirming(false)
     setPicked((prev) => {
       const next = new Set(prev)
@@ -225,7 +228,8 @@ export default function CollectionView() {
                 stars={c.stars}
                 value={worth(c)}
                 wished={wishes.some((w) => w.id === c.id)}
-                selectable={bulk}
+                locked={c.locked}
+                selectable={bulk && !c.locked}
                 selected={picked.has(c.id)}
                 onClick={() => (bulk ? toggle(c.id) : setSelected(c))}
               />
@@ -252,13 +256,13 @@ export default function CollectionView() {
                 setConfirming(false)
                 setPicked((prev) => {
                   const next = new Set(prev)
-                  if (allShownPicked) filtered.forEach((c) => next.delete(c.id))
-                  else filtered.forEach((c) => next.add(c.id))
+                  if (allShownPicked) sellable.forEach((c) => next.delete(c.id))
+                  else sellable.forEach((c) => next.add(c.id))
                   return next
                 })
               }}
             >
-              {allShownPicked ? 'Clear shown' : `Select all (${fmtCount(filtered.length)})`}
+              {allShownPicked ? 'Clear shown' : `Select all (${fmtCount(sellable.length)})`}
             </button>
             <button
               className="btn btn-danger"

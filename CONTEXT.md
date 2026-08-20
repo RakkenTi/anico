@@ -68,10 +68,10 @@ opening it decides nothing and cannot be lost to a closed tab: tearing it with s
 throwing the cards off one by one reach the same place. Presentation, deliberately. The
 cards are face up throughout — a pack is a thing you unwrap, not a guess.
 
-**Pull** — one press of the pack button, and everything it produces. A pull holds one
-pack until **Both Hands** is bought and several afterwards, torn side by side, each with
-its own wrapper and its own pile. The word exists because "pack" stopped being the unit
-of a press.
+**Pull** — one press of a pack button, and everything it produces. There are two presses
+once **Both Hands** is bought: one pack, or all of them, torn side by side with their own
+wrappers and their own piles. The word exists because "pack" stopped being the unit of a
+press. The free single card is neither: it costs nothing and is always there.
 
 **Appraised** — what happens to the part of a pull too large to deal. Two hundred cards
 are laid out and granted; the rest are opened by the machine and turned straight into
@@ -104,9 +104,15 @@ than paying out, and every doubling **merges** it one **star** higher (★1 at t
 ★2 at four, ★3 at eight, up to ★12), which multiplies what the whole stack sells for —
 further with every level of **Alchemy**. A stack sells whole or not at all (ADR 0006).
 
-**Auto-sell** — a per-player setting: sell everything below a chosen rarity as it lands,
-from a single summon as readily as from a pack. Never a wish come true, and never a stack
-that has started to merge.
+**Auto-sell** — a per-player setting: everything below a chosen rarity is queued as it
+lands and sold when the *next* summon starts, from a single summon as readily as from a
+pack. Never a wish come true, never a stack that has started to merge, and never anything
+**locked**. It sold on arrival until the lock existed, which made the two mutually
+exclusive: by the time you saw a card it was already money (ADR 0006).
+
+**Lock** — keeping a character on purpose. A locked stack is skipped by the auto-sell
+sweep, skipped by a bulk sale and refused by the sell endpoint, so the word means the same
+thing everywhere. Checked when the sweep runs, not when the card landed.
 
 **Automaton** — the shop's machine for pressing the summon button. An autoclicker rather
 than a shortcut: it tears the wrappers, swipes the cards away and presses again. Runs in
@@ -148,9 +154,10 @@ survives only in older commits.
 rare — one to a summon at most — because a wishlist that arrives on demand is a way of
 ordering Mythics rather than hoping for one.
 
-**Shop** — one shelf holding both kinds of purchase, ordered by price. It was two panels
-stacked vertically, which put the half that decides whether packs exist at all below the
-fold on every screen narrower than a desktop.
+**Shop** — two shelves, **Upgrades** and **Badges**, each in a fixed order: side by side
+where there is room, one at a time behind a switch where there is not. It was one panel
+above another (the lower one went unnoticed), and then briefly one list sorted by price,
+which re-ordered itself under the cursor every time anything was bought.
 
 **Badge** — a permanent perk bought with credits, in the Bronze through Emerald tree. Six
 lines of six levels, each level five times the price of the one below it. Badges change
