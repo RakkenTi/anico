@@ -18,9 +18,9 @@ Every push to `master` publishes a multi-arch image to GHCR, so a server needs
 
 ```sh
 mkdir anico && cd anico
-curl -O https://raw.githubusercontent.com/YOURNAME/anico/master/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/YOURNAME/anico/master/.env.example
-# edit .env: set ANICO_IMAGE to ghcr.io/yourname/anico:latest
+curl -O https://raw.githubusercontent.com/RakkenTi/anico/master/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/RakkenTi/anico/master/.env.example
+# .env already points at ghcr.io/rakkenti/anico:latest
 docker compose up -d
 ```
 
@@ -28,7 +28,7 @@ If the GHCR package is private (the default for a new one), either make it publi
 in the repo's package settings, or log the server in first:
 
 ```sh
-echo $GHCR_TOKEN | docker login ghcr.io -u yourname --password-stdin
+echo $GHCR_TOKEN | docker login ghcr.io -u RakkenTi --password-stdin
 ```
 
 Upgrading is `docker compose pull && docker compose up -d`. The database lives in a
