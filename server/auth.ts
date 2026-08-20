@@ -25,7 +25,12 @@ export interface Player {
   id: number
   username: string
   is_admin: number
+  /** Permission to enter sandbox mode, not a state of being in it. */
   sandbox: number
+  /** Set on a shadow profile: the account it belongs to. Null on real players. */
+  sandbox_of: number | null
+  /** Set on a real player: whether they are currently playing in the sandbox. */
+  sandbox_active: number
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -118,7 +123,14 @@ export async function register(
     if (inviteRow) {
       db.prepare('UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?').run(id, now, inviteRow.code)
     }
-    return { id, username: name, is_admin: first ? 1 : 0, sandbox: first ? 1 : 0 }
+    return {
+      id,
+      username: name,
+      is_admin: first ? 1 : 0,
+      sandbox: first ? 1 : 0,
+      sandbox_of: null,
+      sandbox_active: 0,
+    }
   })()
 
   return { ok: true, player }
@@ -130,7 +142,10 @@ export async function login(
   password: string,
 ): Promise<CreateResult | CreateError> {
   const row = db
-    .prepare('SELECT id, username, password_hash, is_admin, sandbox FROM players WHERE username_lower = ?')
+    .prepare(
+      `SELECT id, username, password_hash, is_admin, sandbox, sandbox_of, sandbox_active
+         FROM players WHERE username_lower = ?`,
+    )
     .get(username.trim().toLowerCase()) as
     | { id: number; username: string; password_hash: string; is_admin: number; sandbox: number }
     | undefined
@@ -138,7 +153,7 @@ export async function login(
   const stored = row?.password_hash ?? 'scrypt$00$00'
   const ok = await verifyPassword(password, stored)
   if (!row || !ok) return { ok: false, error: 'Wrong username or password.' }
-  return { ok: true, player: { id: row.id, username: row.username, is_admin: row.is_admin, sandbox: row.sandbox } }
+  return { ok: true, player: toPlayer(row) }
 }
 
 export function createSession(db: DB, playerId: number): string {
@@ -150,21 +165,97 @@ export function createSession(db: DB, playerId: number): string {
   return token
 }
 
+const PLAYER_COLS = 'p.id, p.username, p.is_admin, p.sandbox, p.sandbox_of, p.sandbox_active'
+
+const toPlayer = (r: any): Player => ({
+  id: r.id,
+  username: r.username,
+  is_admin: r.is_admin,
+  sandbox: r.sandbox,
+  sandbox_of: r.sandbox_of ?? null,
+  sandbox_active: r.sandbox_active ?? 0,
+})
+
 export function playerForToken(db: DB, token: string | undefined): Player | null {
   if (!token) return null
   const row = db
     .prepare(
-      `SELECT p.id, p.username, p.is_admin, p.sandbox, s.expires_at
+      `SELECT ${PLAYER_COLS}, s.expires_at
          FROM sessions s JOIN players p ON p.id = s.player_id
         WHERE s.token_hash = ?`,
     )
-    .get(hashToken(token)) as (Player & { expires_at: number }) | undefined
+    .get(hashToken(token)) as any
   if (!row) return null
   if (row.expires_at < Date.now()) {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token))
     return null
   }
-  return { id: row.id, username: row.username, is_admin: row.is_admin, sandbox: row.sandbox }
+  return toPlayer(row)
+}
+
+/**
+ * The profile a player's game actions apply to.
+ *
+ * With sandbox switched on this is a shadow profile carrying its own credits,
+ * collection and wishes, so anything done while testing lands there instead of
+ * on the collection they care about. It is created on demand and destroyed the
+ * moment sandbox is switched off.
+ */
+export function activeProfile(db: DB, player: Player): Player {
+  if (!player.sandbox_active || !player.sandbox) return player
+  const row = db
+    .prepare(`SELECT ${PLAYER_COLS} FROM players p WHERE p.sandbox_of = ?`)
+    .get(player.id) as any
+  return row ? toPlayer(row) : player
+}
+
+/**
+ * Enter or leave sandbox mode.
+ *
+ * Entering mints a shadow profile with an empty collection and a pile of
+ * credits to play with. Leaving deletes it outright, taking its claims and
+ * wishes with it: sandbox progress is meant to evaporate, and keeping it would
+ * turn a testing toy into a second save nobody asked to maintain.
+ */
+export function setSandboxActive(db: DB, player: Player, on: boolean): void {
+  if (!player.sandbox) throw new Error('Sandbox is not enabled for this account.')
+  db.transaction(() => {
+    if (on) {
+      const existing = db
+        .prepare('SELECT id FROM players WHERE sandbox_of = ?')
+        .get(player.id) as { id: number } | undefined
+      if (!existing) {
+        const now = Date.now()
+        const info = db
+          .prepare(
+            `INSERT INTO players
+               (username, username_lower, password_hash, is_admin, sandbox, sandbox_of, created_at)
+             VALUES (?, ?, '', ?, 1, ?, ?)`,
+          )
+          // No usable password hash: a shadow profile is reached by toggling,
+          // never by logging into it.
+          .run(`${player.username} (sandbox)`, `${player.id}\u0000sandbox`, player.is_admin, player.id, now)
+        const id = Number(info.lastInsertRowid)
+        const settings: ServerSettings = { ...DEFAULT_SETTINGS }
+        db.prepare(
+          `INSERT INTO player_state
+             (player_id, credits, rolls_left, rolls_reset_at, badges_json, settings_json)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          id,
+          25_000,
+          PACING.rollsPerHour,
+          now + PACING.rollResetMinutes * 60_000,
+          JSON.stringify({ bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }),
+          JSON.stringify(settings),
+        )
+      }
+      db.prepare('UPDATE players SET sandbox_active = 1 WHERE id = ?').run(player.id)
+    } else {
+      db.prepare('DELETE FROM players WHERE sandbox_of = ?').run(player.id)
+      db.prepare('UPDATE players SET sandbox_active = 0 WHERE id = ?').run(player.id)
+    }
+  })()
 }
 
 export function endSession(db: DB, token: string | undefined): void {

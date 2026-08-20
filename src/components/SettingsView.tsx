@@ -24,6 +24,8 @@ export default function SettingsView() {
   const resetSave = useGame((s) => s.resetSave)
   const grantCredits = useGame((s) => s.grantCredits)
   const pushToast = useGame((s) => s.pushToast)
+  const sandboxAllowed = useGame((s) => s.sandboxAllowed)
+  const setSandbox = useGame((s) => s.setSandbox)
   const [confirmReset, setConfirmReset] = useState(false)
 
 
@@ -183,26 +185,48 @@ export default function SettingsView() {
       </div>
 
       <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>
-        <h2 className="section-title">Testing</h2>
-        <div className="setting-row">
-          <p className="setting-hint">
-            {sandbox
-              ? 'Sandbox is enabled for your account: unlimited rolls, no cooldowns, and bulk operations.'
-              : 'Sandbox is off for your account. It is a privilege the instance admin grants, not a switch, because the server enforces every limit it lifts.'}
-          </p>
-        </div>
-        {sandbox && (
+        <h2 className="section-title">Sandbox</h2>
+        {!sandboxAllowed ? (
           <div className="setting-row">
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                grantCredits(1000)
-                pushToast('+1000 credits (sandbox)', 'credits')
-              }}
-            >
-              +1000 credits (debug)
-            </button>
+            <p className="setting-hint">
+              Sandbox is off for your account. It is a privilege the instance admin grants,
+              because the server enforces every limit it lifts.
+            </p>
           </div>
+        ) : (
+          <>
+            <p className="section-sub">
+              A scratch profile with its own credits and its own empty collection. Nothing you
+              do in it touches the collection you actually care about, and none of it is kept:
+              switching back deletes it, and so does restarting the instance.
+            </p>
+            <div className="setting-row">
+              <button
+                className={`btn ${sandbox ? 'btn-danger' : 'btn-primary'}`}
+                onClick={() => void setSandbox(!sandbox)}
+              >
+                {sandbox ? 'Leave the sandbox' : 'Enter the sandbox'}
+              </button>
+              <p className="setting-hint">
+                {sandbox
+                  ? 'You are in the sandbox now. Your own collection is untouched and waiting.'
+                  : 'Your collection stays exactly as it is while you are in there.'}
+              </p>
+            </div>
+            {sandbox && (
+              <div className="setting-row">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    grantCredits(1000)
+                    pushToast('+1000 credits (sandbox)', 'credits')
+                  }}
+                >
+                  +1000 credits (debug)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

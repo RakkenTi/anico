@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { DB } from './db.js'
 import {
+  activeProfile,
   createInvite,
   createSession,
   endSession,
@@ -15,6 +16,7 @@ import {
   playerCount,
   playerForToken,
   register,
+  setSandboxActive,
   type Player,
 } from './auth.js'
 import * as game from './game.js'
@@ -88,7 +90,7 @@ const loginFailures = counter(10, 15 * 60_000)
 const searches = counter(10, 60_000)
 
 export function createApp(db: DB, config: Config) {
-  const app = new Hono<{ Variables: { player: Player } }>()
+  const app = new Hono<{ Variables: { player: Player; owner: Player } }>()
 
   const setSessionCookie = (c: any, token: string) =>
     setCookie(c, COOKIE, token, {
@@ -99,7 +101,7 @@ export function createApp(db: DB, config: Config) {
       maxAge: 30 * 86_400,
     })
 
-  const api = new Hono<{ Variables: { player: Player } }>()
+  const api = new Hono<{ Variables: { player: Player; owner: Player } }>()
 
   /* ------------------------------------------------------------------ auth */
 
@@ -159,11 +161,15 @@ export function createApp(db: DB, config: Config) {
 
   /* ------------------------------------------------------- authed game API */
 
+  // `player` is whoever the game should act as, which is the sandbox shadow
+  // profile while sandbox is switched on. `owner` is always the real account,
+  // so admin rights and anything that outlives a sandbox session key off it.
   api.use('*', async (c, next) => {
     if (c.req.path.startsWith('/api/auth/')) return next()
-    const player = playerForToken(db, getCookie(c, COOKIE))
-    if (!player) return c.json({ error: 'Not signed in.' }, 401)
-    c.set('player', player)
+    const owner = playerForToken(db, getCookie(c, COOKIE))
+    if (!owner) return c.json({ error: 'Not signed in.' }, 401)
+    c.set('owner', owner)
+    c.set('player', activeProfile(db, owner))
     await next()
   })
 
@@ -196,6 +202,16 @@ export function createApp(db: DB, config: Config) {
     const b = await body(c)
     const { result, snapshot } = game.flip(db, c.get('player'), Number(b.index))
     return c.json({ result, state: snapshot })
+  })
+
+  /** Enter or leave the sandbox. The real collection is untouched either way. */
+  api.post('/sandbox', async (c) => {
+    const owner = c.get('owner')
+    if (!owner.sandbox) return c.json({ error: 'Sandbox is not enabled for this account.' }, 403)
+    const b = await body(c)
+    setSandboxActive(db, owner, !!b.on)
+    const next = playerForToken(db, getCookie(c, COOKIE))!
+    return c.json({ state: game.fullState(db, activeProfile(db, next)) })
   })
 
   api.post('/daily', (c) => {
@@ -258,8 +274,11 @@ export function createApp(db: DB, config: Config) {
 
   /* ----------------------------------------------------------------- admin */
 
+  // Deliberately `owner`: a sandbox profile inherits admin so the panel stays
+  // reachable while testing, but every admin action must be recorded against
+  // the real account, which outlives the shadow.
   const adminOnly = async (c: any, next: any) => {
-    if (!c.get('player')?.is_admin) return c.json({ error: 'Admins only.' }, 403)
+    if (!c.get('owner')?.is_admin) return c.json({ error: 'Admins only.' }, 403)
     await next()
   }
 
@@ -270,7 +289,7 @@ export function createApp(db: DB, config: Config) {
                 (SELECT COUNT(*) FROM claims WHERE player_id = p.id) AS claims,
                 (SELECT COUNT(*) FROM sessions
                   WHERE player_id = p.id AND expires_at > ?) AS sessions
-           FROM players p ORDER BY p.created_at`,
+           FROM players p WHERE p.sandbox_of IS NULL ORDER BY p.created_at`,
       )
       .all(Date.now())
     return c.json({ users: rows })
@@ -288,7 +307,7 @@ export function createApp(db: DB, config: Config) {
   })
 
   api.post('/admin/invites', adminOnly, (c) =>
-    c.json({ code: createInvite(db, c.get('player').id) }),
+    c.json({ code: createInvite(db, c.get('owner').id) }),
   )
 
   api.patch('/admin/users/:id', adminOnly, async (c) => {

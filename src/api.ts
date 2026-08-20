@@ -20,6 +20,7 @@ export interface Snapshot {
   username: string
   isAdmin: boolean
   sandbox: boolean
+  sandboxAllowed: boolean
   credits: number
   rollsLeft: number
   rollsMax: number
@@ -107,6 +108,7 @@ export const api = {
   claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
   gem: () => post<{ state: Snapshot }>('/gem'),
   flip: (index: number) => post<{ result: RollResult; state: Snapshot }>('/flip', { index }),
+  sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
   ritual: () => post<{ state: Snapshot }>('/ritual'),
   sell: (ids: number[], bulk = false) =>

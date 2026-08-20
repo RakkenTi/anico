@@ -217,7 +217,7 @@ export default function RollView() {
 
         <div className="roll-meta">
           {testing ? (
-            <span className="testing-note">Sandbox: no limits apply</span>
+            <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
           ) : fun ? (
             <span className="testing-note">Fun mode: summon and claim freely</span>
           ) : (
