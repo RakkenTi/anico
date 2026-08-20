@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGame } from '../game/store'
+import { rarityOf } from '../game/economy'
+import { flapPath, foilPath } from '../game/tear'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
 
-/** Drag distance that finishes a tear, and that counts as a thrown card. */
-const TEAR_PX = 150
+/**
+ * Pointer travel that finishes a tear. Accumulated rather than measured from
+ * where the drag began: a tear does not undo itself when your hand comes back,
+ * so sawing at it works exactly as it does on a real wrapper.
+ */
+const TEAR_PX = 320
 const THROW_PX = 80
 /** How long a card takes to leave, and the gap between auto-thrown ones. */
 const THROW_MS = 320
@@ -36,21 +42,35 @@ export default function PackOpener({ pack, cards }: Props) {
   const tearPack = useGame((s) => s.tearPack)
 
   const sealed = pack.state === 'sealed'
+  // Foil takes its colour from the best card in the pack. It gives nothing
+  // away that matters -- everything inside is already claimed -- but a pack
+  // with something good in it ought to look like one.
+  const best = cards.reduce((m, c) => Math.max(m, c.char.creditValue), 0)
+  const rarity = rarityOf(best).key
   const thrown = pack.revealed
   const remaining = cards.length - thrown
 
   /* ------------------------------------------------------------- tearing */
 
+  // How far the rip has travelled across the seam, 0 to 1.
   const [tear, setTear] = useState(0)
-  const [tearOff, setTearOff] = useState({ x: 0, y: 0 })
+  const tearRef = useRef(0)
   const raf = useRef(0)
 
-  const animateTear = useCallback((from: number, to: number, ms: number, done?: () => void) => {
+  const setTearBoth = (v: number) => {
+    tearRef.current = v
+    setTear(v)
+  }
+
+  const animateTear = useCallback((to: number, ms: number, done?: () => void) => {
     cancelAnimationFrame(raf.current)
+    const from = tearRef.current
     const start = performance.now()
     const step = (now: number) => {
       const t = clamp((now - start) / ms, 0, 1)
-      setTear(from + (to - from) * (1 - Math.pow(1 - t, 3)))
+      const v = from + (to - from) * (1 - Math.pow(1 - t, 3))
+      tearRef.current = v
+      setTear(v)
       if (t < 1) raf.current = requestAnimationFrame(step)
       else done?.()
     }
@@ -115,8 +135,7 @@ export default function PackOpener({ pack, cards }: Props) {
       e.preventDefault()
       if (sealed) {
         setSpaceTore(true)
-        setTearOff({ x: 46, y: -26 })
-        animateTear(tear, 1, AUTOTEAR_MS, () => {
+        animateTear(1, AUTOTEAR_MS, () => {
           slicePack()
           autoOpen()
         })
@@ -126,7 +145,7 @@ export default function PackOpener({ pack, cards }: Props) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sealed, tear, spaceTore, animateTear, slicePack, autoOpen, throwTop])
+  }, [sealed, spaceTore, animateTear, slicePack, autoOpen, throwTop])
 
   // The grid waits for the last card to actually land.
   useEffect(() => {
@@ -137,23 +156,35 @@ export default function PackOpener({ pack, cards }: Props) {
 
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
   const origin = useRef<{ x: number; y: number } | null>(null)
+  const last = useRef<{ x: number; y: number } | null>(null)
   const surface = useRef<HTMLDivElement>(null)
 
   const onPointerDown = (e: React.PointerEvent) => {
     origin.current = { x: e.clientX, y: e.clientY }
+    last.current = { x: e.clientX, y: e.clientY }
     surface.current?.setPointerCapture(e.pointerId)
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!origin.current) return
+    if (sealed) {
+      // Every millimetre the pointer travels feeds the rip, in any direction.
+      // Torn foil does not knit itself back together when the hand comes back,
+      // so pulling, sawing and scrubbing all make progress.
+      const prev = last.current ?? origin.current
+      const travel = Math.hypot(e.clientX - prev.x, e.clientY - prev.y)
+      last.current = { x: e.clientX, y: e.clientY }
+      const next = clamp(tearRef.current + travel / TEAR_PX, 0, 1)
+      setTearBoth(next)
+      if (next >= 1) {
+        origin.current = null
+        slicePack()
+      }
+      return
+    }
     const dx = e.clientX - origin.current.x
     const dy = e.clientY - origin.current.y
-    if (sealed) {
-      setTearOff({ x: dx, y: dy })
-      setTear(clamp(Math.hypot(dx, dy) / TEAR_PX, 0, 1))
-    } else {
-      setDrag({ x: dx, y: dy })
-    }
+    setDrag({ x: dx, y: dy })
   }
 
   const release = (e: React.PointerEvent) => {
@@ -164,9 +195,10 @@ export default function PackOpener({ pack, cards }: Props) {
     const dx = e.clientX - start.x
     const dy = e.clientY - start.y
 
+    // A partial tear stays torn: it is the one thing about a wrapper that
+    // cannot be taken back, and springing shut made the seam meaningless.
     if (sealed) {
-      if (tear >= 0.6) animateTear(tear, 1, 150, slicePack)
-      else animateTear(tear, 0, 220)
+      last.current = null
       return
     }
     setDrag(null)
@@ -190,15 +222,15 @@ export default function PackOpener({ pack, cards }: Props) {
   return (
     <div className="pack-opener">
       <div
-        className={`pack-area ${sealed ? 'is-sealed' : ''}`}
+        className={`pack-area foil-${rarity} ${sealed ? 'is-sealed' : ''}`}
         ref={surface}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={release}
         onPointerCancel={() => {
           origin.current = null
-          if (sealed) animateTear(tear, 0, 200)
-          else setDrag(null)
+          last.current = null
+          if (!sealed) setDrag(null)
         }}
         style={{ ['--tear' as string]: tear }}
         role="button"
@@ -250,21 +282,27 @@ export default function PackOpener({ pack, cards }: Props) {
 
         {sealed && (
           <div className="pack-wrap" aria-hidden="true">
-            <span className="pack-body" />
+            {/* One piece of foil, clipped to whatever the rip has left of it.
+                Seamless until torn, because there is no seam to see yet. */}
+            <span className="pack-foil" style={{ clipPath: foilPath(tear) }}>
+              <span className="pack-strip" />
+              <span className="pack-mark">
+                <span className="pack-brand">ANICO</span>
+                <span className="pack-sub">{cards.length} cards</span>
+              </span>
+            </span>
+            {/* The strip coming away, curling as it goes. */}
             <span
-              className="pack-lid"
+              className="pack-flap"
               style={{
-                transform: `translate3d(${tearOff.x * tear}px, ${tearOff.y * tear - tear * 90}px, 0) rotate(${tearOff.x * tear * 0.07}deg)`,
-                opacity: 1 - tear * 0.9,
+                clipPath: flapPath(tear),
+                transform: `translate3d(${-tear * 10}px, ${-tear * 26}px, 0) rotate(${-tear * 5}deg)`,
+                opacity: 1 - tear * 0.35,
               }}
             >
               <span className="pack-strip" />
             </span>
-            <span className="pack-mark">
-              <span className="pack-brand">ANICO</span>
-              <span className="pack-sub">{cards.length} cards</span>
-            </span>
-            <span className="pack-rip" />
+            <span className="pack-glint" style={{ opacity: tear > 0 && tear < 1 ? 1 : 0 }} />
           </div>
         )}
       </div>
