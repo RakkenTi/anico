@@ -132,9 +132,10 @@ lines of four levels, each level three times the price of the one below it. Badg
 the rules of the loop (pack size, guarantees, wish slots, drop rates) rather than paying
 out once.
 
-**Upgrade** — the other half of the shop: four lines with no last level worth reaching
-(Deeper Packs, Swift Hands, Appraisal, Fortune), each level costing a fixed multiple of
-the last. Badges give the game its shape; upgrades give it its curve.
+**Upgrade** — the other half of the shop: six lines with no last level worth reaching
+(Deeper Packs, Both Hands, Swift Hands, Appraisal, Fortune, The Automaton), each level
+costing a fixed multiple of the last. Badges give the game its shape; upgrades give it
+its curve.
 
 **Icon** — the game art, all of it Kenney's CC0 packs, vendored in `src/assets/icons` and
 painted as CSS masks so one file serves every theme. Never drawn by hand here: the
