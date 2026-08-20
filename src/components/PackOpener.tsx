@@ -127,25 +127,35 @@ export default function PackOpener({ pack, cards }: Props) {
    */
   const [spaceTore, setSpaceTore] = useState(false)
 
+  /**
+   * Open the whole thing. Space does this from sealed, and so does the button,
+   * which is the only way to reach it on a phone: there is no space bar there,
+   * and tapping the stack deliberately means one card at a time.
+   */
+  const openAll = useCallback(() => {
+    if (sealed) {
+      setSpaceTore(true)
+      animateTear(1, AUTOTEAR_MS, () => {
+        slicePack()
+        autoOpen()
+      })
+    } else {
+      autoOpen()
+    }
+  }, [sealed, animateTear, slicePack, autoOpen])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' && e.key !== ' ') return
       const el = document.activeElement
       if (el instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
       e.preventDefault()
-      if (sealed) {
-        setSpaceTore(true)
-        animateTear(1, AUTOTEAR_MS, () => {
-          slicePack()
-          autoOpen()
-        })
-      } else if (!spaceTore) {
-        throwTop(1)
-      }
+      if (sealed) openAll()
+      else if (!spaceTore) throwTop(1)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sealed, spaceTore, animateTear, slicePack, autoOpen, throwTop])
+  }, [sealed, spaceTore, openAll, throwTop])
 
   // The grid waits for the last card to actually land.
   useEffect(() => {
@@ -297,7 +307,9 @@ export default function PackOpener({ pack, cards }: Props) {
               style={{
                 clipPath: flapPath(tear),
                 transform: `translate3d(${-tear * 10}px, ${-tear * 26}px, 0) rotate(${-tear * 5}deg)`,
-                opacity: 1 - tear * 0.35,
+                // Torn foil is still foil: it stays solid until it is nearly
+                // away, rather than going translucent over the cards it covers.
+                opacity: tear > 0.82 ? Math.max(0, 1 - (tear - 0.82) * 4) : 1,
               }}
             >
               <span className="pack-strip" />
@@ -310,7 +322,7 @@ export default function PackOpener({ pack, cards }: Props) {
       <p className="pack-hint">
         {sealed ? (
           <>
-            Drag across the pack to tear it open, or press <kbd>Space</kbd>.
+            Drag across the pack to tear it open.
           </>
         ) : (
           <>
@@ -319,6 +331,11 @@ export default function PackOpener({ pack, cards }: Props) {
           </>
         )}
       </p>
+
+      <button className="btn btn-quiet pack-skip" onClick={openAll}>
+        {sealed ? 'Tear it open' : 'Open the rest'}
+        <kbd aria-hidden="true">Space</kbd>
+      </button>
     </div>
   )
 }

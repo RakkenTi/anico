@@ -100,7 +100,10 @@ export default function RollView() {
       : -1
 
   return (
-    <div className={`roll-view ${mega ? 'mega' : ''}`}>
+    /* `opening` marks the stretch from a sealed pack to the last card landing.
+       On a phone the controls stand down for it: there is nothing to press
+       while a pack is being opened, and the bar was crowding the cards. */
+    <div className={`roll-view ${mega ? 'mega' : ''} ${pack ? 'opening' : ''}`}>
       <div className="roll-stage" ref={stageRef}>
         {s.rolling ? (
           <div className="card-back" aria-label="Summoning…">
@@ -222,8 +225,10 @@ export default function RollView() {
           )}
         </div>
 
-        {entry && !s.rolling && (
-          <div className="claim-bar">
+        {/* Nothing about the contents until the wrapper is off: the bar was
+            naming a card while the pack was still sealed. */}
+        {entry && !s.rolling && !(s.pack && s.pack.state === 'sealed') && (
+          <div className={`claim-bar ${entry.owned ? 'is-note' : ''}`}>
             <div className="claim-bar-info">
               <span className="claim-bar-name">{entry.char.name}</span>
               <span className="claim-bar-value" title="Credit value">{entry.char.creditValue.toLocaleString()}</span>

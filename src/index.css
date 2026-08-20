@@ -477,6 +477,8 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   min-width: 0;
   position: relative;
   z-index: 0;
+  /* The stack fans past its own box; clip rather than let it scroll the page. */
+  overflow-x: clip;
 }
 .roll-rail {
   position: sticky;
@@ -1037,12 +1039,14 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .roll-rail {
     order: 1;
     position: sticky;
-    bottom: 0;
+    /* The tab dock floats at the bottom of the screen in the default layout,
+       so the controls stop above it rather than sliding underneath. */
+    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
     z-index: 20;
     gap: 10px;
     /* Bleed to the screen edges so it reads as a bar rather than a card. */
-    margin: 0 -18px -40px;
-    padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    margin: 0 -18px;
+    padding: 12px 18px 14px;
     background: var(--bg);
     border-top: 1px solid var(--line-value);
   }
@@ -1054,6 +1058,15 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   /* The rail is a bar, so its extras stay on one line where they can. */
   .claim-bar { margin: 0; }
   .roll-view .btn-summon { flex: 1; }
+  /* While a pack is open there is nothing in the rail worth pressing, and the
+     cards want every pixel it was using. It comes back once all ten are out. */
+  .roll-view.opening .roll-rail { display: none; }
+  .roll-view.opening { grid-template-rows: minmax(0, 1fr); }
+  /* The bar floats over the spread, so it has to earn its height. The meta
+     line repeats what the header already says, and a claim bar with nothing
+     left to claim is a caption rather than a control. */
+  .roll-meta { display: none; }
+  .claim-bar.is-note { display: none; }
 }
 @media (max-width: 620px) {
   /* Reclaim vertical space: the header was wrapping to three rows of stats
@@ -1065,7 +1078,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .stat-daily { margin-left: 6px; padding: 3px 10px; }
   .brand-name { font-size: 1.15rem; }
   .tabs { margin: 12px 0 16px; }
-  .roll-rail { margin: 0 -14px -40px; padding-left: 14px; padding-right: 14px; }
+  .roll-rail { margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
 
   .tab { padding: 10px 12px 11px; }
   .tab-label { display: none; }
@@ -1076,11 +1089,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
     width: min(100%, clamp(180px, calc(58vh - 180px), 260px));
     width: min(100%, clamp(180px, calc(58dvh - 180px), 260px));
   }
-  /* A pack is the one thing that must fit between the tabs and the rail. */
-  .pack-area {
-    width: min(100%, clamp(170px, calc(52dvh - 150px), 250px));
-  }
-  .pack-hint { font-size: 0.78rem; }
   .modal-body { flex-direction: column; }
   .modal-art { width: 100%; min-height: 0; max-height: 46vh; }
   .brand-jp { display: none; }
@@ -1454,6 +1462,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   align-items: center;
   gap: 18px;
   width: 100%;
+  /* The stack fans upwards, so the deepest card sits above the top card's box.
+     Leave it that much room or it runs under the header. */
+  padding-top: 34px;
 }
 .pack-area {
   position: relative;
@@ -1466,6 +1477,15 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   cursor: grab;
 }
 .pack-area:active { cursor: grabbing; }
+/* A pack has to fit between the header and the controls without scrolling,
+   and the stack fans past its right edge, so leave room for that too. */
+@media (max-width: 860px) {
+  .pack-area {
+    width: min(calc(100% - 44px), clamp(150px, calc(46dvh - 120px), 240px));
+  }
+  .pack-hint { font-size: 0.78rem; max-width: 30ch; }
+  .pack-opener { gap: 12px; }
+}
 .pack-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 8px; }
 
 .pack-stack { position: relative; }
@@ -1518,10 +1538,14 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   background-color: var(--foil, var(--surface-2));
   background-image:
     /* the sheen that travels across real foil as it tilts */
-    linear-gradient(112deg, transparent 26%, rgba(255, 255, 255, 0.18) 40%, transparent 56%),
+    linear-gradient(112deg, transparent 34%, rgba(255, 255, 255, 0.2) 50%, transparent 66%),
     /* faint holographic banding */
     repeating-linear-gradient(74deg, rgba(255, 255, 255, 0.055) 0 3px, transparent 3px 9px),
     linear-gradient(168deg, rgba(255, 255, 255, 0.1) 0%, rgba(0, 0, 0, 0.36) 100%);
+  /* Only the sheen is oversized, so only the sheen travels. A static band just
+     looked like a shimmer that had stopped halfway. */
+  background-size: 280% 100%, auto, auto;
+  animation: foilSheen 4.2s linear infinite;
   box-shadow: inset 0 0 0 1px var(--foil-edge, var(--line-strong));
 }
 /* The strip coming away sits above what is left of the pack. */
@@ -1609,9 +1633,13 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   background-size: 240% 100%, auto, auto;
   animation: foilShift 5s linear infinite;
 }
+@keyframes foilSheen {
+  from { background-position: 140% 0, 0 0, 0 0; }
+  to { background-position: -140% 0, 0 0, 0 0; }
+}
 @keyframes foilShift {
-  from { background-position: 0% 0, 0 0, 0 0; }
-  to { background-position: 240% 0, 0 0, 0 0; }
+  from { background-position: 140% 0, 0 0, 0 0; }
+  to { background-position: -140% 0, 0 0, 0 0; }
 }
 
 .pack-hint {
@@ -1624,6 +1652,29 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   line-height: 1.55;
 }
 .pack-hint b { color: var(--text); font-variant-numeric: tabular-nums; }
+.pack-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 16px;
+  font-size: 0.78rem;
+}
+.pack-skip kbd {
+  font-family: var(--mono, monospace);
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  color: var(--text-dim);
+}
+/* No keyboard to name on a touch screen. */
+@media (hover: none) and (pointer: coarse) {
+  .pack-skip kbd { display: none; }
+  .pack-hint kbd { display: none; }
+}
+
 .pack-hint kbd {
   font-family: var(--mono, monospace);
   font-size: 0.76rem;
@@ -1638,6 +1689,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .pack-card.departing { animation-duration: 0.14s; }
   .pack-card.top { transition-duration: 0.1s; }
+  .pack-foil,
+  .pack-flap { animation: none; }
 }
 
 /* ------------------------------------------------ mode picker */
