@@ -40,3 +40,23 @@ that matter need thousands of pulls, and neither should require a human finger.
 The Automaton runs on the client, calls the same endpoint a player would, and is
 refused by the server on exactly the same terms — it can never do anything a
 player could not, only more patiently.
+
+## The lock, and why auto-sell waits
+
+Auto-sell used to fire the moment a card landed. That is the obvious
+implementation and it makes one thing impossible: looking at a spread and
+deciding to keep something. By the time the cards were on screen the ones below
+the floor were already money, so the setting was all-or-nothing — either you
+trusted it with everything or you turned it off and tidied by hand.
+
+**A summon queues; the next summon sells.** What lands below the floor is
+written down as a candidate and sold when you press the button again, which
+makes the gap between two summons the window in which you can change your mind.
+The **lock** is what you do in that window: a locked stack is skipped by the
+sweep, skipped by a bulk sale, and refused by the sell endpoint outright, so the
+button means what it says everywhere rather than only in the place it was added.
+
+The lock is checked when the sweep runs rather than when the card landed, so
+locking works right up until the moment the next summon starts. Nothing is ever
+sold behind your back on the strength of a decision you made a hundred pulls
+ago.

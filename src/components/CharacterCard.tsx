@@ -22,6 +22,8 @@ interface Props {
   /** Painted on the artwork: the spread's new/dupe/wish tag lives here so it
    *  cannot come to rest on top of the name, series or value. */
   overlay?: React.ReactNode
+  /** Kept on purpose: wears a lock, and nothing sells it by accident. */
+  locked?: boolean
   /** Bulk mode: the card carries a checkbox instead of opening a detail view. */
   selectable?: boolean
   selected?: boolean
@@ -36,6 +38,7 @@ export default function CharacterCard({
   footer,
   compact,
   wished,
+  locked,
   overlay,
   selectable,
   selected,
@@ -45,7 +48,7 @@ export default function CharacterCard({
   const rarity = rarityOf(character.creditValue)
   return (
     <div
-      className={`char-card rarity-${rarity.key} ${compact ? 'compact' : ''} ${wished ? 'wished' : ''} ${onClick ? 'clickable' : ''} ${selectable ? 'selectable' : ''} ${selected ? 'picked' : ''} ${stars > 0 ? `starred star-${Math.min(stars, 6)}` : ''}`}
+      className={`char-card rarity-${rarity.key} ${compact ? 'compact' : ''} ${wished ? 'wished' : ''} ${onClick ? 'clickable' : ''} ${selectable ? 'selectable' : ''} ${selected ? 'picked' : ''} ${stars > 0 ? `starred star-${Math.min(stars, 6)}` : ''} ${locked ? 'locked' : ''}`}
       onClick={onClick}
       role={selectable ? 'checkbox' : onClick ? 'button' : undefined}
       aria-checked={selectable ? !!selected : undefined}
@@ -60,6 +63,7 @@ export default function CharacterCard({
             <b>{rarity.kanji}</b> <span className="tag-word">{rarity.name}</span>
           </span>
           {wished && <span className="wish-mark" title="On your wishlist">★</span>}
+          {locked && <span className="lock-mark" title="Locked: nothing sells this">🔒</span>}
           {overlay}
           {stars > 0 && (
             <span className="star-mark" title={`${STAR_NAMES[Math.min(stars, MAX_STARS)]} · ${copies ?? 0} copies merged`}>

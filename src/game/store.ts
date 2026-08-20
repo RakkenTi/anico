@@ -155,7 +155,7 @@ interface GameState {
   signOut: () => Promise<void>
 
   tick: () => void
-  roll: (count?: number) => Promise<void>
+  roll: (packs?: number) => Promise<void>
   selectRolled: (index: number) => void
   setRollSort: (sort: 'dealt' | 'rarity') => void
   setAutoSpin: (on: boolean) => Promise<void>
@@ -167,6 +167,7 @@ interface GameState {
   revealNext: (index: number) => void
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
+  lock: (id: number, locked: boolean) => Promise<void>
   sell: (id: number) => Promise<void>
   sellMany: (ids: number[]) => Promise<void>
   addWish: (char: RolledCharacter) => Promise<void>
@@ -355,15 +356,15 @@ export const useGame = create<GameState>()((set, get) => {
 
     tick: () => set((s) => ({ now: Date.now() + s.clockOffset })),
 
-    roll: async (count = 1) => {
+    roll: async (packs = 0) => {
       const s = get()
       // A pack keeps the button until its last card is out. Pulling again
       // mid-open used to wipe a spread nobody had finished looking at, and it
       // made the tearing optional in a way that rather defeated the pack.
       if (s.rolling || s.now < s.dealUntil || s.packBusy()) return
-      sfx.rollStart(count)
+      sfx.rollStart(packs > 0 ? s.packSize : 1)
       set({ rolling: true, error: null })
-      const res = await guard(() => api.roll(count))
+      const res = await guard(() => api.roll(packs))
       if (!res) {
         // The Automaton stops the moment a pull is refused, which is almost
         // always "you cannot afford this any more".
@@ -405,9 +406,9 @@ export const useGame = create<GameState>()((set, get) => {
       }
       for (const note of res.notes) get().pushToast(note, 'credits')
       if (res.notes.length > 0) sfx.payout(0.3)
-      if (res.autoSold > 0) {
+      if (res.swept > 0) {
         get().pushToast(
-          `Auto-sold ${fmtCount(res.autoSold)} card${res.autoSold === 1 ? '' : 's'} for +${fmt(res.autoSoldFor)} credits`,
+          `Auto-sold ${fmtCount(res.swept)} card${res.swept === 1 ? '' : 's'} from the last summon for +${fmt(res.sweptFor)} credits`,
           'credits',
         )
       }
@@ -560,6 +561,25 @@ export const useGame = create<GameState>()((set, get) => {
         `Daily offering: +${res.amount} credits${res.streak > 1 ? ` (day ${res.streak} streak)` : ''}`,
         'credits',
       )
+    },
+
+    /**
+     * Keep this one.
+     *
+     * The spread is updated straight away as well as the collection: a card
+     * that has just been queued for auto-sell is exactly the card somebody is
+     * looking at when they press this, and it should stop saying it is for
+     * sale the moment they do.
+     */
+    lock: async (id, locked) => {
+      sfx.tap()
+      set((prev) => ({
+        rolled: prev.rolled.map((r) =>
+          r.char.id === id ? { ...r, locked, willSell: locked ? false : r.willSell } : r,
+        ),
+      }))
+      const res = await guard(() => api.lock(id, locked))
+      if (res) apply(res.state)
     },
 
     sell: async (id) => {

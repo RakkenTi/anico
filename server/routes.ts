@@ -182,7 +182,7 @@ export function createApp(db: DB, config: Config) {
 
   api.post('/roll', async (c) => {
     const b = await body(c)
-    const { snapshot, ...roll } = game.roll(db, c.get('player'), Number(b.count ?? 1))
+    const { snapshot, ...roll } = game.roll(db, c.get('player'), Number(b.packs ?? 0))
     return c.json({ ...roll, state: snapshot })
   })
 
@@ -203,6 +203,13 @@ export function createApp(db: DB, config: Config) {
   api.post('/daily', (c) => {
     const { snapshot, amount, streak } = game.claimDaily(db, c.get('player'))
     return c.json({ state: snapshot, amount, streak })
+  })
+
+  api.post('/lock', async (c) => {
+    const b = await c.req.json<{ characterId?: number; locked?: boolean }>()
+    return c.json({
+      state: game.setLocked(db, c.get('player'), Number(b.characterId), !!b.locked),
+    })
   })
 
   api.post('/sell', async (c) => {

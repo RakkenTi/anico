@@ -62,8 +62,10 @@ export interface RollResult {
   fresh?: boolean
   /** The star of the stack this card joined, if it joined one. */
   stars?: number
-  /** Sold on arrival by the auto-sell setting. */
-  autoSold?: boolean
+  /** Queued by auto-sell: sold when the next summon starts, unless locked. */
+  willSell?: boolean
+  /** Kept on purpose. Set optimistically by the lock button. */
+  locked?: boolean
 }
 
 /** Everything one press produced, beyond the cards it put on screen. */
@@ -76,8 +78,11 @@ export interface RollSummary {
   claimed: number
   bonus: number
   coins: number
-  autoSold: number
-  autoSoldFor: number
+  /** Cards this summon queued for auto-sell. */
+  queued: number
+  /** Cards the previous summon's queue just sold, and what they fetched. */
+  swept: number
+  sweptFor: number
   merged: number
   /** Wishes fulfilled, series sets completed: anything worth saying out loud. */
   notes: string[]
@@ -137,11 +142,14 @@ export const api = {
   state: () => request<Snapshot>('/state'),
   catalog: () => request<CatalogStatus>('/catalog'),
 
-  roll: (count: number) =>
-    post<RollSummary & { results: RollResult[]; state: Snapshot }>('/roll', { count }),
+  /** `packs` is how many wrappers to tear: zero is the free single card. */
+  roll: (packs: number) =>
+    post<RollSummary & { results: RollResult[]; state: Snapshot }>('/roll', { packs }),
   autoSpin: (on: boolean) => post<{ state: Snapshot }>('/auto', { on }),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
+  lock: (characterId: number, locked: boolean) =>
+    post<{ state: Snapshot }>('/lock', { characterId, locked }),
   sell: (ids: number[]) => post<{ state: Snapshot; total: number; sold: number }>('/sell', { ids }),
   addWish: (characterId: number) => post<{ state: Snapshot }>('/wish', { characterId }),
   removeWish: (characterId: number) =>

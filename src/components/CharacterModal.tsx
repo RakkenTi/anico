@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { OwnedCharacter } from '../game/types'
 import { MAX_STARS, STAR_NAMES, rarityOf } from '../game/economy'
 import { sfx } from '../game/sound'
+import { useGame } from '../game/store'
 import { fmt, fmtCount } from '../game/format'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function CharacterModal({ character, onClose, onSell }: Props) {
+  const lock = useGame((s) => s.lock)
   const rarity = rarityOf(character.creditValue)
   const copies = character.copies ?? 1
   const stars = character.stars ?? 0
@@ -86,12 +88,26 @@ export default function CharacterModal({ character, onClose, onSell }: Props) {
               <dt>AniList favourites</dt><dd>{character.favourites.toLocaleString()}</dd>
               <dt>Claimed</dt><dd>{new Date(character.claimedAt).toLocaleDateString()}</dd>
             </dl>
-            {/* Selling takes the whole stack, so the button says so rather
-                than quoting one card's worth of a pile of eight. */}
-            <button className="btn btn-sell" onClick={onSell}>
-              Sell {copies > 1 ? `all ${copies}` : ''} for{' '}
-              {fmt(character.stackValue ?? character.creditValue)} credits
-            </button>
+            <div className="modal-actions">
+              {/* Selling takes the whole stack, so the button says so rather
+                  than quoting one card's worth of a pile of eight. */}
+              <button className="btn btn-sell" onClick={onSell} disabled={character.locked}>
+                {character.locked
+                  ? 'Locked'
+                  : `Sell ${copies > 1 ? `all ${copies}` : ''} for ${fmt(character.stackValue ?? character.creditValue)} credits`}
+              </button>
+              <button
+                className={`btn ${character.locked ? 'btn-primary' : 'btn-ghost'} lock-btn`}
+                onClick={() => lock(character.id, !character.locked)}
+                title={
+                  character.locked
+                    ? 'Unlock: this can be sold again'
+                    : 'Lock: never auto-sold, and skipped by a bulk sale'
+                }
+              >
+                {character.locked ? '🔒 Locked' : 'Lock'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

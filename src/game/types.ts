@@ -17,6 +17,8 @@ export interface RolledCharacter {
 
 export interface OwnedCharacter extends RolledCharacter {
   claimedAt: number
+  /** Kept on purpose: never auto-sold, and skipped by a bulk sale. */
+  locked: boolean
   /** How many of this character the player holds. */
   copies: number
   /** The star the stack has merged to, one per doubling. */

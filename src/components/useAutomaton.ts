@@ -42,7 +42,7 @@ export function useAutomaton(watching: boolean) {
         st.pushToast('The Automaton stops: not enough credits for the next pull.', 'info')
         return
       }
-      void st.roll(st.cardsPerPull)
+      void st.roll(st.packsPerPull)
     }, autoSpinMs)
     return () => clearInterval(id)
   }, [autoSpin, autoSpinMs])
