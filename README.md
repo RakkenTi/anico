@@ -86,10 +86,47 @@ and login appears to do nothing.
 `ANICO_IMAGE` and `COOKIE_SECURE` are read from `.env` by compose itself; the rest are
 container environment variables.
 
+### Where the data lives
+
+The compose file mounts a **named volume**, not a host directory:
+
+| | |
+| --- | --- |
+| Volume | `anico_anico-data` |
+| On the host | `/var/lib/docker/volumes/anico_anico-data/_data` |
+| In the container | `/data`, holding `anico.db` and its `-wal` / `-shm` sidecars |
+
+It survives `docker compose down`, image upgrades and container recreation. It is deleted
+by `docker compose down -v`, which is the one command worth being careful with.
+
+Prefer the database in a directory you can see? Swap the mount in `docker-compose.yml`:
+
+```yaml
+    volumes:
+      - ./data:/data
+```
+
+The container runs as uid 1000, and a bind mount keeps the host directory's ownership
+rather than the image's, so create it first or the server cannot write:
+
+```sh
+mkdir -p data && sudo chown 1000:1000 data
+```
+
 ### Backups
 
-The entire instance is one SQLite file. Copy `anico.db` (with its `-wal` sidecar, or stop
-the container first) and you have everything: accounts, collections, catalog.
+The entire instance is one SQLite file: accounts, collections, catalog. Stop the
+container so the write-ahead log is folded in, then archive the volume:
+
+```sh
+docker compose stop
+docker run --rm -v anico_anico-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/anico-$(date +%F).tar.gz -C /data .
+docker compose start
+```
+
+Restoring is the same command with `tar xzf`. Copying `anico.db` while the instance is
+running works only if you take the `-wal` and `-shm` files with it.
 
 ## Development
 
