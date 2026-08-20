@@ -439,6 +439,25 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   font-size: 0.85rem;
 }
 
+/* Bulk mode: a checkbox on the artwork, and the frame picks up the accent
+   so a selected card reads at a glance in a grid of forty. */
+.pick-mark {
+  position: absolute; bottom: 8px; right: 8px;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--on-accent);
+  background: rgba(10, 12, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+.pick-mark.on { background: var(--accent); border-color: var(--accent-down); }
+.char-card.selectable { cursor: pointer; }
+.char-card.selectable:hover .card-frame { transform: none; }
+.char-card.picked .card-frame { box-shadow: 0 0 0 1px var(--bg), 0 0 0 3px var(--accent); }
+.char-card.picked .char-image-wrap img { filter: brightness(0.78); }
+
 .char-info { padding: 10px 12px 8px; }
 .char-name {
   font-family: var(--serif);
@@ -491,11 +510,6 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 /* Card width is tied to viewport height so the full card (image + info)
    fits beside the rail without scrolling: total ≈ 1.5×width + ~64px info,
    with ~180px of header/tabs overhead above it. */
-.roll-reveal {
-  width: min(100%, clamp(210px, calc(64vh - 160px), 330px));
-  width: min(100%, clamp(210px, calc(64dvh - 160px), 330px));
-  perspective: 1000px;
-}
 
 /* True card flip: every rolled card starts face-down (the .flip-back is
    the visible 180° face), then the flipper rotates to the front. The
@@ -506,7 +520,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   transform-style: preserve-3d;
   animation: cardflip 0.45s cubic-bezier(0.3, 0.6, 0.3, 1) backwards;
 }
-.roll-reveal .flip-inner { animation-duration: 0.6s; }
+.roll-spread.single .flip-inner { animation-duration: 0.6s; }
 .flip-inner > .char-card { backface-visibility: hidden; }
 @keyframes cardflip {
   from { transform: rotateY(180deg); }
@@ -528,7 +542,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   border-radius: 4px;
   box-shadow: 0 0 0 1px var(--bg);
 }
-.roll-reveal .flip-back { font-size: 3.2rem; }
+.roll-spread.single .flip-back { font-size: 2.6rem; }
 
 @keyframes reveal {
   from { opacity: 0; transform: perspective(900px) rotateY(72deg) scale(0.94); }
@@ -546,6 +560,20 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
      keeps a spread inside the viewport; within that, let it have the room. */
   max-width: clamp(360px, calc(215vh - 480px), 1280px);
   max-width: clamp(360px, calc(215dvh - 480px), 1280px);
+  perspective: 1000px;
+}
+/* One card is the same card, in one column. A single summon used to render
+   through a layout of its own at nearly twice this width, which on a phone
+   pushed its own name and value off the bottom of the screen. */
+/* Sized from the height left over between the header and the controls, since
+   a card is 1.5x its width plus its info strip. The line through (640px tall,
+   155px wide) and (844px tall, 280px wide) keeps the whole card -- name and
+   value included -- above the summon bar on a short phone without shrinking it
+   on anything taller. */
+.roll-spread.single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: min(100%, clamp(150px, calc(61vh - 235px), 300px));
+  max-width: min(100%, clamp(150px, calc(61dvh - 235px), 300px));
 }
 /* Mega spreads (>20 cards, sandbox ×100): dual-pane layout with the page
    locked to the viewport. html.mega-lock removes page scrolling entirely;
@@ -611,7 +639,11 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   animation-delay: var(--deal-delay, 0ms);
 }
 /* Owned/dupe tags wait until their card has flipped face-up. */
-.spread-slot .spread-tag {
+.spread-slot .spread-tag.wished {
+  color: var(--value-soft);
+  border-color: var(--value);
+}
+.spread-tag {
   animation: fadeIn 0.25s ease-out backwards;
   animation-delay: calc(var(--deal-delay, 0ms) + 320ms);
 }
@@ -643,6 +675,10 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   .spread-slot .spread-tag,
   .spread-slot.spotlight .card-frame { animation: none; }
 }
+.spread-tag.wished {
+  color: var(--value-soft);
+  border-color: var(--value);
+}
 .spread-tag {
   position: absolute;
   bottom: 8px; right: 8px;
@@ -657,15 +693,6 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   border-radius: 2px;
   padding: 2px 6px;
   pointer-events: none;
-}
-
-.wish-banner {
-  text-align: center;
-  font-family: var(--serif);
-  color: var(--value-soft);
-  letter-spacing: 0.22em;
-  font-size: 0.85rem;
-  margin-bottom: 8px;
 }
 
 .card-back {
@@ -825,14 +852,41 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   color: var(--teal); border: 1px solid var(--teal); border-radius: 2px; padding: 3px 6px;
 }
 
-.search-row { display: flex; gap: 10px; margin-bottom: 16px; }
-.search-row input { flex: 1; }
+/* The button was being pushed out of the panel on a phone: an input's
+   intrinsic min-width is its size attribute, so `flex: 1` refused to shrink
+   below about 200px and the row overflowed rather than wrapping. */
+.search-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.search-row input { flex: 1 1 200px; min-width: 0; }
+.search-row .btn { flex: 0 0 auto; }
 
 .empty-state { text-align: center; color: var(--text-dim); padding: 56px 20px; }
 .empty-state.small { padding: 22px; }
 .empty-glyph { font-family: var(--serif); font-size: 3.2rem; color: var(--line-strong); margin-bottom: 10px; }
 
 .confirm-row { display: flex; gap: 8px; }
+
+/* Bulk selling bar. Sticky rather than fixed: it belongs to the collection,
+   and it rides the bottom of the screen because the picking happens at the
+   top of a long scroll while the decision happens wherever you stop. */
+.bulk-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 25;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+.bulk-count { font-size: 0.86rem; color: var(--text-dim); margin-right: auto; }
+.bulk-count b { color: var(--text); font-variant-numeric: tabular-nums; }
+.bulk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bulk-actions .btn { white-space: nowrap; }
 
 /* ------------------------------------------------ modal */
 .modal-backdrop {
@@ -920,17 +974,26 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .lvl-roman { display: inline-block; min-width: 20px; color: var(--badge-color); font-weight: 700; }
 .badge-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
 
-.item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-.item-card {
-  display: flex; align-items: center; gap: 14px;
-  border: 1px solid var(--line); border-radius: 4px;
-  background: var(--surface-2); padding: 14px 16px;
+/* The status pair above the badge tree: what a pack holds, and what it
+   promises. Two facts, so they read as a caption rather than a table. */
+.shop-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 4px;
 }
-.item-icon { font-family: var(--serif); font-size: 1.4rem; color: var(--value-soft); }
-.item-body { flex: 1; }
-.item-name { font-weight: 700; font-size: 0.92rem; }
-.item-desc { margin: 2px 0 0; color: var(--text-dim); font-size: 0.78rem; }
-.item-card .btn { width: auto; white-space: nowrap; }
+.shop-status > div { min-width: 0; }
+.shop-status dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.shop-status dd { margin: 3px 0 0; font-size: 0.88rem; }
 
 /* ------------------------------------------------ settings */
 .settings-view { max-width: 640px; }
@@ -1085,7 +1148,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .tab-kanji { font-size: 1.3rem; }
   .collection-grid, .wish-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
   .roll-spread { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .card-back, .roll-reveal {
+  .card-back {
     width: min(100%, clamp(180px, calc(58vh - 180px), 260px));
     width: min(100%, clamp(180px, calc(58dvh - 180px), 260px));
   }
@@ -1093,7 +1156,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .modal-art { width: 100%; min-height: 0; max-height: 46vh; }
   .brand-jp { display: none; }
   .theme-grid { grid-template-columns: 1fr; }
-  .claim-bar { flex-wrap: wrap; }
+  /* One line, so the bar costs the card as little height as possible: the
+     name shortens, the button never does. */
+  .claim-bar { flex-direction: row; align-items: center; gap: 10px; padding: 9px 12px; }
+  .claim-bar-info { flex: 1; }
+  .claim-bar .btn { flex: 0 0 auto; }
 }
 
 /* ------------------------------------------------ collection header
@@ -1124,6 +1191,91 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .col-filters .chip { background: transparent; }
 .col-filters .chip.active { background: var(--accent-soft); }
+
+/* ------------------------------------------------ collection on a phone
+   The desktop header is a title beside a row of controls, which on a phone
+   collapsed into five half-width boxes and a grid of cards whose names were
+   all ellipsis. Everything below sizes for a 360px screen first: the controls
+   become a two-column block, and a card gets two lines for a name and its own
+   line for the series, because "Kaguya-sama: Love…" is not a series name. */
+@media (max-width: 620px) {
+  .col-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .col-title h2 { font-size: 1.3rem; }
+  .col-meta { font-size: 0.82rem; }
+  .col-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .col-controls .input { width: 100%; min-width: 0; font-size: 0.84rem; padding: 8px 10px; }
+  .col-controls input[type='search'] { grid-column: 1 / -1; min-width: 0; }
+  .col-bulk-toggle { grid-column: 1 / -1; }
+  .col-filters { padding-top: 10px; margin-bottom: 12px; }
+  /* Wrapped chips put ten rows of filters between the title and the first
+     card. One swipeable line each instead, bleeding to the screen edges so it
+     is visibly a rail rather than a clipped row. */
+  .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 6px;
+    margin: 0 -14px 8px;
+    padding: 0 14px 2px;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip-row > * { flex: 0 0 auto; }
+  .chip-row-label { margin-bottom: 0; align-self: center; }
+  .chip { padding: 5px 9px; font-size: 0.76rem; }
+  /* The longest strings on the page: one line each, and never wider than the
+     screen they are being swiped across. */
+  .series-chip { max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .collection-grid, .wish-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .char-card.compact .char-info { padding: 7px 9px 8px; }
+  .char-card.compact .char-name {
+    font-size: 0.84rem;
+    line-height: 1.25;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    /* Two lines' worth either way, so a grid row does not step up and down. */
+    min-height: 2.1em;
+  }
+  .char-card.compact .char-sub {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .char-card.compact .char-series { font-size: 0.72rem; max-width: 100%; }
+  .char-card.compact .char-value { font-size: 0.78rem; }
+  .rarity-tag { font-size: 0.6rem; padding: 2px 5px; top: 6px; left: 6px; }
+  .gender-badge { width: 22px; height: 22px; font-size: 0.82rem; top: 6px; right: 6px; }
+  .wish-mark { width: 24px; height: 24px; font-size: 0.78rem; bottom: 6px; left: 6px; }
+  .pick-mark { width: 24px; height: 24px; font-size: 0.78rem; bottom: 6px; right: 6px; }
+
+  /* The button under a full-width field, at full width: it was the overflow
+     that started this, and half a button beside nothing reads like a bug. */
+  .search-row input { flex: 1 1 100%; }
+  .search-row .btn { width: 100%; }
+
+  .bulk-bar { gap: 8px; padding: 9px 10px; }
+  .bulk-count { width: 100%; margin-right: 0; font-size: 0.8rem; }
+  .bulk-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .bulk-actions .btn { width: 100%; font-size: 0.78rem; padding: 8px 6px; }
+  .bulk-actions .btn:last-child { grid-column: 1 / -1; }
+}
 
 /* ------------------------------------------------ stats page */
 .stats-view { display: flex; flex-direction: column; gap: 18px; }
@@ -1468,8 +1620,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .pack-area {
   position: relative;
-  /* Same measure as .roll-reveal. No forced aspect ratio: the top card is in
-     normal flow and gives the stack its exact height. */
+  /* A card's own measure. No forced aspect ratio: the top card is in normal
+     flow and gives the stack its exact height. */
   width: min(100%, clamp(210px, calc(64vh - 160px), 330px));
   width: min(100%, clamp(210px, calc(64dvh - 160px), 330px));
   touch-action: none;
@@ -1705,32 +1857,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .pack-card.top { transition-duration: 0.1s; }
   .pack-foil,
   .pack-flap { animation: none; }
-}
-
-/* ------------------------------------------------ mode picker */
-.mode-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.mode-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  text-align: left;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--well);
-  color: var(--text);
-  font-family: var(--sans);
-  cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s;
-}
-.mode-card:hover { border-color: var(--line-strong); }
-.mode-card.selected { border-color: var(--accent); background: var(--accent-soft); }
-.mode-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.mode-name { font-weight: 800; letter-spacing: 0.04em; }
-.mode-card.selected .mode-name { color: var(--accent); }
-.mode-blurb { font-size: 0.78rem; color: var(--text-dim); line-height: 1.45; }
-@media (max-width: 620px) {
-  .mode-choice { grid-template-columns: 1fr; }
 }
 
 /* ------------------------------------------------ guarded reset */

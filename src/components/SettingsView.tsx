@@ -1,20 +1,14 @@
 import { useState } from 'react'
 import { useGame, useUi } from '../game/store'
+import { RARITY_NAMES } from '../game/economy'
+import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
 import type { RollGender } from '../game/types'
 
-const POOL_OPTIONS = [
-  { value: 1000, label: '~1,000 (household names only)' },
-  { value: 5000, label: '~5,000 (popular characters)' },
-  { value: 10000, label: '~10,000 (the standard pool)' },
-  { value: 25000, label: '~25,000 (deep cuts included)' },
-]
-
 export default function SettingsView() {
   const settings = useGame((s) => s.settings)
-  const maxRolls = useGame((s) => s.rollsMax)
-  const multiSize = useGame((s) => s.multiSize)
+  const packSize = useGame((s) => s.packSize)
   const sandbox = useGame((s) => s.sandbox)
   const isAdmin = useGame((s) => s.isAdmin)
   const ui = useUi()
@@ -58,8 +52,8 @@ export default function SettingsView() {
             <span>Sound effects</span>
           </label>
           <p className="setting-hint">
-            Card deals, coin handles and chimes. A ×10 summon deals all ten cards
-            in sequence. No music, nothing loops.
+            Card deals, coin handles and chimes. A pack deals every card in
+            sequence. No music, nothing loops.
           </p>
         </div>
         <div className="setting-row">
@@ -113,7 +107,11 @@ export default function SettingsView() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
-          <p className="setting-hint">Rolls draw characters from the most popular series on AniList. Bigger pools reach deeper, more obscure series.</p>
+          <p className="setting-hint">
+            Rolls draw from the instance's catalog, ranked by AniList favourites. The
+            whole catalog is the default; a smaller pool keeps rolls to characters you
+            are more likely to recognise.
+          </p>
         </div>
 
         <div className="setting-row">
@@ -129,69 +127,37 @@ export default function SettingsView() {
         </div>
       </div>
 
+      {/* What used to be two panels of timers: a mode switch and a pacing
+          table. Neither has anything to say now that summoning and claiming
+          cost nothing, so what is left is the one number the shop moves. */}
       <div className="panel">
-        <h2 className="section-title">Mode</h2>
-        <p className="section-sub">How strictly the instance keeps time. Yours alone to pick.</p>
-        <div className="mode-choice">
-          {([
-            {
-              key: 'fun' as const,
-              name: 'Fun',
-              blurb: 'No cooldowns at all: summon and claim as much as you like. The ×10 deals face down and you turn one card over.',
-            },
-            {
-              key: 'normal' as const,
-              name: 'Normal',
-              blurb: 'The paced game: an hourly summon budget, one ×10 a day, one claim an hour. Every card of a ×10 is face up.',
-            },
-          ]).map((m) => (
-            <button
-              key={m.key}
-              className={`mode-card ${settings.mode === m.key ? 'selected' : ''}`}
-              onClick={() => {
-                if (settings.mode !== m.key) {
-                  sfx.tap()
-                  update({ mode: m.key })
-                }
-              }}
-              aria-pressed={settings.mode === m.key}
-            >
-              <span className="mode-name">{m.name}</span>
-              <span className="mode-blurb">{m.blurb}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Pacing is the instance's, not the player's. It used to be three sliders,
-          which on a shared instance just meant everyone set their own difficulty. */}
-      <div className="panel">
-        <h2 className="section-title">Pacing</h2>
+        <h2 className="section-title">Summoning</h2>
         <p className="section-sub">
-          The same for everyone on this instance. Summon more by earning it in the shop,
-          not by moving a slider.
+          Summon and claim as much as you like. Nothing is on a cooldown, and there is
+          no daily allowance to spend.
         </p>
         <dl className="pacing-list">
           <div>
             <dt>Single summon</dt>
+            <dd>always available, one card, yours to claim or leave</dd>
+          </div>
+          <div>
+            <dt>Packs</dt>
             <dd>
-              <b>{maxRolls}</b> per hour
-              {fx.extraRolls > 0 && <span className="bonus"> (+{fx.extraRolls} from badges)</span>}
+              {packSize > 0
+                ? `sealed, ×${packSize} cards, and every card in one is granted`
+                : 'locked until the Sapphire badge in the shop opens them'}
             </dd>
           </div>
           <div>
-            <dt>×{multiSize} summon</dt>
-            <dd>once a day, and it costs no hourly summons</dd>
-          </div>
-          <div>
-            <dt>Claim</dt>
-            <dd>once an hour</dd>
+            <dt>Pack guarantee</dt>
+            <dd>
+              {fx.guaranteeRarity
+                ? `every pack holds a ${RARITY_NAMES[fx.guaranteeRarity]} or better (Emerald)`
+                : 'none yet — the Emerald badge promises a rarity floor'}
+            </dd>
           </div>
         </dl>
-        <p className="setting-hint">
-          Sapphire and Ruby badges raise the hourly count. A Roll Refill tops it back up,
-          and Claim Incense clears a claim cooldown early.
-        </p>
       </div>
 
       <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>
@@ -313,7 +279,7 @@ export default function SettingsView() {
       <p className="attribution">
         Character data & images from <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a>.
         Sound effects (CC0) from <a href="https://kenney.nl/assets" target="_blank" rel="noreferrer">Kenney</a>.
-        A fan-made homage to Mudae's collecting loop.
+        An unaffiliated fan project.
       </p>
     </div>
   )

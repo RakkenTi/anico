@@ -15,22 +15,15 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { LayoutKey, OwnedCharacter, RolledCharacter, ThemeKey, Toast } from './types'
 import { DAILY_INTERVAL_H, rarityOf } from './economy'
-import { computeEffects, type BadgeEffects, type BadgeKey, type Badges } from './badges'
+import { EMPTY_BADGES, computeEffects, type BadgeEffects, type BadgeKey, type Badges } from './badges'
+import { POOL_EVERYTHING } from './pool'
 import { bindSoundSettings, dealStepMs, sfx } from './sound'
 import { ApiError, api, type RollResult, type ServerSettings, type Snapshot } from '../api'
 
-export const CONSUMABLES = {
-  rollRefill: { name: 'Roll Refill', icon: '↻', description: 'Instantly refill your rolls to maximum', cost: 200 },
-  claimReset: { name: 'Claim Incense', icon: '◷', description: 'Make your claim available right now', cost: 500 },
-} as const
-export type ConsumableKey = keyof typeof CONSUMABLES
-
 const HOUR = 3_600_000
-const EMPTY_BADGES: Badges = { bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }
 const EMPTY_SETTINGS: ServerSettings = {
-  mode: 'fun',
   rollGender: 'everyone',
-  poolSize: 10000,
+  poolSize: POOL_EVERYTHING,
   skipOwned: false,
 }
 
@@ -54,15 +47,10 @@ interface GameState {
   wishes: RolledCharacter[]
   badges: Badges
   settings: ServerSettings
-  rollsLeft: number
-  rollsMax: number
-  rollsResetAt: number
-  multiReadyAt: number
-  multiSize: number
-  nextClaimAt: number
+  /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
+  packSize: number
   lastDailyAt: number
   dailyStreak: number
-  lastRitualAt: number
   totalRolls: number
   totalClaims: number
   pendingCoins: { tier: string; amount: number } | null
@@ -84,11 +72,7 @@ interface GameState {
   toasts: Toast[]
 
   effects: () => BadgeEffects
-  maxRolls: () => number
-  claimReady: () => boolean
-  multiReady: () => boolean
   dailyReady: () => boolean
-  ritualReadyAt: () => number
 
   boot: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
@@ -106,13 +90,11 @@ interface GameState {
   revealNext: () => void
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
-  claimRitual: () => Promise<void>
   sell: (id: number) => Promise<void>
   sellMany: (ids: number[]) => Promise<void>
   addWish: (char: RolledCharacter) => Promise<void>
   removeWish: (id: number) => Promise<void>
   buyBadge: (key: BadgeKey) => Promise<void>
-  buyConsumable: (key: ConsumableKey) => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
   grantCredits: (amount: number) => Promise<void>
   resetSave: (username: string, password: string) => Promise<string | null>
@@ -135,15 +117,9 @@ export const useGame = create<GameState>()((set, get) => {
       wishes: s.wishes,
       badges: s.badges,
       settings: s.settings,
-      rollsLeft: s.rollsLeft,
-      rollsMax: s.rollsMax,
-      rollsResetAt: s.rollsResetAt,
-      multiReadyAt: s.multiReadyAt,
-      multiSize: s.multiSize,
-      nextClaimAt: s.nextClaimAt,
+      packSize: s.packSize,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
-      lastRitualAt: s.lastRitualAt,
       totalRolls: s.totalRolls,
       totalClaims: s.totalClaims,
       pendingCoins: s.pendingCoins,
@@ -182,15 +158,9 @@ export const useGame = create<GameState>()((set, get) => {
     wishes: [],
     badges: { ...EMPTY_BADGES },
     settings: { ...EMPTY_SETTINGS },
-    rollsLeft: 0,
-    rollsMax: 0,
-    rollsResetAt: 0,
-    multiReadyAt: 0,
-    multiSize: 10,
-    nextClaimAt: 0,
+    packSize: 0,
     lastDailyAt: 0,
     dailyStreak: 0,
-    lastRitualAt: 0,
     totalRolls: 0,
     totalClaims: 0,
     pendingCoins: null,
@@ -207,29 +177,9 @@ export const useGame = create<GameState>()((set, get) => {
     toasts: [],
 
     effects: () => computeEffects(get().badges),
-    // The server owns the budget; the badge term is already folded into it.
-    maxRolls: () => get().rollsMax,
-    claimReady: () => {
-      const s = get()
-      // Fun mode never advances the claim cooldown server-side, but a stale
-      // one can survive a switch out of normal mode; the client must agree
-      // with the server about that rather than disabling a working button.
-      return s.sandbox || s.settings.mode === 'fun' || s.now >= s.nextClaimAt
-    },
-    multiReady: () => {
-      const s = get()
-      return s.sandbox || s.now >= s.multiReadyAt
-    },
     dailyReady: () => {
       const s = get()
       return s.sandbox || s.now - s.lastDailyAt >= DAILY_INTERVAL_H * HOUR
-    },
-    ritualReadyAt: () => {
-      const s = get()
-      const fx = s.effects()
-      if (!fx.claimResetUnlocked) return Infinity
-      if (s.sandbox) return 0
-      return s.lastRitualAt + fx.claimResetHours * HOUR
     },
 
     boot: async () => {
@@ -421,14 +371,6 @@ export const useGame = create<GameState>()((set, get) => {
       )
     },
 
-    claimRitual: async () => {
-      sfx.wish()
-      const res = await guard(() => api.ritual())
-      if (!res) return
-      apply(res.state)
-      get().pushToast('The ritual is complete. Your claim is ready.', 'info')
-    },
-
     sell: async (id) => {
       sfx.sell()
       const res = await guard(() => api.sell([id]))
@@ -436,12 +378,12 @@ export const useGame = create<GameState>()((set, get) => {
     },
 
     sellMany: async (ids) => {
-      const res = await guard(() => api.sell(ids, true))
+      const res = await guard(() => api.sell(ids))
       if (!res) return
       sfx.sell()
       apply(res.state)
       get().pushToast(
-        `Sold ${res.sold} character${res.sold === 1 ? '' : 's'} for +${res.total} credits (sandbox)`,
+        `Sold ${res.sold} character${res.sold === 1 ? '' : 's'} for +${res.total.toLocaleString()} credits`,
         'credits',
       )
     },
@@ -464,15 +406,6 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.buy()
       const res = await guard(
         () => api.buyBadge(key),
-        (m) => get().pushToast(m, 'info'),
-      )
-      if (res) apply(res.state)
-    },
-
-    buyConsumable: async (key) => {
-      sfx.buy()
-      const res = await guard(
-        () => api.buyItem(key),
         (m) => get().pushToast(m, 'info'),
       )
       if (res) apply(res.state)

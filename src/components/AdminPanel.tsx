@@ -88,7 +88,7 @@ export default function AdminPanel() {
         <label>Catalog</label>
         {catalog ? (
           <>
-            <div className="hp-bar catalog-bar" title={`${catalog.page} of ${catalog.total} pages`}>
+            <div className="hp-bar catalog-bar" title={`step ${catalog.page} of ${catalog.total}`}>
               <div className="catalog-fill" style={{ width: `${catalog.done ? 100 : pct}%` }} />
               <span className="catalog-text">
                 {catalog.characters.toLocaleString()} characters
@@ -101,13 +101,15 @@ export default function AdminPanel() {
           <p className="setting-hint">Status unavailable.</p>
         )}
         <p className="setting-hint">
-          Rolls draw from this local catalog, so AniList is only reached while it fills.
-          The crawl is deliberately slow and resumes where it left off across restarts.
+          Rolls draw from this local catalog, so AniList is only reached while it fills. The
+          crawl walks four sweeps — anime then manga, headline cast then supporting — because
+          no single AniList query reaches past 5,000 entries. It is deliberately slow, takes
+          a few hours from empty, and resumes where it left off across restarts.
         </p>
         {catalog && (
           <p className="setting-hint">
             Database {mb(catalog.bytes)} of a {mb(catalog.maxBytes)} ceiling. A full catalog
-            settles near 30 MB; the crawl stops rather than pass the ceiling.
+            settles well under 100 MB; the crawl stops rather than pass the ceiling.
           </p>
         )}
         <button

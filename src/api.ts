@@ -7,10 +7,7 @@
 import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 
-export type Mode = 'fun' | 'normal'
-
 export interface ServerSettings {
-  mode: Mode
   rollGender: 'female' | 'male' | 'everyone'
   poolSize: number
   skipOwned: boolean
@@ -22,16 +19,10 @@ export interface Snapshot {
   sandbox: boolean
   sandboxAllowed: boolean
   credits: number
-  rollsLeft: number
-  rollsMax: number
-  rollsResetAt: number
-  /** When the once-a-day multi summon comes back around. */
-  multiReadyAt: number
-  multiSize: number
-  nextClaimAt: number
+  /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
+  packSize: number
   lastDailyAt: number
   dailyStreak: number
-  lastRitualAt: number
   totalRolls: number
   totalClaims: number
   badges: Badges
@@ -113,15 +104,12 @@ export const api = {
   coins: () => post<{ state: Snapshot }>('/coins'),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
-  ritual: () => post<{ state: Snapshot }>('/ritual'),
-  sell: (ids: number[], bulk = false) =>
-    post<{ state: Snapshot; total: number; sold: number }>('/sell', { ids, bulk }),
+  sell: (ids: number[]) => post<{ state: Snapshot; total: number; sold: number }>('/sell', { ids }),
   addWish: (characterId: number) => post<{ state: Snapshot }>('/wish', { characterId }),
   removeWish: (characterId: number) =>
     request<{ state: Snapshot }>(`/wish/${characterId}`, { method: 'DELETE' }),
   search: (q: string) => request<{ results: RolledCharacter[] }>(`/search?q=${encodeURIComponent(q)}`),
   buyBadge: (key: string) => post<{ state: Snapshot }>('/badge', { key }),
-  buyItem: (key: string) => post<{ state: Snapshot }>('/item', { key }),
   updateSettings: (patch: Partial<ServerSettings>) =>
     request<{ state: Snapshot }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
   grant: (amount: number) => post<{ state: Snapshot }>('/grant', { amount }),

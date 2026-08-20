@@ -4,7 +4,7 @@
  * A character's credit value derives from its AniList popularity
  * (favourites count) on a power curve: the most-favourited characters
  * land around 850-900 credits, mid-tier around 100-300, and obscure
- * ones bottom out near 20, mirroring Mudae's value spread.
+ * ones bottom out near 20.
  */
 export function creditValue(favourites: number): number {
   const v = Math.round(15 + 7 * Math.pow(Math.max(favourites, 0), 0.45))
@@ -31,6 +31,22 @@ const RARITIES: (Rarity & { min: number })[] = [
 export function rarityOf(value: number): Rarity {
   return RARITIES.find((r) => value >= r.min) ?? RARITIES[RARITIES.length - 1]
 }
+
+/**
+ * The credit value a rarity starts at. Badges that promise "a Legendary or
+ * better" need a number to draw against, and taking it from the same table
+ * the frames come from means a promise and a frame can never disagree.
+ */
+export const RARITY_MIN: Record<Rarity['key'], number> = RARITIES.reduce(
+  (acc, r) => ({ ...acc, [r.key]: r.min }),
+  {} as Record<Rarity['key'], number>,
+)
+
+/** Display names, for prose that names a tier rather than framing a card. */
+export const RARITY_NAMES: Record<Rarity['key'], string> = RARITIES.reduce(
+  (acc, r) => ({ ...acc, [r.key]: r.name }),
+  {} as Record<Rarity['key'], string>,
+)
 
 /* ----------------------------------------------------------------- coins */
 

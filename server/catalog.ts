@@ -4,19 +4,70 @@
  * AniList is reached from the server, never the browser. One instance shares
  * one ~90 request/minute budget, so uncoordinated per-player calls would trip
  * limits nobody could diagnose. A background crawl at first boot walks the
- * reachable pool (330 pages x ~250 characters, a few minutes) and after that
- * rolls are a local SELECT: instant, and unaffected by AniList being down.
+ * reachable pool and after that rolls are a local SELECT: instant, and
+ * unaffected by AniList being down.
+ *
+ * "The reachable pool" is bigger than one query can express. AniList refuses
+ * offset pagination past 5000 entries, so a single sweep of anime by
+ * popularity can only ever see the top 5000 shows and the headline cast of
+ * each. The crawl is therefore a list of *segments*, each its own 5000-entry
+ * sweep from a different angle: anime then manga, headline cast then the next
+ * rank down. Together they reach several times what one sweep does, and
+ * because every row is an upsert keyed by character id, segments that overlap
+ * cost nothing but a refreshed favourites count.
  */
 
 import type { DB } from './db.js'
 import { getMeta, setMeta } from './db.js'
 import { creditValue } from '../src/game/economy.js'
+import { POOL_EVERYTHING } from '../src/game/pool.js'
 import type { RollGender } from './rules.js'
 
 const ENDPOINT = 'https://graphql.anilist.co'
-const MEDIA_PER_PAGE = 15
-/** AniList rejects offset pagination past 5000 entries; 5000/15 = 333 pages. */
-export const MAX_MEDIA_PAGE = 330
+/**
+ * Media per request, and cast fetched per media.
+ *
+ * Both were smaller (15 and 20). The ceiling that matters is AniList's request
+ * *count*, not the size of any one response, so asking for more per request is
+ * how the catalog grows without spending longer against that ceiling: 625
+ * characters a request rather than 300, for the same one request.
+ */
+const MEDIA_PER_PAGE = 25
+const CHARS_PER_MEDIA = 25
+
+/** AniList rejects offset pagination past 5000 entries. */
+const MAX_OFFSET = 5000
+export const PAGES_PER_SEGMENT = Math.floor(MAX_OFFSET / MEDIA_PER_PAGE)
+
+/**
+ * The sweeps the crawl makes, in order.
+ *
+ * Anime first and headline cast first, so the characters most people are
+ * actually hunting land in the catalog within the first stretch; the deeper
+ * segments fill in behind them while the instance is already playable.
+ */
+interface Segment {
+  type: 'ANIME' | 'MANGA'
+  /** Which page of each media's cast, sorted by favourites. */
+  charPage: number
+  label: string
+}
+
+const SEGMENTS: Segment[] = [
+  { type: 'ANIME', charPage: 1, label: 'anime, headline cast' },
+  { type: 'MANGA', charPage: 1, label: 'manga, headline cast' },
+  { type: 'ANIME', charPage: 2, label: 'anime, supporting cast' },
+  { type: 'MANGA', charPage: 2, label: 'manga, supporting cast' },
+]
+
+/** Total crawl steps: one request each, across every segment. */
+export const TOTAL_STEPS = SEGMENTS.length * PAGES_PER_SEGMENT
+
+/** Which segment and page a global step number lands on. */
+function stepTarget(step: number): { segment: Segment; page: number } {
+  const i = Math.floor((step - 1) / PAGES_PER_SEGMENT)
+  return { segment: SEGMENTS[i], page: ((step - 1) % PAGES_PER_SEGMENT) + 1 }
+}
 
 /**
  * Seconds between crawl requests.
@@ -32,11 +83,11 @@ export const MAX_MEDIA_PAGE = 330
 const CRAWL_DELAY_MS = Math.max(1000, Number(process.env.CRAWL_DELAY_MS ?? 15_000))
 
 /**
- * Stop growing the catalog past this. Nothing here grows without bound: the
- * reachable pool is ~70k characters at roughly 390 bytes a row, so a full
- * catalog settles near 30 MB and the default ceiling is never reached in
- * practice. It exists so a runaway can only ever cost a bounded amount of a
- * shared disk, not so it can be hit.
+ * Stop growing the catalog past this. Nothing here grows without bound: every
+ * segment is a bounded sweep, and at roughly 390 bytes a row even the full
+ * four-segment catalog settles well under 100 MB. The ceiling exists so a
+ * runaway can only ever cost a bounded amount of a shared disk, not so it can
+ * be hit in normal use.
  */
 const MAX_DB_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_DB_BYTES ?? 1024 * 1024 * 1024))
 
@@ -48,12 +99,12 @@ export function dbBytes(db: DB): number {
 }
 
 const MEDIA_QUERY = `
-query ($page: Int, $perPage: Int) {
+query ($page: Int, $perPage: Int, $type: MediaType, $charPage: Int, $charPerPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(sort: POPULARITY_DESC, type: ANIME) {
+    media(sort: POPULARITY_DESC, type: $type) {
       title { romaji english }
       coverImage { large }
-      characters(page: 1, perPage: 20, sort: FAVOURITES_DESC) {
+      characters(page: $charPage, perPage: $charPerPage, sort: FAVOURITES_DESC) {
         nodes {
           id
           name { full native alternative }
@@ -160,7 +211,13 @@ export function upsertCharacters(db: DB, chars: CatalogCharacter[]): number {
      VALUES (@id, @name, @nativeName, @image, @gender, @favourites, @series, @creditValue, @aliases, @covers, @now)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name, native_name = excluded.native_name, image = excluded.image,
-       gender = excluded.gender, favourites = excluded.favourites, series = excluded.series,
+       gender = excluded.gender, favourites = excluded.favourites,
+       -- Keep the first series a character was seen in. Segments sweep in
+       -- descending popularity, so the first sighting is the work they are
+       -- best known for; letting a later manga segment overwrite it would
+       -- quietly re-file half the catalog under its source material.
+       series = CASE WHEN characters.series = 'Unknown series'
+                     THEN excluded.series ELSE characters.series END,
        credit_value = excluded.credit_value, aliases_json = excluded.aliases_json,
        covers_json = excluded.covers_json, updated_at = excluded.updated_at`,
   )
@@ -178,8 +235,17 @@ export function upsertCharacters(db: DB, chars: CatalogCharacter[]): number {
   return chars.length
 }
 
-async function fetchMediaPage(page: number): Promise<CatalogCharacter[]> {
-  const data = await query({ query: MEDIA_QUERY, variables: { page, perPage: MEDIA_PER_PAGE } })
+async function fetchMediaPage(segment: Segment, page: number): Promise<CatalogCharacter[]> {
+  const data = await query({
+    query: MEDIA_QUERY,
+    variables: {
+      page,
+      perPage: MEDIA_PER_PAGE,
+      type: segment.type,
+      charPage: segment.charPage,
+      charPerPage: CHARS_PER_MEDIA,
+    },
+  })
   const out: CatalogCharacter[] = []
   for (const m of data.Page.media as any[]) {
     const series = m.title.english ?? m.title.romaji ?? 'Unknown series'
@@ -223,7 +289,7 @@ export function crawlStatus(db: DB): CrawlStatus {
   const page = Number(getMeta(db, 'crawl_page') ?? '0')
   return {
     page,
-    total: MAX_MEDIA_PAGE,
+    total: TOTAL_STEPS,
     characters: catalogSize(db),
     running: crawling,
     done: getMeta(db, 'crawl_done') === '1',
@@ -236,8 +302,11 @@ export function crawlStatus(db: DB): CrawlStatus {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 /**
- * Walk the reachable pool once, resuming where a previous run stopped. Safe to
- * call on every boot: it returns immediately when the crawl is already done.
+ * Walk every segment once, resuming where a previous run stopped. Safe to call
+ * on every boot: it returns immediately when the crawl is already done.
+ *
+ * Progress is one global step counter across all segments, so a restart picks
+ * up mid-segment without needing to know which one it was in.
  */
 export async function startCrawl(db: DB, force = false): Promise<void> {
   if (crawling) return
@@ -245,36 +314,53 @@ export async function startCrawl(db: DB, force = false): Promise<void> {
   crawling = true
   lastError = null
   const from = force ? 1 : Number(getMeta(db, 'crawl_page') ?? '0') + 1
-  const eta = Math.round(((MAX_MEDIA_PAGE - from + 1) * CRAWL_DELAY_MS) / 60_000)
+  const eta = Math.round(((TOTAL_STEPS - from + 1) * CRAWL_DELAY_MS) / 3_600_000)
   console.log(
-    `[catalog] crawl starting at page ${from}/${MAX_MEDIA_PAGE}, ` +
-      `${(CRAWL_DELAY_MS / 1000).toFixed(0)}s apart (about ${eta} min)`,
+    `[catalog] crawl starting at step ${from}/${TOTAL_STEPS}, ` +
+      `${(CRAWL_DELAY_MS / 1000).toFixed(0)}s apart (about ${eta}h)`,
   )
   try {
-    for (let page = from; page <= MAX_MEDIA_PAGE; page++) {
+    // A run of pages that all failed outright means AniList is down or the
+    // shape of the query is wrong, and grinding on would burn hours to record
+    // a catalog full of holes as "done". One bad page on its own is skipped:
+    // over hundreds of requests, the odd refusal is normal, and it should not
+    // cost the segments that come after it.
+    let deadPages = 0
+    for (let step = from; step <= TOTAL_STEPS; step++) {
       const size = dbBytes(db)
       if (size >= MAX_DB_BYTES) {
         lastError = `Database reached its ${(MAX_DB_BYTES / 1048576).toFixed(0)} MB ceiling; crawl stopped.`
         console.warn(`[catalog] ${lastError}`)
         return
       }
+      const { segment, page } = stepTarget(step)
       let attempt = 0
       for (;;) {
         try {
-          const chars = await fetchMediaPage(page)
+          const chars = await fetchMediaPage(segment, page)
           upsertCharacters(db, chars)
-          setMeta(db, 'crawl_page', String(page))
+          setMeta(db, 'crawl_page', String(step))
+          deadPages = 0
           break
         } catch (e) {
           attempt++
           lastError = e instanceof Error ? e.message : String(e)
-          if (attempt >= 5) throw e
+          if (attempt >= 5) {
+            deadPages++
+            console.warn(`[catalog] skipping ${segment.label} page ${page}: ${lastError}`)
+            setMeta(db, 'crawl_page', String(step))
+            if (deadPages >= 5) throw e
+            break
+          }
           // Back off hard on a rate limit; the crawl has nowhere to be.
           await sleep(5000 * attempt)
         }
       }
-      if (page % 25 === 0) {
-        console.log(`[catalog] page ${page}/${MAX_MEDIA_PAGE}, ${catalogSize(db)} characters`)
+      if (step % 25 === 0) {
+        console.log(
+          `[catalog] step ${step}/${TOTAL_STEPS} (${segment.label} page ${page}), ` +
+            `${catalogSize(db)} characters`,
+        )
       }
       await sleep(CRAWL_DELAY_MS)
     }
@@ -295,8 +381,13 @@ const genderClause = (pref: RollGender) =>
  * The favourites floor that defines "the top N characters". Cheap enough to
  * run per roll, and it makes poolSize mean exactly what it says, instead of
  * the page-window approximation the client used to make.
+ *
+ * The default pool is the whole catalog, which has no floor to find: skipping
+ * the query there saves walking the entire favourites index on every roll to
+ * learn that there is no thousandth-thousandth row.
  */
 function poolFloor(db: DB, poolSize: number, pref: RollGender): number {
+  if (poolSize >= POOL_EVERYTHING) return 0
   const row = db
     .prepare(
       `SELECT favourites FROM characters WHERE 1=1 ${genderClause(pref)}
@@ -348,4 +439,35 @@ export function drawFromPool(
     )
     .all({ floor, count, player: excludeOwnedBy ?? 0 })
   return rows.map(rowToCharacter)
+}
+
+/**
+ * Draw one character worth at least `minValue`, from the same pool a normal
+ * roll uses. Backs the Emerald guarantee: a pack that came up short is topped
+ * up rather than re-rolled, so the promise costs one extra query and never
+ * loops. Returns null when the pool holds nobody that good, which is the
+ * honest answer on an instance whose crawl has barely started.
+ */
+export function drawAboveValue(
+  db: DB,
+  minValue: number,
+  pref: RollGender,
+  poolSize: number,
+  exclude: number[],
+  excludeOwnedBy: number | null,
+): PoolPick | null {
+  const floor = poolFloor(db, poolSize, pref)
+  const owned = excludeOwnedBy
+    ? 'AND id NOT IN (SELECT character_id FROM claims WHERE player_id = @player)'
+    : ''
+  const holes = exclude.map(() => '?').join(',')
+  const row = db
+    .prepare(
+      `SELECT * FROM characters
+        WHERE favourites >= @floor AND credit_value >= @min ${genderClause(pref)} ${owned}
+          ${exclude.length ? `AND id NOT IN (${holes})` : ''}
+        ORDER BY RANDOM() LIMIT 1`,
+    )
+    .get({ floor, min: minValue, player: excludeOwnedBy ?? 0 }, ...exclude)
+  return row ? rowToCharacter(row) : null
 }

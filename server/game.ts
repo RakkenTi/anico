@@ -2,8 +2,8 @@
  * The rules, server side.
  *
  * Everything that used to run in the browser store and could therefore be
- * lied about: roll budgets, claim cooldowns, the daily timer, the economy and
- * the RNG. The client renders what these functions return and nothing more.
+ * lied about: the daily timer, the economy, what a pack holds and the RNG.
+ * The client renders what these functions return and nothing more.
  *
  * A claim snapshots the credit value the player was shown. Favourites only
  * grow, so reading value live from the catalog would quietly inflate old
@@ -24,18 +24,15 @@ import {
 } from '../src/game/economy.js'
 import {
   BADGE_DEFS,
+  EMPTY_BADGES,
   badgeCost,
   badgeUnlocked,
   computeEffects,
   type BadgeKey,
   type Badges,
 } from '../src/game/badges.js'
-import { drawFromPool, getCharacter, type PoolPick } from './catalog.js'
-import { PACING, sanitizeSettings, type ServerSettings } from './rules.js'
-
-/** Fun mode and sandbox both mean "no timers apply". */
-const unpaced = (settings: ServerSettings, player: Player) =>
-  settings.mode === 'fun' || !!player.sandbox_of
+import { drawAboveValue, drawFromPool, getCharacter, type PoolPick } from './catalog.js'
+import { sanitizeSettings, type ServerSettings } from './rules.js'
 import type { Player } from './auth.js'
 
 const HOUR = 3_600_000
@@ -43,12 +40,8 @@ const WISH_BASE_CHANCE = 0.025
 const WISH_CHANCE_CAP = 0.6
 /** How long a rolled spread stays claimable. */
 const ROLL_SESSION_MS = 30 * 60_000
-
-export const CONSUMABLES = {
-  rollRefill: { name: 'Roll Refill', cost: 200 },
-  claimReset: { name: 'Claim Incense', cost: 500 },
-} as const
-export type ConsumableKey = keyof typeof CONSUMABLES
+/** Sandbox bulk summons, which answer to nothing else. */
+const SANDBOX_MAX_DRAW = 100
 
 export class GameError extends Error {}
 const fail = (msg: string): never => {
@@ -58,13 +51,8 @@ const fail = (msg: string): never => {
 interface StateRow {
   player_id: number
   credits: number
-  rolls_left: number
-  rolls_reset_at: number
-  next_claim_at: number
-  last_multi_at: number
   last_daily_at: number
   daily_streak: number
-  last_ritual_at: number
   total_rolls: number
   total_claims: number
   badges_json: string
@@ -91,34 +79,6 @@ function loadState(db: DB, playerId: number): StateRow {
     | undefined
   if (!row) fail('No game state for this account.')
   return row!
-}
-
-/** The hourly single-summon budget, before badges. */
-function rollCapacity(badges: Badges): number {
-  return PACING.rollsPerHour + computeEffects(badges).extraRolls
-}
-
-/** How long until a cooldown is up, in words an error message can use. */
-function waitPhrase(ms: number): string {
-  const mins = Math.ceil(ms / 60_000)
-  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'}`
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return m === 0 ? `${h} hour${h === 1 ? '' : 's'}` : `${h}h ${m}m`
-}
-
-/** Roll budget refill, applied whenever state is touched. */
-function applyRefill(db: DB, row: StateRow, badges: Badges): StateRow {
-  const now = Date.now()
-  if (now < row.rolls_reset_at) return row
-  const max = rollCapacity(badges)
-  const resetAt = now + PACING.rollResetMinutes * 60_000
-  db.prepare('UPDATE player_state SET rolls_left = ?, rolls_reset_at = ? WHERE player_id = ?').run(
-    max,
-    resetAt,
-    row.player_id,
-  )
-  return { ...row, rolls_left: max, rolls_reset_at: resetAt }
 }
 
 export interface OwnedCharacter extends PoolPick {
@@ -178,16 +138,10 @@ export interface Snapshot {
   /** Allowed to switch the sandbox on at all. */
   sandboxAllowed: boolean
   credits: number
-  rollsLeft: number
-  rollsMax: number
-  rollsResetAt: number
-  /** When the once-a-day multi summon comes back around. */
-  multiReadyAt: number
-  multiSize: number
-  nextClaimAt: number
+  /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
+  packSize: number
   lastDailyAt: number
   dailyStreak: number
-  lastRitualAt: number
   totalRolls: number
   totalClaims: number
   badges: Badges
@@ -199,29 +153,18 @@ export interface Snapshot {
 }
 
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
-  let row = loadState(db, player.id)
+  const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
-  row = applyRefill(db, row, badges)
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
     sandbox: !!player.sandbox_of,
     sandboxAllowed: !!player.sandbox,
     credits: row.credits,
-    rollsLeft: row.rolls_left,
-    rollsMax: rollCapacity(badges),
-    rollsResetAt: row.rolls_reset_at,
-    multiReadyAt: row.last_multi_at + PACING.multiRollIntervalHours * HOUR,
-    multiSize: PACING.multiRollSize,
-    // Report the cooldown as spent when nothing is paced. A next_claim_at left
-    // over from Normal mode outlives the switch to Fun, and every consumer
-    // reading it would otherwise disagree with the server about whether a
-    // claim is allowed.
-    nextClaimAt: unpaced(settings, player) ? 0 : row.next_claim_at,
+    packSize: packSizeFor(badges, !!player.sandbox_of),
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
-    lastRitualAt: row.last_ritual_at,
     totalRolls: row.total_rolls,
     totalClaims: row.total_claims,
     badges,
@@ -253,51 +196,48 @@ export interface RollResult {
 }
 
 /**
- * Summon a spread.
+ * What a pack holds for this player right now.
  *
- * Two budgets, deliberately unconnected. A single summon comes out of an
- * hourly allowance the shop can grow; the ×10 spread is its own once-a-day
- * event and costs no hourly rolls, so a day's big pull never eats the rolls
- * someone was saving. Sandbox accounts spend from neither.
+ * Zero until the shop unlocks packs, which is the whole of the progression:
+ * a fresh account summons one card at a time, and Sapphire is what turns that
+ * into a sealed pack.
+ */
+function packSizeFor(badges: Badges, sandbox: boolean): number {
+  return sandbox ? SANDBOX_MAX_DRAW : computeEffects(badges).packSize
+}
+
+/**
+ * Summon a card, or a pack of them.
+ *
+ * Nothing here is rationed: there is no summon budget and no cooldown, so the
+ * only question a summon asks is how many cards the player has earned the
+ * right to pull at once. A pack is sealed and every card in it is granted the
+ * moment it is rolled; a single summon is one card, still yours to claim or
+ * leave.
  */
 export function roll(
   db: DB,
   player: Player,
   count: number,
 ): { results: RollResult[]; pack: boolean; claimed: number; bonus: number; snapshot: Snapshot } {
-  let row = loadState(db, player.id)
+  const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
-  row = applyRefill(db, row, badges)
   const sandbox = !!player.sandbox_of
-  const free = unpaced(settings, player)
-  const now = Date.now()
   const wanted = Math.max(1, Math.round(count))
   const multi = wanted > 1
+  const packSize = packSizeFor(badges, sandbox)
 
-  let draws: number
-  let spend = 0
-  // A fun-mode x10 is a sealed pack: ten cards, every one of them granted when
-  // it is opened. Sandbox keeps its own bulk behaviour.
-  const pack = free && multi && !sandbox
-
-  if (sandbox) {
-    draws = Math.min(100, wanted)
-  } else if (free) {
-    draws = multi ? PACING.multiRollSize : 1
-  } else if (multi) {
-    const readyAt = row.last_multi_at + PACING.multiRollIntervalHours * HOUR
-    if (now < readyAt) {
-      fail(`Your ×${PACING.multiRollSize} summon returns in ${waitPhrase(readyAt - now)}.`)
+  let draws = 1
+  if (multi) {
+    if (packSize <= 0) {
+      fail('Packs are locked. The Sapphire badge in the shop opens them.')
     }
-    draws = PACING.multiRollSize
-  } else {
-    if (row.rolls_left <= 0) {
-      fail(`You are out of summons. They refill in ${waitPhrase(row.rolls_reset_at - now)}.`)
-    }
-    draws = 1
-    spend = 1
+    draws = sandbox ? Math.min(SANDBOX_MAX_DRAW, wanted) : packSize
   }
+  // Sandbox bulk stays a plain spread: it is for looking at a hundred cards at
+  // once, and a sealed wrapper is the opposite of that.
+  const pack = multi && !sandbox
 
   const fx = computeEffects(badges)
   const ownedIds = new Set(
@@ -308,7 +248,8 @@ export function roll(
   const wishes = wishesOf(db, player.id)
   const openWishes = wishes.filter((w) => !ownedIds.has(w.id))
 
-  const pool = drawFromPool(db, draws, settings.rollGender, settings.poolSize, settings.skipOwned ? player.id : null)
+  const owner = settings.skipOwned ? player.id : null
+  const pool = drawFromPool(db, draws, settings.rollGender, settings.poolSize, owner)
   if (pool.length === 0) {
     fail('The catalog has no characters matching your filters yet. Give the first crawl a minute.')
   }
@@ -345,19 +286,59 @@ export function roll(
     results.push({ char, owned, wished, compensation })
   }
 
+  /*
+   * The Emerald guarantee.
+   *
+   * Applied to the dealt cards rather than to the pool they came from, because
+   * a wish can barge in after the draw and take the guaranteed card's place --
+   * checking the pool would promise a Legendary and hand over nine commons and
+   * a wish. It swaps the weakest card rather than adding one, so a guarantee
+   * never quietly makes a pack bigger; it never displaces a wish that came
+   * true, which is the one card in a pack somebody was actually waiting for;
+   * and it is skipped when the catalog holds nobody good enough, because an
+   * instance an hour into its first crawl owes nobody a Mythic.
+   */
+  if (multi && fx.guaranteeValue > 0 && !results.some((r) => r.char.creditValue >= fx.guaranteeValue)) {
+    let worst = -1
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].wished) continue
+      if (worst < 0 || results[i].char.creditValue < results[worst].char.creditValue) worst = i
+    }
+    const lucky =
+      worst < 0
+        ? null
+        : drawAboveValue(
+            db,
+            fx.guaranteeValue,
+            settings.rollGender,
+            settings.poolSize,
+            results.map((r) => r.char.id),
+            owner,
+          )
+    if (lucky) {
+      const owned = ownedIds.has(lucky.id)
+      const compensation = owned ? duplicateCompensation(lucky.creditValue, fx.dupCompMult) : 0
+      totalComp += compensation - results[worst].compensation
+      results[worst] = {
+        char: lucky,
+        owned,
+        wished: wishes.some((w) => w.id === lucky.id),
+        compensation,
+      }
+    }
+  }
+
   const pendingCoins =
     coinBestIdx >= 0 ? { tier: COIN_TIERS[coinBestIdx].key, amount: coinAmount } : null
   const session: RollSession = { at: Date.now(), results }
 
   const opened = db.transaction(() => {
     db.prepare(
-      `UPDATE player_state SET credits = credits + ?, rolls_left = ?, last_multi_at = ?,
-              total_rolls = total_rolls + ?, roll_session_json = ?, pending_coins_json = ?
+      `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?,
+              roll_session_json = ?, pending_coins_json = ?
         WHERE player_id = ?`,
     ).run(
       totalComp,
-      row.rolls_left - spend,
-      multi && !sandbox && !free ? now : row.last_multi_at,
       results.length,
       JSON.stringify(session),
       pendingCoins ? JSON.stringify(pendingCoins) : null,
@@ -440,11 +421,7 @@ export function claim(
   characterId: number,
 ): { snapshot: Snapshot; notes: string[] } {
   const row = loadState(db, player.id)
-  const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
-  const free = unpaced(settings, player)
-  if (!free && Date.now() < row.next_claim_at) fail('Your claim is still on cooldown.')
-
   const session = readSession(row)
   const entry = session.results.find((r) => r.char.id === characterId)
   if (!entry) fail('That character was not in your last summon.')
@@ -474,22 +451,15 @@ export function claim(
     db.prepare(
       `UPDATE player_state
           SET credits = credits + ?, total_claims = total_claims + 1, series_paid_json = ?,
-              next_claim_at = ?, roll_session_json = ?
+              roll_session_json = ?
         WHERE player_id = ?`,
-    ).run(
-      bonus,
-      JSON.stringify(seriesPaid),
-      free ? row.next_claim_at : now + PACING.claimIntervalMinutes * 60_000,
-      JSON.stringify(session),
-      player.id,
-    )
+    ).run(bonus, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
     return notes
   })()
 
   return { snapshot: snapshot(db, player, true), notes }
 }
 
-/** Sandbox only: claim every unowned card in the current spread. */
 /**
  * Take every unowned card of a spread at once.
  *
@@ -578,22 +548,15 @@ export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount
   return { snapshot: snapshot(db, player), amount, streak }
 }
 
-export function claimRitual(db: DB, player: Player): Snapshot {
-  const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
-  const fx = computeEffects(badges)
-  if (!fx.claimResetUnlocked) fail('The Claim Reset ritual is locked.')
-  const ready = player.sandbox_of ? 0 : row.last_ritual_at + fx.claimResetHours * HOUR
-  if (Date.now() < ready) fail('The ritual is not ready yet.')
-  db.prepare('UPDATE player_state SET next_claim_at = 0, last_ritual_at = ? WHERE player_id = ?').run(
-    Date.now(),
-    player.id,
-  )
-  return snapshot(db, player)
-}
-
-export function sell(db: DB, player: Player, ids: number[], bulk: boolean): { snapshot: Snapshot; total: number; sold: number } {
-  if (bulk && !player.sandbox_of) fail('Bulk selling is sandbox only.')
+/**
+ * Sell characters back at the value they were claimed at.
+ *
+ * Any number at once, for anybody. Selling in bulk used to be a sandbox
+ * privilege, which meant the one screen where a collection actually gets
+ * pruned -- a phone -- was the one place it could only be done one card and
+ * one confirmation at a time.
+ */
+export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapshot; total: number; sold: number } {
   if (ids.length === 0) fail('Nothing to sell.')
   const placeholders = ids.map(() => '?').join(',')
   const rows = db
@@ -642,35 +605,15 @@ export function buyBadge(db: DB, player: Player, key: BadgeKey): Snapshot {
   const cost = badgeCost(def!, level + 1, badges.ruby >= 4)
   if (row.credits < cost) fail('Not enough credits.')
   const next: Badges = { ...badges, [key]: level + 1 }
-  const rollsGain = key === 'sapphire' ? 1 : key === 'ruby' && level === 3 ? 2 : 0
-  db.prepare(
-    'UPDATE player_state SET credits = credits - ?, badges_json = ?, rolls_left = rolls_left + ? WHERE player_id = ?',
-  ).run(cost, JSON.stringify(next), rollsGain, player.id)
+  db.prepare('UPDATE player_state SET credits = credits - ?, badges_json = ? WHERE player_id = ?').run(
+    cost,
+    JSON.stringify(next),
+    player.id,
+  )
   return snapshot(db, player)
 }
 
-export function buyConsumable(db: DB, player: Player, key: ConsumableKey): Snapshot {
-  const row = loadState(db, player.id)
-  const item = CONSUMABLES[key]
-  if (!item) fail('No such item.')
-  if (row.credits < item.cost) fail('Not enough credits.')
-  const badges: Badges = JSON.parse(row.badges_json)
-  if (key === 'rollRefill') {
-    const max = rollCapacity(badges)
-    if (row.rolls_left >= max) fail('Your rolls are already full.')
-    db.prepare(
-      'UPDATE player_state SET credits = credits - ?, rolls_left = ? WHERE player_id = ?',
-    ).run(item.cost, max, player.id)
-  } else {
-    if (Date.now() >= row.next_claim_at) fail('Your claim is already available.')
-    db.prepare(
-      'UPDATE player_state SET credits = credits - ?, next_claim_at = 0 WHERE player_id = ?',
-    ).run(item.cost, player.id)
-  }
-  return snapshot(db, player)
-}
-
-/** Preferences only: nothing here can change how fast a player plays. */
+/** Preferences only: who shows up in a roll, and how deep the pool goes. */
 export function updateSettings(db: DB, player: Player, patch: unknown): Snapshot {
   const row = loadState(db, player.id)
   const current: ServerSettings = JSON.parse(row.settings_json)
@@ -692,22 +635,15 @@ export function grantCredits(db: DB, player: Player, amount: number): Snapshot {
 
 /** Wipe this player's progress. Never touches anyone else's rows. */
 export function resetPlayer(db: DB, player: Player): Snapshot {
-  const now = Date.now()
   db.transaction(() => {
     db.prepare('DELETE FROM claims WHERE player_id = ?').run(player.id)
     db.prepare('DELETE FROM wishes WHERE player_id = ?').run(player.id)
     db.prepare(
-      `UPDATE player_state SET credits = 0, rolls_left = ?, rolls_reset_at = ?, next_claim_at = 0,
-              last_multi_at = 0, last_daily_at = 0, daily_streak = 0, last_ritual_at = 0,
+      `UPDATE player_state SET credits = 0, last_daily_at = 0, daily_streak = 0,
               total_rolls = 0, total_claims = 0, badges_json = ?, series_paid_json = '{}',
               roll_session_json = NULL, pending_coins_json = NULL
         WHERE player_id = ?`,
-    ).run(
-      PACING.rollsPerHour,
-      now + PACING.rollResetMinutes * 60_000,
-      JSON.stringify({ bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }),
-      player.id,
-    )
+    ).run(JSON.stringify(EMPTY_BADGES), player.id)
   })()
   return snapshot(db, player, true)
 }

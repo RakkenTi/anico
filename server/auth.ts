@@ -10,7 +10,8 @@
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import type { DB } from './db.js'
-import { DEFAULT_SETTINGS, PACING, type ServerSettings } from './rules.js'
+import { EMPTY_BADGES } from '../src/game/badges.js'
+import { DEFAULT_SETTINGS, type ServerSettings } from './rules.js'
 
 const scryptAsync = promisify(scrypt) as (
   password: string,
@@ -110,16 +111,9 @@ export async function register(
       .run(name, name.toLowerCase(), hash, first ? 1 : 0, first ? 1 : 0, now)
     const id = Number(info.lastInsertRowid)
     db.prepare(
-      `INSERT INTO player_state
-         (player_id, credits, rolls_left, rolls_reset_at, badges_json, settings_json)
-       VALUES (?, 0, ?, ?, ?, ?)`,
-    ).run(
-      id,
-      PACING.rollsPerHour,
-      now + PACING.rollResetMinutes * 60_000,
-      JSON.stringify({ bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }),
-      JSON.stringify(settings),
-    )
+      `INSERT INTO player_state (player_id, credits, badges_json, settings_json)
+       VALUES (?, 0, ?, ?)`,
+    ).run(id, JSON.stringify(EMPTY_BADGES), JSON.stringify(settings))
     if (inviteRow) {
       db.prepare('UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?').run(id, now, inviteRow.code)
     }
@@ -259,17 +253,9 @@ export function setSandboxActive(db: DB, player: Player, on: boolean): void {
         const id = Number(info.lastInsertRowid)
         const settings: ServerSettings = { ...DEFAULT_SETTINGS }
         db.prepare(
-          `INSERT INTO player_state
-             (player_id, credits, rolls_left, rolls_reset_at, badges_json, settings_json)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        ).run(
-          id,
-          25_000,
-          PACING.rollsPerHour,
-          now + PACING.rollResetMinutes * 60_000,
-          JSON.stringify({ bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }),
-          JSON.stringify(settings),
-        )
+          `INSERT INTO player_state (player_id, credits, badges_json, settings_json)
+           VALUES (?, ?, ?, ?)`,
+        ).run(id, 25_000, JSON.stringify(EMPTY_BADGES), JSON.stringify(settings))
       }
       db.prepare('UPDATE players SET sandbox_active = 1 WHERE id = ?').run(player.id)
     } else {

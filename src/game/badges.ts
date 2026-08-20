@@ -1,11 +1,18 @@
 /**
- * Credit Badges, adapted from Mudae's badge/reward tree.
+ * Credit Badges: the shop, and the only progression the game has.
  *
- * Six badge lines, four levels each. Sapphire/Ruby/Emerald are locked
- * behind progress in the basic lines (or any two maxed badges), exactly
- * like Mudae's prerequisite chart. Effects are rebalanced for a
- * single-player economy.
+ * Six badge lines, four levels each. Sapphire/Ruby/Emerald are locked behind
+ * progress in the basic lines (or any two maxed badges), so the tree has a
+ * shape rather than being six independent sliders.
+ *
+ * Two of the lines used to sell time back: extra summons an hour, and a ritual
+ * that cleared a claim cooldown. Nothing is on a cooldown any more, so both
+ * were selling something the game gives away. They buy the two things that are
+ * still scarce instead: how many cards a pack holds (Sapphire), and how good
+ * the cards in it are guaranteed to be (Emerald).
  */
+
+import { RARITY_MIN } from './economy.js'
 
 export type BadgeKey = 'bronze' | 'silver' | 'gold' | 'sapphire' | 'ruby' | 'emerald'
 export type Badges = Record<BadgeKey, number>
@@ -18,6 +25,20 @@ export const EMPTY_BADGES: Badges = {
   ruby: 0,
   emerald: 0,
 }
+
+/**
+ * Cards a pack holds at Sapphire I..IV.
+ *
+ * A pack is the whole reason to keep earning credits: with no Sapphire at all
+ * the only summon is a single card, so the first level of this line is the
+ * moment the game opens up rather than one more increment.
+ */
+export const PACK_SIZES = [10, 15, 20, 50] as const
+/** Ruby IV's parting gift: every pack deals this many extra cards. */
+export const RUBY_PACK_BONUS = 5
+
+/** The rarity floor Emerald I..IV guarantees in every pack. */
+export const GUARANTEE_TIERS = ['rare', 'epic', 'legendary', 'mythic'] as const
 
 export interface BadgeDef {
   key: BadgeKey
@@ -78,12 +99,12 @@ export const BADGE_DEFS: BadgeDef[] = [
     name: 'Sapphire',
     kanji: '青',
     color: '#5a8cff',
-    baseCost: 400,
+    baseCost: 300,
     levels: [
-      '+1 summon per hour',
-      '+1 summon per hour',
-      '+1 summon per hour',
-      '+1 summon per hour · Copper/Bronze coins upgrade one tier',
+      `Unlock packs: a sealed ×${PACK_SIZES[0]}, and every card in it is yours`,
+      `Packs hold ×${PACK_SIZES[1]}`,
+      `Packs hold ×${PACK_SIZES[2]}`,
+      `Packs hold ×${PACK_SIZES[3]} · Copper/Bronze coins upgrade one tier`,
     ],
     prereq: 'Bronze I + Silver I + Gold I, or any two badges at IV',
   },
@@ -97,7 +118,7 @@ export const BADGE_DEFS: BadgeDef[] = [
       '+2 wish slots',
       '+50% chance for your wishes to appear in rolls',
       '+3% coin drop chance',
-      '+2 summons per hour · all badge prices −25%',
+      `all badge prices −25% · packs hold ${RUBY_PACK_BONUS} more cards`,
     ],
     prereq: 'Bronze II + Silver II + Gold II, or any two badges at IV',
   },
@@ -108,10 +129,10 @@ export const BADGE_DEFS: BadgeDef[] = [
     color: '#4fd0a0',
     baseCost: 700,
     levels: [
-      'Unlock the Claim Reset ritual (usable every 50 h)',
-      '−10 h between Claim Resets',
-      '−10 h between Claim Resets',
-      '−10 h between Claim Resets · claims also pay the character’s credit value',
+      'Every pack is guaranteed a Rare or better',
+      'That guarantee rises to Epic',
+      'That guarantee rises to Legendary',
+      'That guarantee rises to Mythic · claiming also pays the character’s credit value',
     ],
     prereq: 'Bronze III + Silver III + Gold III, or any two badges at IV',
   },
@@ -145,31 +166,36 @@ export interface BadgeEffects {
   wishSlots: number
   wishChanceMult: number
   coinChanceBonus: number
-  extraRolls: number
   coinUpgrade: boolean
   dailyMult: number
   wishClaimBonus: number
   dupCompMult: number
   claimPaysValue: boolean
-  claimResetUnlocked: boolean
-  claimResetHours: number
+  /** Cards a pack deals, or 0 while packs are still locked. */
+  packSize: number
+  /** Credit value at least one card in every pack is guaranteed to reach. */
+  guaranteeValue: number
+  /** The rarity that guarantee names, for the UI to say out loud. */
+  guaranteeRarity: (typeof GUARANTEE_TIERS)[number] | null
 }
 
 export const BASE_WISH_SLOTS = 3
 
 export function computeEffects(b: Badges): BadgeEffects {
+  const sapphire = Math.min(b.sapphire, PACK_SIZES.length)
+  const guaranteeRarity = b.emerald >= 1 ? GUARANTEE_TIERS[Math.min(b.emerald, 4) - 1] : null
   return {
     wishSlots: BASE_WISH_SLOTS + b.bronze + (b.ruby >= 1 ? 2 : 0),
     wishChanceMult: 1 + 0.25 * b.silver + (b.ruby >= 2 ? 0.5 : 0),
     coinChanceBonus: 0.015 * b.gold + (b.ruby >= 3 ? 0.03 : 0),
-    extraRolls: b.sapphire + (b.ruby >= 4 ? 2 : 0),
     coinUpgrade: b.sapphire >= 4,
     dailyMult: b.gold >= 4 ? 2 : 1,
     wishClaimBonus: b.bronze >= 4 ? 100 : 0,
     dupCompMult: b.silver >= 4 ? 2 : 1,
     claimPaysValue: b.emerald >= 4,
-    claimResetUnlocked: b.emerald >= 1,
-    claimResetHours: b.emerald >= 1 ? 50 - 10 * (b.emerald - 1) : Infinity,
+    packSize: sapphire >= 1 ? PACK_SIZES[sapphire - 1] + (b.ruby >= 4 ? RUBY_PACK_BONUS : 0) : 0,
+    guaranteeValue: guaranteeRarity ? RARITY_MIN[guaranteeRarity] : 0,
+    guaranteeRarity,
   }
 }
 

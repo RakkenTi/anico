@@ -32,8 +32,9 @@ services:
       # Cookies are Secure by default because Caddy terminates TLS in front.
       # Set to "false" only for a plain-HTTP LAN instance.
       COOKIE_SECURE: "${COOKIE_SECURE:-true}"
-      # Fill the character catalog on first boot. Deliberately slow: about 85
-      # minutes at the default pace, resuming across restarts.
+      # Fill the character catalog on first boot. Deliberately slow: four
+      # sweeps of AniList, about three and a half hours at the default pace,
+      # resuming across restarts.
       CRAWL_ON_BOOT: "true"
       CRAWL_DELAY_MS: "${CRAWL_DELAY_MS:-15000}"
       MAX_DB_BYTES: "${MAX_DB_BYTES:-1073741824}"

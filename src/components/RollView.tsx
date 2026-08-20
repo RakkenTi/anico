@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useGame, formatDuration } from '../game/store'
+import { useGame } from '../game/store'
 import { coinTier } from '../game/economy'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import CharacterCard from './CharacterCard'
@@ -8,20 +8,10 @@ import PackOpener from './PackOpener'
 export default function RollView() {
   const s = useGame()
   const testing = s.sandbox
-  // nextClaimAt arrives as 0 whenever nothing is paced, so this is simply
-  // "is the cooldown spent" and cannot disagree with the server.
-  const claimReady = testing || s.now >= s.nextClaimAt
-  const rollsResetIn = s.rollsResetAt - s.now
-  const claimIn = s.nextClaimAt - s.now
-  const fx = s.effects()
-  const ritualAt = s.ritualReadyAt()
-  const fun = s.settings.mode === 'fun'
-  const canRoll = testing || fun || s.rollsLeft > 0
   const pack = s.pack && s.pack.state !== 'open' ? s.pack : null
-  // The x10 spread is its own once-a-day allowance and spends no hourly rolls,
-  // so it stays available when the hourly budget is empty, and vice versa.
-  const multiReady = fun || s.multiReady()
-  const multiIn = s.multiReadyAt - s.now
+  // Packs are the whole of the progression: nothing until Sapphire I, and
+  // bigger from there. Zero means the only summon available is a single card.
+  const packSize = s.packSize
   const entry = s.rolled[s.selected]
   const unclaimed = s.rolled.filter((r) => !r.owned).length
   const mega = s.rolled.length > 20
@@ -114,19 +104,13 @@ export default function RollView() {
           </div>
         ) : pack ? (
           <PackOpener pack={pack} cards={s.rolled} />
-        ) : s.rolled.length === 1 && entry ? (
-          <div className="roll-reveal" key={s.rollCount}>
-            {entry.wished && !entry.owned && (
-              <div className="wish-banner">A wish come true</div>
-            )}
-            <div className="flip-inner">
-              <div className="flip-back" aria-hidden="true">✦</div>
-              <CharacterCard character={entry.char} wished={entry.wished} />
-            </div>
-          </div>
-        ) : s.rolled.length > 1 ? (
+        ) : s.rolled.length > 0 ? (
+          /* One card and ten are the same thing at different widths. A single
+             summon used to have a layout of its own — a card twice the size,
+             with its own type scale — and on a phone that one card filled the
+             screen while saying less than a spread slot does. */
           <div
-            className="roll-spread"
+            className={`roll-spread ${s.rolled.length === 1 ? 'single' : ''}`}
             key={s.rollCount}
             style={{
               // pulse fires with the rarity stinger, after the last card
@@ -148,7 +132,9 @@ export default function RollView() {
                     onClick={() => s.selectRolled(i)}
                   />
                 </div>
-                {r.fresh ? (
+                {r.wished && !r.owned ? (
+                  <span className="spread-tag wished">a wish</span>
+                ) : r.fresh ? (
                   <span className="spread-tag fresh">new</span>
                 ) : (
                   r.owned && (
@@ -175,30 +161,22 @@ export default function RollView() {
           <button
             className="btn btn-primary btn-summon"
             onClick={() => s.roll(1)}
-            disabled={s.rolling || dealing || !canRoll}
+            disabled={s.rolling || dealing}
           >
             {s.rolling ? 'Summoning…' : 'Summon'}
           </button>
-          <button
-            className="btn btn-quiet btn-summon"
-            onClick={() => s.roll(s.multiSize)}
-            disabled={s.rolling || dealing || !multiReady}
-            title={
-              multiReady
-                ? `Your daily ×${s.multiSize} summon. Costs no hourly summons.`
-                : `Your daily ×${s.multiSize} returns in ${formatDuration(multiIn)}`
-            }
-          >
-            {multiReady ? `×${s.multiSize}` : formatDuration(multiIn)}
-          </button>
-          {testing && (
+          {packSize > 0 && (
             <button
               className="btn btn-quiet btn-summon"
-              onClick={() => s.roll(100)}
+              onClick={() => s.roll(packSize)}
               disabled={s.rolling || dealing}
-              title="Sandbox only: summon 100 at once"
+              title={
+                testing
+                  ? `Sandbox: summon ${packSize} at once`
+                  : `Open a sealed pack of ${packSize}. Every card in it is yours.`
+              }
             >
-              ×100
+              ×{packSize}
             </button>
           )}
         </div>
@@ -206,22 +184,11 @@ export default function RollView() {
         <div className="roll-meta">
           {testing ? (
             <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
-          ) : fun ? (
-            <span className="testing-note">Fun mode: summon and claim freely</span>
+          ) : packSize > 0 ? (
+            <span className="testing-note">Summon freely · packs hold {packSize}</span>
           ) : (
-            <>
-              <span>
-                {s.rollsLeft}/{s.rollsMax} summons · refill {formatDuration(rollsResetIn)}
-              </span>
-              <br />
-              <span className={multiReady ? 'ready' : ''}>
-                {multiReady ? `daily ×${s.multiSize} ready` : `daily ×${s.multiSize} ${formatDuration(multiIn)}`}
-              </span>
-              <br />
-              <span className={claimReady ? 'ready' : ''}>
-                {claimReady ? 'claim ready' : `claim ${formatDuration(claimIn)}`}
-              </span>
-            </>
+            /* The one thing the shop is for, said where the button would be. */
+            <span className="testing-note">Summon freely · packs open at Sapphire I</span>
           )}
         </div>
 
@@ -244,15 +211,10 @@ export default function RollView() {
             ) : (
               <button
                 className="btn btn-primary"
-                disabled={!claimReady}
                 onClick={s.claim}
-                title={
-                  claimReady
-                    ? 'Add this character to your collection'
-                    : `Claim available in ${formatDuration(claimIn)}`
-                }
+                title="Add this character to your collection"
               >
-                {claimReady ? 'Claim' : formatDuration(claimIn)}
+                Claim
               </button>
             )}
           </div>
@@ -283,19 +245,6 @@ export default function RollView() {
           <div className="error-banner" onClick={s.clearError} role="alert">
             {s.error} <span className="dismiss">(dismiss)</span>
           </div>
-        )}
-
-        {fx.claimResetUnlocked && !claimReady && !testing && (
-          <button
-            className="btn btn-quiet"
-            disabled={s.now < ritualAt}
-            onClick={s.claimRitual}
-            title="Emerald badge ritual: reset your claim cooldown"
-          >
-            {s.now >= ritualAt
-              ? 'Perform the Claim Reset ritual'
-              : `Ritual ready in ${formatDuration(ritualAt - s.now)}`}
-          </button>
         )}
       </aside>
     </div>

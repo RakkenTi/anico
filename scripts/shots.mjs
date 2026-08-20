@@ -77,7 +77,22 @@ async function run(label, viewport, touch) {
   await page.waitForSelector('.roll-actions', { timeout: 15000 })
   await shot('1-idle')
 
-  await page.locator('.roll-actions button').nth(1).click()
+  // A single summon is the default and, until the shop opens packs, the only
+  // one. It renders through the same spread the pack does.
+  await page.locator('.roll-actions button').first().click()
+  // The store refuses a fresh roll until the deal animation has finished, so
+  // this waits it out rather than losing the next click to it.
+  await page.waitForTimeout(1600)
+  await shot('1b-single')
+
+  // Packs are bought, so the second button only exists once Sapphire does.
+  const packButton = page.locator('.roll-actions button').nth(1)
+  if ((await packButton.count()) === 0) {
+    console.log(`  ${label}: packs locked on this account, skipping the pack states`)
+    await ctx.close()
+    return
+  }
+  await packButton.click()
   await page.waitForTimeout(700)
   await shot('2-sealed')
 
@@ -118,6 +133,35 @@ async function run(label, viewport, touch) {
     }
   })
   console.log(`  ${label}:`, JSON.stringify(geom))
+
+  // The other screens a phone has to survive: a grid of owned cards, the same
+  // grid in bulk mode with its bar, the wishlist's search row, and the shop.
+  await page.locator('.tab').nth(1).click()
+  await page.waitForTimeout(400)
+  await shot('6-collection')
+  const selectBtn = page.locator('.col-bulk-toggle')
+  if (await selectBtn.count()) {
+    await selectBtn.click()
+    const cards = page.locator('.collection-grid .char-card')
+    for (let i = 0; i < Math.min(3, await cards.count()); i++) await cards.nth(i).click()
+    await page.waitForTimeout(200)
+    await shot('7-bulk')
+    await page.locator('.bulk-actions .btn-quiet').click()
+  }
+  await page.locator('.tab').nth(2).click()
+  await page.waitForTimeout(300)
+  await shot('8-wishes')
+  await page.locator('.tab').nth(3).click()
+  await page.waitForTimeout(300)
+  await shot('9-shop')
+
+  const overflow = await page.evaluate(() => ({
+    pageWidth: document.documentElement.scrollWidth,
+    viewport: innerWidth,
+  }))
+  if (overflow.pageWidth > overflow.viewport) {
+    console.warn(`  ${label}: page is ${overflow.pageWidth}px wide in a ${overflow.viewport}px viewport`)
+  }
   await ctx.close()
 }
 
