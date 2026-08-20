@@ -7,7 +7,10 @@
 import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 
+export type Mode = 'fun' | 'normal'
+
 export interface ServerSettings {
+  mode: Mode
   rollGender: 'female' | 'male' | 'everyone'
   poolSize: number
   skipOwned: boolean
@@ -33,6 +36,8 @@ export interface Snapshot {
   badges: Badges
   settings: ServerSettings
   pendingGem: { tier: string; amount: number } | null
+  /** A face-down spread waiting on a pick: shape only, never its contents. */
+  covered: { count: number; revealed: number | null } | null
   wishes: RolledCharacter[]
   /** Present only on calls that could have changed it. */
   collection?: OwnedCharacter[]
@@ -101,6 +106,7 @@ export const api = {
   claim: (characterId: number) => post<{ state: Snapshot; notes: string[] }>('/claim', { characterId }),
   claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
   gem: () => post<{ state: Snapshot }>('/gem'),
+  flip: (index: number) => post<{ result: RollResult; state: Snapshot }>('/flip', { index }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
   ritual: () => post<{ state: Snapshot }>('/ritual'),
   sell: (ids: number[], bulk = false) =>

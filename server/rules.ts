@@ -14,6 +14,17 @@
 
 export type RollGender = 'female' | 'male' | 'everyone'
 
+/**
+ * How strictly an instance keeps time.
+ *
+ * Normal is the paced game: an hourly summon budget, a once-a-day x10, an
+ * hourly claim. Fun is the default because most of the time this is two
+ * friends messing about rather than a competition: nothing is on a cooldown,
+ * and the x10 pays for that freedom by dealing its ten cards face down and
+ * letting you turn exactly one over.
+ */
+export type Mode = 'fun' | 'normal'
+
 export const PACING = {
   /** Single summons granted each hour, before badges add to it. */
   rollsPerHour: 10,
@@ -26,6 +37,7 @@ export const PACING = {
 } as const
 
 export interface ServerSettings {
+  mode: Mode
   rollGender: RollGender
   /** Size of the pool rolls draw from: the top N characters by favourites. */
   poolSize: number
@@ -34,6 +46,7 @@ export interface ServerSettings {
 }
 
 export const DEFAULT_SETTINGS: ServerSettings = {
+  mode: 'fun',
   rollGender: 'everyone',
   poolSize: 10000,
   skipOwned: false,
@@ -51,6 +64,9 @@ const clampInt = (v: unknown, lo: number, hi: number, fallback: number): number 
  */
 export function sanitizeSettings(patch: any, current: ServerSettings): ServerSettings {
   const next = { ...current }
+  // Mode is a player's own choice rather than a cheat vector: the permissive
+  // mode is the default, so the only thing switching can do is add limits.
+  if (patch?.mode === 'fun' || patch?.mode === 'normal') next.mode = patch.mode
   if (patch?.rollGender === 'female' || patch?.rollGender === 'male' || patch?.rollGender === 'everyone') {
     next.rollGender = patch.rollGender
   }

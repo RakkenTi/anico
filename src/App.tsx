@@ -34,6 +34,7 @@ export default function App() {
   const lastDailyAt = useGame((s) => s.lastDailyAt)
   const dailyStreak = useGame((s) => s.dailyStreak)
   const testing = useGame((s) => s.sandbox)
+  const settings = useGame((s) => s.settings)
   const username = useGame((s) => s.username)
   const claimDaily = useGame((s) => s.claimDaily)
   const booting = useGame((s) => s.booting)
@@ -59,7 +60,9 @@ export default function App() {
     return () => clearInterval(id)
   }, [tick])
 
-  const claimReady = testing || now >= nextClaimAt
+  const fun = settings.mode === 'fun'
+  const free = testing || fun
+  const claimReady = free || now >= nextClaimAt
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt
 
@@ -83,9 +86,9 @@ export default function App() {
           <span className="stat stat-credits" title="Credit balance">
             {credits.toLocaleString()} <em>credits</em>
           </span>
-          <span className="stat" title="Rolls remaining">{testing ? '∞' : rollsLeft} rolls</span>
+          <span className="stat" title="Summons remaining">{free ? '∞' : rollsLeft} summons</span>
           <span className={`stat ${claimReady ? 'stat-ready' : ''}`} title="Claim status">
-            {claimReady ? 'claim ready' : `claim ${formatDuration(nextClaimAt - now)}`}
+            {free ? 'claim any time' : claimReady ? 'claim ready' : `claim ${formatDuration(nextClaimAt - now)}`}
           </span>
           <span className="stat" title="Collection size">{collectionSize} owned</span>
           <button

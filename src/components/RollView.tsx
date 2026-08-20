@@ -12,10 +12,13 @@ export default function RollView() {
   const claimIn = s.nextClaimAt - s.now
   const fx = s.effects()
   const ritualAt = s.ritualReadyAt()
-  const canRoll = testing || s.rollsLeft > 0
+  const fun = s.settings.mode === 'fun'
+  const canRoll = testing || fun || s.rollsLeft > 0
+  // A face-down spread that has not been picked from yet.
+  const facedown = s.covered && s.covered.revealed === null ? s.covered : null
   // The x10 spread is its own once-a-day allowance and spends no hourly rolls,
   // so it stays available when the hourly budget is empty, and vice versa.
-  const multiReady = s.multiReady()
+  const multiReady = fun || s.multiReady()
   const multiIn = s.multiReadyAt - s.now
   const entry = s.rolled[s.selected]
   const unclaimed = s.rolled.filter((r) => !r.owned).length
@@ -104,6 +107,23 @@ export default function RollView() {
               <span className="card-back-word">summoning…</span>
             </div>
           </div>
+        ) : facedown ? (
+          <div className="roll-spread covered" key={`covered-${s.rollCount}`}>
+            {Array.from({ length: facedown.count }, (_, i) => (
+              <button
+                key={i}
+                className="spread-slot covered-slot"
+                style={{ ['--deal-delay' as string]: `${dealDelayMs(i, facedown.count).toFixed(1)}ms` }}
+                onClick={() => void s.flip(i)}
+                disabled={s.rolling}
+                title="Turn this one over"
+                aria-label={`Face-down card ${i + 1} of ${facedown.count}`}
+              >
+                <span className="covered-glyph" aria-hidden="true">✦</span>
+                <span className="covered-hint">turn over</span>
+              </button>
+            ))}
+          </div>
         ) : s.rolled.length === 1 && entry ? (
           <div className="roll-reveal" key={s.rollCount}>
             {entry.wished && !entry.owned && (
@@ -189,9 +209,17 @@ export default function RollView() {
           )}
         </div>
 
+        {facedown && !s.rolling && (
+          <p className="covered-note">
+            Ten cards, face down. Turn <b>one</b> over — the rest stay a mystery.
+          </p>
+        )}
+
         <div className="roll-meta">
           {testing ? (
             <span className="testing-note">Sandbox: no limits apply</span>
+          ) : fun ? (
+            <span className="testing-note">Fun mode: summon and claim freely</span>
           ) : (
             <>
               <span>
