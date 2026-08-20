@@ -105,6 +105,23 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     );
     `,
   },
+  {
+    name: '002_hourly_pacing',
+    sql: `
+    -- The x10 spread became an allowance of its own, once a day, tracked apart
+    -- from the hourly single-summon budget.
+    ALTER TABLE player_state ADD COLUMN last_multi_at INTEGER NOT NULL DEFAULT 0;
+
+    -- Pacing belongs to the instance, not the player. Drop the three keys that
+    -- used to let anyone rewrite their own roll and claim rates from settings.
+    UPDATE player_state SET settings_json = json_remove(
+      settings_json, '$.rollsPerReset', '$.rollResetMinutes', '$.claimIntervalMinutes');
+
+    -- Refill on the next state read, so every player lands on the new hourly
+    -- budget at once instead of carrying an old, larger one for an hour.
+    UPDATE player_state SET rolls_reset_at = 0;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

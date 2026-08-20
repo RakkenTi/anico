@@ -30,9 +30,6 @@ const EMPTY_BADGES: Badges = { bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby:
 const EMPTY_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
   poolSize: 10000,
-  rollsPerReset: 10,
-  rollResetMinutes: 60,
-  claimIntervalMinutes: 180,
   skipOwned: false,
 }
 
@@ -54,7 +51,10 @@ interface GameState {
   badges: Badges
   settings: ServerSettings
   rollsLeft: number
+  rollsMax: number
   rollsResetAt: number
+  multiReadyAt: number
+  multiSize: number
   nextClaimAt: number
   lastDailyAt: number
   dailyStreak: number
@@ -77,6 +77,7 @@ interface GameState {
   effects: () => BadgeEffects
   maxRolls: () => number
   claimReady: () => boolean
+  multiReady: () => boolean
   dailyReady: () => boolean
   ritualReadyAt: () => number
 
@@ -121,7 +122,10 @@ export const useGame = create<GameState>()((set, get) => {
       badges: s.badges,
       settings: s.settings,
       rollsLeft: s.rollsLeft,
+      rollsMax: s.rollsMax,
       rollsResetAt: s.rollsResetAt,
+      multiReadyAt: s.multiReadyAt,
+      multiSize: s.multiSize,
       nextClaimAt: s.nextClaimAt,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
@@ -164,7 +168,10 @@ export const useGame = create<GameState>()((set, get) => {
     badges: { ...EMPTY_BADGES },
     settings: { ...EMPTY_SETTINGS },
     rollsLeft: 0,
+    rollsMax: 0,
     rollsResetAt: 0,
+    multiReadyAt: 0,
+    multiSize: 10,
     nextClaimAt: 0,
     lastDailyAt: 0,
     dailyStreak: 0,
@@ -184,10 +191,15 @@ export const useGame = create<GameState>()((set, get) => {
     toasts: [],
 
     effects: () => computeEffects(get().badges),
-    maxRolls: () => get().settings.rollsPerReset + get().effects().extraRolls,
+    // The server owns the budget; the badge term is already folded into it.
+    maxRolls: () => get().rollsMax,
     claimReady: () => {
       const s = get()
       return s.sandbox || s.now >= s.nextClaimAt
+    },
+    multiReady: () => {
+      const s = get()
+      return s.sandbox || s.now >= s.multiReadyAt
     },
     dailyReady: () => {
       const s = get()

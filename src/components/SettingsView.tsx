@@ -13,6 +13,8 @@ const POOL_OPTIONS = [
 
 export default function SettingsView() {
   const settings = useGame((s) => s.settings)
+  const maxRolls = useGame((s) => s.rollsMax)
+  const multiSize = useGame((s) => s.multiSize)
   const sandbox = useGame((s) => s.sandbox)
   const isAdmin = useGame((s) => s.isAdmin)
   const ui = useUi()
@@ -114,36 +116,35 @@ export default function SettingsView() {
         </div>
       </div>
 
+      {/* Pacing is the instance's, not the player's. It used to be three sliders,
+          which on a shared instance just meant everyone set their own difficulty. */}
       <div className="panel">
         <h2 className="section-title">Pacing</h2>
-        <div className="setting-row">
-          <label>
-            Rolls per reset: <b>{settings.rollsPerReset}</b>
-            {fx.extraRolls > 0 && <span className="bonus"> (+{fx.extraRolls} from badges)</span>}
-          </label>
-          <input
-            type="range" min={3} max={30} step={1}
-            value={settings.rollsPerReset}
-            onChange={(e) => update({ rollsPerReset: Number(e.target.value) })}
-          />
-        </div>
-        <div className="setting-row">
-          <label>Roll reset interval: <b>{settings.rollResetMinutes} min</b></label>
-          <input
-            type="range" min={10} max={180} step={5}
-            value={settings.rollResetMinutes}
-            onChange={(e) => update({ rollResetMinutes: Number(e.target.value) })}
-          />
-        </div>
-        <div className="setting-row">
-          <label>Claim cooldown: <b>{settings.claimIntervalMinutes} min</b></label>
-          <input
-            type="range" min={15} max={360} step={15}
-            value={settings.claimIntervalMinutes}
-            onChange={(e) => update({ claimIntervalMinutes: Number(e.target.value) })}
-          />
-          <p className="setting-hint">Interval changes apply to your next claim, not one already on cooldown.</p>
-        </div>
+        <p className="section-sub">
+          The same for everyone on this instance. Summon more by earning it in the shop,
+          not by moving a slider.
+        </p>
+        <dl className="pacing-list">
+          <div>
+            <dt>Single summon</dt>
+            <dd>
+              <b>{maxRolls}</b> per hour
+              {fx.extraRolls > 0 && <span className="bonus"> (+{fx.extraRolls} from badges)</span>}
+            </dd>
+          </div>
+          <div>
+            <dt>×{multiSize} summon</dt>
+            <dd>once a day, and it costs no hourly summons</dd>
+          </div>
+          <div>
+            <dt>Claim</dt>
+            <dd>once an hour</dd>
+          </div>
+        </dl>
+        <p className="setting-hint">
+          Sapphire and Ruby badges raise the hourly count. A Roll Refill tops it back up,
+          and Claim Incense clears a claim cooldown early.
+        </p>
       </div>
 
       <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>

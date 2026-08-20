@@ -10,7 +10,7 @@
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import type { DB } from './db.js'
-import { DEFAULT_SETTINGS, type ServerSettings } from './rules.js'
+import { DEFAULT_SETTINGS, PACING, type ServerSettings } from './rules.js'
 
 const scryptAsync = promisify(scrypt) as (
   password: string,
@@ -110,8 +110,8 @@ export async function register(
        VALUES (?, 0, ?, ?, ?, ?)`,
     ).run(
       id,
-      settings.rollsPerReset,
-      now + settings.rollResetMinutes * 60_000,
+      PACING.rollsPerHour,
+      now + PACING.rollResetMinutes * 60_000,
       JSON.stringify({ bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }),
       JSON.stringify(settings),
     )

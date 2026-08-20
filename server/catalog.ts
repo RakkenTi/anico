@@ -17,8 +17,35 @@ const ENDPOINT = 'https://graphql.anilist.co'
 const MEDIA_PER_PAGE = 15
 /** AniList rejects offset pagination past 5000 entries; 5000/15 = 333 pages. */
 export const MAX_MEDIA_PAGE = 330
-/** Stay well under the documented 90/min so other traffic is never starved. */
-const CRAWL_DELAY_MS = 1100
+
+/**
+ * Seconds between crawl requests.
+ *
+ * The documented budget is 90 requests/minute but the observed one is far
+ * tighter, and the old 1.1s gap (~54/min) spent most of the crawl being
+ * refused and backing off. An instance that stays up has no reason to hurry:
+ * at 15s a page the whole catalog lands in under an hour and a half, using
+ * about four requests a minute, which leaves the upstream budget to the
+ * players. Pages arrive most-popular-first, so the pool is worth rolling
+ * against long before the crawl finishes.
+ */
+const CRAWL_DELAY_MS = Math.max(1000, Number(process.env.CRAWL_DELAY_MS ?? 15_000))
+
+/**
+ * Stop growing the catalog past this. Nothing here grows without bound: the
+ * reachable pool is ~70k characters at roughly 390 bytes a row, so a full
+ * catalog settles near 30 MB and the default ceiling is never reached in
+ * practice. It exists so a runaway can only ever cost a bounded amount of a
+ * shared disk, not so it can be hit.
+ */
+const MAX_DB_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_DB_BYTES ?? 1024 * 1024 * 1024))
+
+/** Size of the database as SQLite itself accounts for it. */
+export function dbBytes(db: DB): number {
+  const page = db.pragma('page_size', { simple: true }) as number
+  const count = db.pragma('page_count', { simple: true }) as number
+  return page * count
+}
 
 const MEDIA_QUERY = `
 query ($page: Int, $perPage: Int) {
@@ -181,6 +208,8 @@ export interface CrawlStatus {
   running: boolean
   done: boolean
   error: string | null
+  bytes: number
+  maxBytes: number
 }
 
 let crawling = false
@@ -199,6 +228,8 @@ export function crawlStatus(db: DB): CrawlStatus {
     running: crawling,
     done: getMeta(db, 'crawl_done') === '1',
     error: lastError,
+    bytes: dbBytes(db),
+    maxBytes: MAX_DB_BYTES,
   }
 }
 
@@ -214,9 +245,19 @@ export async function startCrawl(db: DB, force = false): Promise<void> {
   crawling = true
   lastError = null
   const from = force ? 1 : Number(getMeta(db, 'crawl_page') ?? '0') + 1
-  console.log(`[catalog] crawl starting at page ${from}/${MAX_MEDIA_PAGE}`)
+  const eta = Math.round(((MAX_MEDIA_PAGE - from + 1) * CRAWL_DELAY_MS) / 60_000)
+  console.log(
+    `[catalog] crawl starting at page ${from}/${MAX_MEDIA_PAGE}, ` +
+      `${(CRAWL_DELAY_MS / 1000).toFixed(0)}s apart (about ${eta} min)`,
+  )
   try {
     for (let page = from; page <= MAX_MEDIA_PAGE; page++) {
+      const size = dbBytes(db)
+      if (size >= MAX_DB_BYTES) {
+        lastError = `Database reached its ${(MAX_DB_BYTES / 1048576).toFixed(0)} MB ceiling; crawl stopped.`
+        console.warn(`[catalog] ${lastError}`)
+        return
+      }
       let attempt = 0
       for (;;) {
         try {

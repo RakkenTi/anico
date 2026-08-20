@@ -46,11 +46,16 @@ series is a **series set**, which pays a one-time bonus at 3, 5 and 10.
 
 ## Playing
 
-**Roll** — one draw from the catalog, presented as a card. Rolls are a budget that
-refills on a timer.
+**Roll** — one draw from the catalog, presented as a card. Two budgets, deliberately
+unconnected: single summons are an hourly allowance the shop can grow, and the **×10
+summon** is its own once-a-day event that spends no hourly summons.
 
 **Claim** — a player taking ownership of a rolled character. Claims are gated by their
-own cooldown, separate from the roll budget.
+own cooldown, one an hour, separate from both roll budgets.
+
+**Pacing** — the roll and claim rates. Fixed by the instance and identical for everyone
+on it. They were once per-player sliders, which on a shared instance only meant each
+player set their own difficulty.
 
 **Collection** — the characters one player has claimed. Collections are **per player and
 isolated**: two players on the same instance can each own the same character, and no

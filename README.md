@@ -52,8 +52,10 @@ Either way, once it is up:
 1. Open the instance and **create the first account**. It becomes the **admin** and
    gets sandbox access. No credentials are baked into the image.
 2. The catalog starts filling in the background. It walks the reachable AniList pool
-   (330 pages, ~1.1s apart) in about **six minutes**, and resumes where it left off if
-   you restart. You can play immediately; early rolls just draw from a smaller pool.
+   (330 pages, 15s apart) in about **85 minutes**, and resumes where it left off if you
+   restart. The pace is deliberate: it keeps the instance well inside AniList's request
+   budget and leaves room for player searches. You can play immediately; early rolls
+   just draw from a smaller pool, most popular first.
 3. Invite the others: **Settings, Instance, Create an invite link**. Each invite works
    once, and registration is closed to anyone without one.
 
@@ -81,6 +83,8 @@ and login appears to do nothing.
 | `DATA_DIR` | `/data` | Where `anico.db` lives. Back this directory up |
 | `COOKIE_SECURE` | `true` | Session cookie's `Secure` flag. `false` for plain-HTTP LAN |
 | `CRAWL_ON_BOOT` | `true` | Fill the character catalog on startup |
+| `CRAWL_DELAY_MS` | `15000` | Gap between catalog requests. The default walks the whole catalog in about 85 minutes at ~4 requests/minute, leaving AniList's budget to player searches |
+| `MAX_DB_BYTES` | `1073741824` | The crawl stops rather than grow the database past this. A full catalog settles near 30 MB, so the 1 GB default is headroom, not a limit you meet |
 | `CLIENT_DIR` | `/app/dist/client` | Where the built client is served from |
 
 `ANICO_IMAGE` and `COOKIE_SECURE` are read from `.env` by compose itself; the rest are
@@ -162,8 +166,8 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 | Mudae | Anico |
 | --- | --- |
 | `$w` / `$h` / `$m` roll commands | **Roll** button + a *Roll for* setting (Waifus / Husbandos / Everyone) |
-| Claiming with a reaction, ~3 h claim interval | **Claim** button with a configurable cooldown (default 180 min) |
-| 10 rolls per hour | Configurable roll budget (default 10) refilling on a configurable interval |
+| Claiming with a reaction, ~3 h claim interval | **Claim** button, once an hour |
+| 10 rolls per hour | 10 single summons an hour, refilling on the hour. Sapphire and Ruby badges raise the count; nothing in settings does |
 | Kakera value from character popularity | Credit value derived from AniList favourites on a power curve (≈35 for obscure picks, ≈865 for Levi) |
 | Kakera reactions dropping on rolls | Gems (Purple to Light tiers, weighted rarity) drop alongside rolls; tap to collect |
 | `$divorce` for kakera | **Sell** any character at the credit value it had when you claimed it |
@@ -177,7 +181,8 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 
 ## Beyond Mudae
 
-- **×10 summons** with a staggered card spread; pick any card to claim
+- **×10 summons** with a staggered card spread; pick any card to claim. Once a day, and
+  it spends no hourly summons, so a day's big pull never eats the rolls you were saving
 - **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer
   on Mythic
 - **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time bonuses
