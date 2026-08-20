@@ -10,9 +10,6 @@ import type { Badges } from './game/badges'
 export interface ServerSettings {
   rollGender: 'female' | 'male' | 'everyone'
   poolSize: number
-  rollsPerReset: number
-  rollResetMinutes: number
-  claimIntervalMinutes: number
   skipOwned: boolean
 }
 
@@ -22,7 +19,11 @@ export interface Snapshot {
   sandbox: boolean
   credits: number
   rollsLeft: number
+  rollsMax: number
   rollsResetAt: number
+  /** When the once-a-day multi summon comes back around. */
+  multiReadyAt: number
+  multiSize: number
   nextClaimAt: number
   lastDailyAt: number
   dailyStreak: number
@@ -57,6 +58,8 @@ export interface CatalogStatus {
   characters: number
   running: boolean
   done: boolean
+  bytes: number
+  maxBytes: number
   error: string | null
 }
 

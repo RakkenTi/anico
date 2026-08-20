@@ -31,7 +31,7 @@ import {
   type Badges,
 } from '../src/game/badges.js'
 import { drawFromPool, getCharacter, type PoolPick } from './catalog.js'
-import { sanitizeSettings, type ServerSettings } from './rules.js'
+import { PACING, sanitizeSettings, type ServerSettings } from './rules.js'
 import type { Player } from './auth.js'
 
 const HOUR = 3_600_000
@@ -57,6 +57,7 @@ interface StateRow {
   rolls_left: number
   rolls_reset_at: number
   next_claim_at: number
+  last_multi_at: number
   last_daily_at: number
   daily_streak: number
   last_ritual_at: number
@@ -88,12 +89,26 @@ function loadState(db: DB, playerId: number): StateRow {
   return row!
 }
 
+/** The hourly single-summon budget, before badges. */
+function rollCapacity(badges: Badges): number {
+  return PACING.rollsPerHour + computeEffects(badges).extraRolls
+}
+
+/** How long until a cooldown is up, in words an error message can use. */
+function waitPhrase(ms: number): string {
+  const mins = Math.ceil(ms / 60_000)
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'}`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h} hour${h === 1 ? '' : 's'}` : `${h}h ${m}m`
+}
+
 /** Roll budget refill, applied whenever state is touched. */
-function applyRefill(db: DB, row: StateRow, settings: ServerSettings, badges: Badges): StateRow {
+function applyRefill(db: DB, row: StateRow, badges: Badges): StateRow {
   const now = Date.now()
   if (now < row.rolls_reset_at) return row
-  const max = settings.rollsPerReset + computeEffects(badges).extraRolls
-  const resetAt = now + settings.rollResetMinutes * 60_000
+  const max = rollCapacity(badges)
+  const resetAt = now + PACING.rollResetMinutes * 60_000
   db.prepare('UPDATE player_state SET rolls_left = ?, rolls_reset_at = ? WHERE player_id = ?').run(
     max,
     resetAt,
@@ -157,7 +172,11 @@ export interface Snapshot {
   sandbox: boolean
   credits: number
   rollsLeft: number
+  rollsMax: number
   rollsResetAt: number
+  /** When the once-a-day multi summon comes back around. */
+  multiReadyAt: number
+  multiSize: number
   nextClaimAt: number
   lastDailyAt: number
   dailyStreak: number
@@ -176,14 +195,17 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
   let row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
-  row = applyRefill(db, row, settings, badges)
+  row = applyRefill(db, row, badges)
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
     sandbox: !!player.sandbox,
     credits: row.credits,
     rollsLeft: row.rolls_left,
+    rollsMax: rollCapacity(badges),
     rollsResetAt: row.rolls_reset_at,
+    multiReadyAt: row.last_multi_at + PACING.multiRollIntervalHours * HOUR,
+    multiSize: PACING.multiRollSize,
     nextClaimAt: row.next_claim_at,
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
@@ -212,16 +234,41 @@ export interface RollResult {
   compensation: number
 }
 
+/**
+ * Summon a spread.
+ *
+ * Two budgets, deliberately unconnected. A single summon comes out of an
+ * hourly allowance the shop can grow; the ×10 spread is its own once-a-day
+ * event and costs no hourly rolls, so a day's big pull never eats the rolls
+ * someone was saving. Sandbox accounts spend from neither.
+ */
 export function roll(db: DB, player: Player, count: number): { results: RollResult[]; snapshot: Snapshot } {
   let row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
-  row = applyRefill(db, row, settings, badges)
+  row = applyRefill(db, row, badges)
   const sandbox = !!player.sandbox
-  const n = Math.max(1, Math.min(sandbox ? 100 : 10, Math.round(count)))
-  if (!sandbox && row.rolls_left <= 0) fail('You are out of rolls.')
-  const spend = sandbox ? 0 : Math.min(n, row.rolls_left)
-  const draws = sandbox ? n : spend
+  const now = Date.now()
+  const wanted = Math.max(1, Math.round(count))
+  const multi = wanted > 1
+
+  let draws: number
+  let spend = 0
+  if (sandbox) {
+    draws = Math.min(100, wanted)
+  } else if (multi) {
+    const readyAt = row.last_multi_at + PACING.multiRollIntervalHours * HOUR
+    if (now < readyAt) {
+      fail(`Your ×${PACING.multiRollSize} summon returns in ${waitPhrase(readyAt - now)}.`)
+    }
+    draws = PACING.multiRollSize
+  } else {
+    if (row.rolls_left <= 0) {
+      fail(`You are out of summons. They refill in ${waitPhrase(row.rolls_reset_at - now)}.`)
+    }
+    draws = 1
+    spend = 1
+  }
 
   const fx = computeEffects(badges)
   const ownedIds = new Set(
@@ -272,11 +319,13 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
   const pendingGem = gemBestIdx >= 0 ? { tier: GEM_TIERS[gemBestIdx].key, amount: gemAmount } : null
   const session: RollSession = { at: Date.now(), results }
   db.prepare(
-    `UPDATE player_state SET credits = credits + ?, rolls_left = ?, total_rolls = total_rolls + ?,
-            roll_session_json = ?, pending_gem_json = ? WHERE player_id = ?`,
+    `UPDATE player_state SET credits = credits + ?, rolls_left = ?, last_multi_at = ?,
+            total_rolls = total_rolls + ?, roll_session_json = ?, pending_gem_json = ?
+      WHERE player_id = ?`,
   ).run(
     totalComp,
-    sandbox ? row.rolls_left : row.rolls_left - spend,
+    row.rolls_left - spend,
+    multi && !sandbox ? now : row.last_multi_at,
     results.length,
     JSON.stringify(session),
     pendingGem ? JSON.stringify(pendingGem) : null,
@@ -333,7 +382,6 @@ export function claim(
   characterId: number,
 ): { snapshot: Snapshot; notes: string[] } {
   const row = loadState(db, player.id)
-  const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
   const sandbox = !!player.sandbox
   if (!sandbox && Date.now() < row.next_claim_at) fail('Your claim is still on cooldown.')
@@ -372,7 +420,7 @@ export function claim(
     ).run(
       bonus,
       JSON.stringify(seriesPaid),
-      sandbox ? row.next_claim_at : now + settings.claimIntervalMinutes * 60_000,
+      sandbox ? row.next_claim_at : now + PACING.claimIntervalMinutes * 60_000,
       JSON.stringify(session),
       player.id,
     )
@@ -529,10 +577,9 @@ export function buyConsumable(db: DB, player: Player, key: ConsumableKey): Snaps
   const item = CONSUMABLES[key]
   if (!item) fail('No such item.')
   if (row.credits < item.cost) fail('Not enough credits.')
-  const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
   if (key === 'rollRefill') {
-    const max = settings.rollsPerReset + computeEffects(badges).extraRolls
+    const max = rollCapacity(badges)
     if (row.rolls_left >= max) fail('Your rolls are already full.')
     db.prepare(
       'UPDATE player_state SET credits = credits - ?, rolls_left = ? WHERE player_id = ?',
@@ -546,15 +593,15 @@ export function buyConsumable(db: DB, player: Player, key: ConsumableKey): Snaps
   return snapshot(db, player)
 }
 
+/** Preferences only: nothing here can change how fast a player plays. */
 export function updateSettings(db: DB, player: Player, patch: unknown): Snapshot {
   const row = loadState(db, player.id)
   const current: ServerSettings = JSON.parse(row.settings_json)
   const next = sanitizeSettings(patch, current)
-  const badges: Badges = JSON.parse(row.badges_json)
-  const max = next.rollsPerReset + computeEffects(badges).extraRolls
-  db.prepare(
-    'UPDATE player_state SET settings_json = ?, rolls_left = MIN(rolls_left, ?) WHERE player_id = ?',
-  ).run(JSON.stringify(next), max, player.id)
+  db.prepare('UPDATE player_state SET settings_json = ? WHERE player_id = ?').run(
+    JSON.stringify(next),
+    player.id,
+  )
   return snapshot(db, player)
 }
 
@@ -572,15 +619,15 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
   db.transaction(() => {
     db.prepare('DELETE FROM claims WHERE player_id = ?').run(player.id)
     db.prepare('DELETE FROM wishes WHERE player_id = ?').run(player.id)
-    const settings: ServerSettings = JSON.parse(loadState(db, player.id).settings_json)
     db.prepare(
       `UPDATE player_state SET credits = 0, rolls_left = ?, rolls_reset_at = ?, next_claim_at = 0,
-              last_daily_at = 0, daily_streak = 0, last_ritual_at = 0, total_rolls = 0, total_claims = 0,
-              badges_json = ?, series_paid_json = '{}', roll_session_json = NULL, pending_gem_json = NULL
+              last_multi_at = 0, last_daily_at = 0, daily_streak = 0, last_ritual_at = 0,
+              total_rolls = 0, total_claims = 0, badges_json = ?, series_paid_json = '{}',
+              roll_session_json = NULL, pending_gem_json = NULL
         WHERE player_id = ?`,
     ).run(
-      settings.rollsPerReset,
-      now + settings.rollResetMinutes * 60_000,
+      PACING.rollsPerHour,
+      now + PACING.rollResetMinutes * 60_000,
       JSON.stringify({ bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }),
       player.id,
     )

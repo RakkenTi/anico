@@ -13,7 +13,10 @@ export default function RollView() {
   const fx = s.effects()
   const ritualAt = s.ritualReadyAt()
   const canRoll = testing || s.rollsLeft > 0
-  const multiCount = testing ? 10 : Math.min(10, s.rollsLeft)
+  // The x10 spread is its own once-a-day allowance and spends no hourly rolls,
+  // so it stays available when the hourly budget is empty, and vice versa.
+  const multiReady = s.multiReady()
+  const multiIn = s.multiReadyAt - s.now
   const entry = s.rolled[s.selected]
   const unclaimed = s.rolled.filter((r) => !r.owned).length
   const mega = s.rolled.length > 20
@@ -164,11 +167,15 @@ export default function RollView() {
           </button>
           <button
             className="btn btn-quiet btn-summon"
-            onClick={() => s.roll(10)}
-            disabled={s.rolling || dealing || !canRoll}
-            title="Spend up to 10 rolls at once"
+            onClick={() => s.roll(s.multiSize)}
+            disabled={s.rolling || dealing || !multiReady}
+            title={
+              multiReady
+                ? `Your daily ×${s.multiSize} summon. Costs no hourly summons.`
+                : `Your daily ×${s.multiSize} returns in ${formatDuration(multiIn)}`
+            }
           >
-            ×{multiCount || 10}
+            {multiReady ? `×${s.multiSize}` : formatDuration(multiIn)}
           </button>
           {testing && (
             <button
@@ -187,7 +194,13 @@ export default function RollView() {
             <span className="testing-note">Sandbox: no limits apply</span>
           ) : (
             <>
-              <span>{s.rollsLeft} rolls · refill {formatDuration(rollsResetIn)}</span>
+              <span>
+                {s.rollsLeft}/{s.rollsMax} summons · refill {formatDuration(rollsResetIn)}
+              </span>
+              <br />
+              <span className={multiReady ? 'ready' : ''}>
+                {multiReady ? `daily ×${s.multiSize} ready` : `daily ×${s.multiSize} ${formatDuration(multiIn)}`}
+              </span>
               <br />
               <span className={claimReady ? 'ready' : ''}>
                 {claimReady ? 'claim ready' : `claim ${formatDuration(claimIn)}`}

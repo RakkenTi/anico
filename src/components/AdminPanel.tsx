@@ -72,6 +72,11 @@ export default function AdminPanel() {
     refresh()
   }
 
+  const mb = (bytes: number) =>
+    bytes >= 1024 * 1024 * 1024
+      ? `${(bytes / 1024 ** 3).toFixed(1)} GB`
+      : `${Math.max(1, Math.round(bytes / 1048576))} MB`
+
   const pct = catalog && catalog.total > 0 ? Math.round((catalog.page / catalog.total) * 100) : 0
 
   return (
@@ -97,7 +102,14 @@ export default function AdminPanel() {
         )}
         <p className="setting-hint">
           Rolls draw from this local catalog, so AniList is only reached while it fills.
+          The crawl is deliberately slow and resumes where it left off across restarts.
         </p>
+        {catalog && (
+          <p className="setting-hint">
+            Database {mb(catalog.bytes)} of a {mb(catalog.maxBytes)} ceiling. A full catalog
+            settles near 30 MB; the crawl stops rather than pass the ceiling.
+          </p>
+        )}
         <button
           className="btn btn-ghost"
           onClick={() => void api.recrawl().then(() => pushToast('Catalog refresh started.', 'info'))}
