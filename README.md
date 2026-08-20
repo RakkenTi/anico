@@ -34,7 +34,7 @@ echo $GHCR_TOKEN | docker login ghcr.io -u yourname --password-stdin
 Upgrading is `docker compose pull && docker compose up -d`. The database lives in a
 named volume and is untouched by an image change.
 
-**Building from source instead** (no GHCR needed) — clone the repo and overlay the
+**Building from source instead** (no GHCR needed): clone the repo and overlay the
 build file:
 
 ```sh
