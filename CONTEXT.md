@@ -63,7 +63,8 @@ thing a switch can do is add limits.
 
 **Pack** — a Fun-mode ×10, sealed. Every card in it is granted the moment it is rolled,
 so opening it decides nothing and cannot be lost to a closed tab: tearing it with space
-and swiping it open card by card reach the same place. Presentation, deliberately.
+and throwing the cards off one by one reach the same place. Presentation, deliberately.
+The cards are face up throughout — a pack is a thing you unwrap, not a guess.
 
 **Pacing** — the roll and claim rates that Normal mode keeps. Fixed by the instance and
 identical for everyone on it. They were once per-player sliders, which on a shared
