@@ -97,6 +97,16 @@ export default function PackOpener({ pack, cards }: Props) {
   }, [throwTop])
   useEffect(() => () => clearTimeout(autoTimer.current), [])
 
+  /**
+   * Whether space opened this pack.
+   *
+   * Space asks for the whole thing to be done for you, and it only means that
+   * if you say so before the wrapper is off. Tearing by hand is a statement
+   * that you want to open it yourself, so from then on space is one card a
+   * press rather than something that takes the pack away from you.
+   */
+  const [spaceTore, setSpaceTore] = useState(false)
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' && e.key !== ' ') return
@@ -104,18 +114,19 @@ export default function PackOpener({ pack, cards }: Props) {
       if (el instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
       e.preventDefault()
       if (sealed) {
+        setSpaceTore(true)
         setTearOff({ x: 46, y: -26 })
         animateTear(tear, 1, AUTOTEAR_MS, () => {
           slicePack()
           autoOpen()
         })
-      } else {
-        autoOpen()
+      } else if (!spaceTore) {
+        throwTop(1)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sealed, tear, animateTear, slicePack, autoOpen])
+  }, [sealed, tear, spaceTore, animateTear, slicePack, autoOpen, throwTop])
 
   // The grid waits for the last card to actually land.
   useEffect(() => {
@@ -265,8 +276,8 @@ export default function PackOpener({ pack, cards }: Props) {
           </>
         ) : (
           <>
-            <b>{remaining}</b> of {cards.length} left — swipe or tap the top card away, or{' '}
-            <kbd>Space</kbd> to fan the rest out.
+            <b>{remaining}</b> of {cards.length} left — swipe or tap the top card away
+            {spaceTore ? '.' : <>, or <kbd>Space</kbd> for one at a time.</>}
           </>
         )}
       </p>

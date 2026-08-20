@@ -1411,9 +1411,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .pack-card.behind {
   position: absolute;
   inset: 0;
-  /* A few pixels to the right each, so the pile shows a sliver of every card
-     under the top one without any of them being readable. */
-  transform: translateX(calc(var(--depth) * 4px)) translateY(calc(var(--depth) * 1px));
+  /* Up and to the left a few pixels each, so the pile fans towards the top
+     corner and shows a sliver of every card under the top one. */
+  transform: translate(calc(var(--depth) * -4px), calc(var(--depth) * -3px));
   filter: brightness(calc(1 - var(--depth) * 0.045));
   pointer-events: none;
 }
@@ -1445,64 +1445,77 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 /* --- the wrapper ------------------------------------------------------- */
-/* Two pieces that overlap generously, so no jagged edge can ever leave a gap
-   for the card underneath to show through. */
+/* Opaque foil in two pieces. The colours are solid on purpose: the palette's
+   --accent-soft is a 10% alpha, and building the pack out of it was letting the
+   top card show straight through an unopened wrapper.
+
+   The seam is a fine irregular tear rather than a row of shark teeth, and the
+   lid always reaches past the body's highest point, so nothing can peek between
+   the two however their edges happen to line up. */
 .pack-wrap { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
 .pack-body,
 .pack-lid {
   position: absolute;
   left: 0;
   right: 0;
-  background:
-    linear-gradient(148deg, rgba(255, 255, 255, 0.16) 0%, transparent 46%),
-    linear-gradient(202deg, var(--accent-soft) 0%, var(--well) 62%);
-  border: 1px solid var(--line-strong);
+  background-color: var(--surface-2);
+  background-image:
+    /* the sheen that travels across a real foil pack as it tilts */
+    linear-gradient(112deg, transparent 26%, rgba(255, 255, 255, 0.16) 40%, transparent 56%),
+    /* faint holographic banding */
+    repeating-linear-gradient(74deg, rgba(255, 255, 255, 0.05) 0 3px, transparent 3px 9px),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.09) 0%, rgba(0, 0, 0, 0.34) 100%);
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
 }
 .pack-body {
-  top: 20%;
+  top: 18%;
   bottom: 0;
-  border-radius: 0 0 6px 6px;
-  /* Torn top edge, never rising above 26% of the pack. */
-  clip-path: polygon(
-    0 5%, 8% 1%, 16% 6%, 24% 2%, 32% 7%, 40% 1%, 48% 6%,
-    56% 2%, 64% 7%, 72% 1%, 80% 6%, 88% 2%, 96% 6%, 100% 3%,
-    100% 100%, 0 100%
-  );
+  border-bottom: 1px solid var(--line-strong);
+  border-radius: 0 0 7px 7px;
+  clip-path: polygon(0.0% 2.15%, 4.1% 2.73%, 7.7% 3.89%, 11.7% 3.07%, 15.7% 2.52%, 19.2% 1.79%, 23.2% 0.92%, 26.9% 0.98%, 30.9% 3.43%, 34.8% 2.82%, 38.5% 3.08%, 42.6% 3.60%, 46.1% 1.81%, 50.2% 2.22%, 54.0% 1.45%, 58.0% 1.73%, 61.5% 3.86%, 65.4% 1.72%, 69.2% 1.73%, 73.4% 1.47%, 77.1% 2.13%, 80.8% 2.06%, 84.7% 0.77%, 88.7% 3.12%, 92.3% 3.42%, 96.2% 3.40%, 100.0% 3.04%, 100% 100%, 0% 100%);
   z-index: 1;
 }
 .pack-lid {
   top: 0;
-  /* Tall enough that its shallowest tooth still sits below the body's highest
-     one: 34% * 0.82 = 27.9%, against the body's 26% worst case. */
-  height: 34%;
-  border-radius: 6px 6px 0 0;
-  display: grid;
-  place-items: center;
-  clip-path: polygon(
-    0 96%, 8% 84%, 16% 98%, 24% 86%, 32% 100%, 40% 85%, 48% 97%,
-    56% 82%, 64% 96%, 72% 84%, 80% 99%, 88% 86%, 96% 97%, 100% 88%,
-    100% 0, 0 0
-  );
+  height: 26%;
+  border-top: 1px solid var(--line-strong);
+  border-radius: 7px 7px 0 0;
+  clip-path: polygon(0% 0%, 100% 0%, 100.0% 98.83%, 96.2% 92.60%, 92.3% 97.64%, 88.7% 98.12%, 84.4% 89.95%, 80.7% 91.08%, 77.1% 89.64%, 72.8% 97.59%, 69.3% 93.48%, 65.3% 96.63%, 61.8% 95.72%, 57.7% 96.65%, 54.2% 91.03%, 50.0% 90.81%, 46.4% 95.28%, 42.6% 95.84%, 38.7% 91.77%, 34.7% 94.13%, 30.9% 93.31%, 26.9% 96.68%, 22.7% 89.52%, 19.4% 92.66%, 15.5% 96.18%, 11.8% 95.98%, 7.8% 94.84%, 3.5% 89.66%, 0.0% 96.15%);
   z-index: 2;
 }
-/* The perforation you are meant to pull from. */
+/* The perforation you pull from, and the nicks either side that start the tear
+   on a real pack. */
 .pack-strip {
   position: absolute;
-  top: 15%;
-  left: 6%;
-  right: 6%;
-  height: 1px;
-  background: repeating-linear-gradient(90deg, var(--line-strong) 0 4px, transparent 4px 9px);
+  top: 46%;
+  left: 7%;
+  right: 7%;
+  height: 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.3);
 }
+.pack-strip::before,
+.pack-strip::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.pack-strip::before { left: -7%; border-left: 7px solid var(--bg); }
+.pack-strip::after { right: -7%; border-right: 7px solid var(--bg); }
+
 .pack-mark {
   position: absolute;
-  inset: 40% 0 auto 0;
+  inset: 44% 0 auto 0;
   z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  opacity: calc(1 - var(--tear) * 1.4);
+  opacity: calc(1 - var(--tear) * 1.5);
 }
 .pack-brand {
   font-family: var(--display, var(--sans));
@@ -1511,6 +1524,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   letter-spacing: 0.32em;
   text-indent: 0.32em;
   color: var(--text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 .pack-sub {
   font-family: var(--sans);
@@ -1520,7 +1534,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   text-transform: uppercase;
   color: var(--text-dim);
 }
-/* The seam brightens as the pull nears the point of no return. */
+/* The seam lights up as the pull nears the point of no return. */
 .pack-rip {
   position: absolute;
   top: 23%;
