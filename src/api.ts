@@ -114,9 +114,16 @@ export const api = {
   reset: () => post<{ state: Snapshot }>('/reset'),
 
   adminUsers: () =>
-    request<{ users: { id: number; username: string; is_admin: number; sandbox: number; claims: number }[] }>(
-      '/admin/users',
-    ),
+    request<{
+      users: {
+        id: number
+        username: string
+        is_admin: number
+        sandbox: number
+        claims: number
+        sessions: number
+      }[]
+    }>('/admin/users'),
   adminInvites: () =>
     request<{ invites: { code: string; created_at: number; used_at: number | null; used_by: string | null }[] }>(
       '/admin/invites',
@@ -124,5 +131,7 @@ export const api = {
   createInvite: () => post<{ code: string }>('/admin/invites'),
   setSandbox: (id: number, sandbox: boolean) =>
     request<{ ok: true }>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ sandbox }) }),
+  revokeSessions: (id: number) =>
+    request<{ revoked: number }>(`/admin/users/${id}/sessions`, { method: 'DELETE' }),
   recrawl: () => post<{ ok: true }>('/admin/crawl'),
 }

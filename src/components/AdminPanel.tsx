@@ -15,6 +15,9 @@ export default function AdminPanel() {
   // Bumping this re-runs the loader; it keeps the fetch inside the effect,
   // where the cleanup can stop a late response from setting state.
   const [nonce, setNonce] = useState(0)
+  // The player whose sign-out is one click from happening, following the same
+  // two-click pattern as the danger zone rather than a browser confirm().
+  const [confirmSignOut, setConfirmSignOut] = useState<number | null>(null)
   const refresh = () => setNonce((n) => n + 1)
 
   useEffect(() => {
@@ -52,6 +55,20 @@ export default function AdminPanel() {
       ?.writeText(`${location.origin}/?invite=${code}`)
       .then(() => pushToast('Invite link copied to the clipboard.', 'info'))
       .catch(() => pushToast(`Invite code: ${code}`, 'info'))
+    refresh()
+  }
+
+  const signOutEverywhere = async (id: number, username: string) => {
+    setConfirmSignOut(null)
+    const { revoked } = await api.revokeSessions(id)
+    // Revoking your own sessions is allowed and logs you out on the next call;
+    // it is the honest way to end a session opened somewhere you no longer trust.
+    pushToast(
+      revoked === 0
+        ? `${username} had no active sessions.`
+        : `Signed ${username} out of ${revoked} ${revoked === 1 ? 'session' : 'sessions'}.`,
+      'info',
+    )
     refresh()
   }
 
@@ -98,7 +115,10 @@ export default function AdminPanel() {
                 {u.username}
                 {!!u.is_admin && <span className="admin-tag">admin</span>}
               </span>
-              <span className="admin-meta">{u.claims} claimed</span>
+              <span className="admin-meta">
+                {u.claims} claimed
+                {u.sessions > 0 && `, ${u.sessions} signed in`}
+              </span>
               <label className="toggle-row admin-toggle">
                 <input
                   type="checkbox"
@@ -110,9 +130,34 @@ export default function AdminPanel() {
                 />
                 <span>sandbox</span>
               </label>
+              {confirmSignOut === u.id ? (
+                <div className="confirm-row">
+                  <button
+                    className="btn btn-danger admin-action"
+                    onClick={() => void signOutEverywhere(u.id, u.username)}
+                  >
+                    Yes, end every session
+                  </button>
+                  <button className="btn btn-ghost admin-action" onClick={() => setConfirmSignOut(null)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn btn-ghost admin-action"
+                  disabled={u.sessions === 0}
+                  onClick={() => setConfirmSignOut(u.id)}
+                >
+                  Sign out everywhere
+                </button>
+              )}
             </li>
           ))}
         </ul>
+        <p className="setting-hint">
+          Signing a player out ends every session they hold, on every device. It is the
+          only way to take back a session token that has leaked.
+        </p>
       </div>
 
       <div className="setting-row">

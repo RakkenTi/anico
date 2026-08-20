@@ -76,14 +76,27 @@ function normalizeGender(raw: string | null): string {
   return 'Other'
 }
 
+/**
+ * AniList refused, as opposed to something in here being broken. Kept apart so
+ * a search that runs into the upstream budget says so, instead of arriving as
+ * a generic 500 that reads like an instance fault.
+ */
+export class UpstreamError extends Error {}
+
 async function query(body: object): Promise<any> {
+  // A refused connection or dead DNS is AniList being unreachable, not this
+  // instance breaking, so it joins the same class as a 429 or a 502.
   const res = await fetch(ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
+  }).catch(() => {
+    throw new UpstreamError('AniList could not be reached from this instance.')
   })
-  if (res.status === 429) throw new Error('AniList rate limit reached.')
-  if (!res.ok) throw new Error(`AniList request failed (${res.status}).`)
+  if (res.status === 429) {
+    throw new UpstreamError('AniList is rate limiting this instance. Try again in a minute.')
+  }
+  if (!res.ok) throw new UpstreamError(`AniList is not answering right now (${res.status}).`)
   const json: any = await res.json()
   if (json.errors?.length) throw new Error(json.errors[0].message ?? 'AniList query error')
   return json.data

@@ -171,6 +171,15 @@ export function endSession(db: DB, token: string | undefined): void {
   if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token))
 }
 
+/**
+ * End every session belonging to one player, so a leaked or shared token can
+ * actually be taken back. Sessions are rows precisely so this is possible.
+ * Returns how many were revoked.
+ */
+export function endSessionsFor(db: DB, playerId: number): number {
+  return db.prepare('DELETE FROM sessions WHERE player_id = ?').run(playerId).changes
+}
+
 export function purgeExpiredSessions(db: DB): void {
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now())
 }
