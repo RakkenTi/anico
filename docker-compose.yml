@@ -10,7 +10,11 @@ name: anico
 # that uid or the server cannot write its database.
 services:
   anico:
-    image: ${ANICO_IMAGE:?Set ANICO_IMAGE in .env, e.g. ghcr.io/yourname/anico:latest}
+    # Public package, so this pulls anonymously and needs no login. Override
+    # ANICO_IMAGE in .env to pin a tag: that is how you freeze or roll back
+    # without editing a tracked file, which matters while watchtower is
+    # following :latest on its own.
+    image: ${ANICO_IMAGE:-ghcr.io/rakkenti/anico:latest}
     container_name: anico
     restart: unless-stopped
     ports:

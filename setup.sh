@@ -39,11 +39,14 @@ else
   [ -f .env.example ] || die ".env.example is missing; run this from a checkout."
   cp .env.example .env
   ok "created .env from .env.example"
-  warn "edit .env and set ANICO_IMAGE before starting"
+  say "nothing needs editing to start; it holds optional overrides"
 fi
 
 # --- which uid does the image run as? -------------------------------------
+# Only set in .env when pinning a tag; otherwise compose's default applies.
+DEFAULT_IMAGE=ghcr.io/rakkenti/anico:latest
 IMAGE=$(grep -E '^[[:space:]]*ANICO_IMAGE=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"' " || true)
+IMAGE=${IMAGE:-$DEFAULT_IMAGE}
 RUN_UID=""
 if [ -n "$IMAGE" ] && docker image inspect "$IMAGE" >/dev/null 2>&1; then
   # Ask the image itself rather than trusting a number in a comment.
@@ -83,10 +86,9 @@ cat <<'NEXT'
 
 Next:
 
-  1. Check .env            ANICO_IMAGE must name a real image you can pull.
-  2. Start it              docker compose up -d
-  3. Watch the first boot  docker compose logs -f anico
-  4. Open the instance and create the first account. It becomes the admin.
+  1. Start it              docker compose up -d
+  2. Watch the first boot  docker compose logs -f anico
+  3. Open the instance and create the first account. It becomes the admin.
      Do this before the hostname is reachable from the internet: on an empty
      database the first account to register wins.
 
