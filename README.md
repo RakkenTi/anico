@@ -14,7 +14,8 @@ fetched by the server and cached in the instance's own database.
 ## Running an instance
 
 Every push to `master` publishes a multi-arch image to GHCR, so a server needs
-**three files**: `docker-compose.yml`, `setup.sh`, and a `.env` next to them.
+**two files**: `docker-compose.yml` and `setup.sh`. A `.env` beside them is optional,
+holding overrides only.
 
 The repo is private, so copy them from your checkout rather than fetching them over HTTP:
 
@@ -91,8 +92,22 @@ and login appears to do nothing.
 | `MAX_DB_BYTES` | `1073741824` | The crawl stops rather than grow the database past this. A full catalog settles near 30 MB, so the 1 GB default is headroom, not a limit you meet |
 | `CLIENT_DIR` | `/app/dist/client` | Where the built client is served from |
 
-`ANICO_IMAGE` and `COOKIE_SECURE` are read from `.env` by compose itself; the rest are
-container environment variables.
+`ANICO_IMAGE`, `COOKIE_SECURE` and `WATCHTOWER_POLL_INTERVAL` are read from `.env` by
+compose itself; the rest are container environment variables. All of them have defaults,
+so an instance runs with no `.env` at all.
+
+`ANICO_IMAGE` defaults to `ghcr.io/rakkenti/anico:latest`. The package is public, so the
+server pulls it anonymously. Override it only to **pin a tag** — with watchtower following
+`:latest` every minute, pinning is how you freeze on a known-good build or roll back after
+a bad one, and watchtower will not move you off a pinned tag:
+
+```sh
+ANICO_IMAGE=ghcr.io/rakkenti/anico:sha-1a2b3c4
+```
+
+GHCR image names are lowercase, so it is `rakkenti/anico` even though the repo is
+`RakkenTi/anico`. The publish workflow lowercases it for you; typing it by hand is where
+it bites.
 
 ### Where the data lives
 
