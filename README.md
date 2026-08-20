@@ -240,6 +240,7 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 | --- | --- |
 | `$w` / `$h` / `$m` roll commands | **Roll** button + a *Roll for* setting (Waifus / Husbandos / Everyone) |
 | Claiming with a reaction, ~3 h claim interval | **Claim** button. Unlimited in Fun mode, once an hour in Normal |
+| Opening a `$pack` | A Fun-mode ×10 is a sealed pack of ten: tear it with <kbd>Space</kbd> or swipe it open card by card. All ten are granted |
 | 10 rolls per hour | Unlimited in Fun mode. In Normal, 10 single summons an hour refilling on the hour, raised by Sapphire and Ruby badges and by nothing in settings |
 | Kakera value from character popularity | Credit value derived from AniList favourites on a power curve (≈35 for obscure picks, ≈865 for Levi) |
 | Kakera reactions dropping on rolls | **Coins** (Copper up to Solar, weighted rarity) drop alongside rolls; tap to collect. About one summon in twenty-five |
@@ -255,11 +256,14 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 ## Beyond Mudae
 
 - **Two modes**, yours alone to pick. **Fun** (the default) has no cooldowns at all:
-  summon and claim as much as you like, and the ×10 deals face down so you turn exactly
-  one card over. **Normal** is the paced game, with an hourly summon budget, one ×10 a
-  day and one claim an hour
-- **×10 summons** with a staggered card spread. Face down in Fun mode, one pick only;
-  face up in Normal, once a day, spending no hourly summons
+  summon and claim as much as you like, and the ×10 arrives as a **sealed pack**.
+  **Normal** is the paced game, with an hourly summon budget, one ×10 a day and one
+  claim an hour
+- **Packs**: a Fun-mode ×10 comes wrapped. Hit <kbd>Space</kbd> to tear it open all at
+  once, or swipe across it to slice the wrapper and then slide the cards off the stack
+  one at a time. Every card in it is yours either way, so how you open it is ceremony
+- **×10 summons** in Normal mode deal face up in a staggered spread, once a day, and
+  spend no hourly summons
 - **Rarity tiers**: Common / Rare / Epic / Legendary / Mythic frames, with a foil shimmer
   on Mythic
 - **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time bonuses
