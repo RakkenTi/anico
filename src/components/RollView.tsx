@@ -3,6 +3,7 @@ import { useEffect, useMemo } from 'react'
 import { useGame } from '../game/store'
 import type { AutoSell } from '../api'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
+import { fmt, fmtCount } from '../game/format'
 import CharacterCard from './CharacterCard'
 import Icon from './Icon'
 import PackOpener from './PackOpener'
@@ -10,7 +11,7 @@ import PackOpener from './PackOpener'
 export default function RollView() {
   const s = useGame()
   const testing = s.sandbox
-  const pack = s.pack && s.pack.state !== 'open' ? s.pack : null
+  const pack = s.pack && s.pack.stacks.some((st) => st.state !== 'open') ? s.pack : null
   // Packs are the whole of the progression: nothing until Sapphire I, and
   // bigger from there. Zero means the only summon available is a single card.
   const packSize = s.packSize
@@ -140,7 +141,7 @@ export default function RollView() {
     /* `opening` marks the stretch from a sealed pack to the last card landing.
        On a phone the controls stand down for it: there is nothing to press
        while a pack is being opened, and the bar was crowding the cards. */
-    <div className={`roll-view ${mega ? 'mega' : ''} ${pack ? 'opening' : ''}`}>
+    <div className={`roll-view ${mega ? 'mega' : ''} ${mega ? 'hushed' : ''} ${pack ? 'opening' : ''}`}>
       <div className="roll-stage" ref={stageRef}>
         {s.rolling ? (
           <div className="card-back" aria-label="Summoning…">
@@ -225,16 +226,16 @@ export default function RollView() {
                   ? `Sandbox: summon ${packSize} at once`
                   : affordable
                     ? `Open a sealed pack of ${packSize}. Every card in it is yours.`
-                    : `A pack of ${packSize} costs ${s.packPrice.toLocaleString()} credits.`
+                    : `This pull costs ${fmt(s.packPrice)} credits.`
               }
             >
               <span className="pack-x">
-                ×{pullSize}
+                ×{fmtCount(pullSize)}
                 {s.packsPerPull > 1 && <em className="pack-mult"> {s.packsPerPull} packs</em>}
               </span>
               {!testing && (
                 <span className="pack-price">
-                  <Icon name="token" /> {s.packPrice.toLocaleString()}
+                  <Icon name="token" /> {fmt(s.packPrice)}
                 </span>
               )}
             </button>
@@ -247,8 +248,10 @@ export default function RollView() {
           ) : packSize > 0 ? (
             <span className="testing-note">
               Single summons are free ·{' '}
-              {s.packsPerPull > 1 ? `${s.packsPerPull} packs, ${pullSize} cards` : `a pack of ${packSize}`}{' '}
-              costs {s.packPrice.toLocaleString()}
+              {s.packsPerPull > 1
+                ? `${s.packsPerPull} packs, ${fmtCount(pullSize)} cards`
+                : `a pack of ${fmtCount(packSize)}`}{' '}
+              costs {fmt(s.packPrice)}
             </span>
           ) : (
             /* The one thing the shop is for, said where the button would be. */
@@ -295,18 +298,18 @@ export default function RollView() {
 
         {/* Nothing about the contents until the wrapper is off: the bar was
             naming a card while the pack was still sealed. */}
-        {entry && !s.rolling && !(s.pack && s.pack.state === 'sealed') && (
+        {entry && !s.rolling && !(s.pack && s.pack.stacks.every((st) => st.state === 'sealed')) && (
           <div className={`claim-bar ${entry.owned ? 'is-note' : ''}`}>
             <div className="claim-bar-info">
               <span className="claim-bar-name">{entry.char.name}</span>
-              <span className="claim-bar-value" title="Credit value">{entry.char.creditValue.toLocaleString()}</span>
+              <span className="claim-bar-value" title="Credit value">{fmt(entry.char.creditValue)}</span>
             </div>
             {entry.owned ? (
               <span className="claim-bar-note">
                 {entry.fresh
                   ? 'straight from the pack, and yours'
                   : entry.compensation > 0
-                    ? `already yours, compensated ${entry.compensation} credits`
+                    ? `already yours, compensated ${fmt(entry.compensation)} credits`
                     : 'bound to your collection'}
               </span>
             ) : (

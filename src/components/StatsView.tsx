@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useGame } from '../game/store'
+import { fmt } from '../game/format'
 import { rarityOf } from '../game/economy'
 import type { Rarity } from '../game/economy'
 import CharacterModal from './CharacterModal'
@@ -46,7 +47,7 @@ function Tile({ label, value, suffix }: { label: string; value: number; suffix?:
   return (
     <div className="stat-tile">
       <div className="stat-tile-value">
-        {v.toLocaleString()}
+        {fmt(v)}
         {suffix && <span className="stat-tile-suffix">{suffix}</span>}
       </div>
       <div className="stat-tile-label">{label}</div>
@@ -256,7 +257,7 @@ export default function StatsView() {
                   <span className="fame-rank">#{i + 1}</span>
                   <img src={c.image} alt={c.name} loading="lazy" />
                   <span className="fame-name">{c.name}</span>
-                  <span className="fame-value" title="Credit value">{c.creditValue.toLocaleString()}</span>
+                  <span className="fame-value" title="Credit value">{fmt(c.creditValue)}</span>
                 </button>
               ))}
             </div>

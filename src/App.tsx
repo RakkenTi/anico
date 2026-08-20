@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { fmt, fmtCount } from './game/format'
 import { useGame, useUi, formatDuration } from './game/store'
 import { DAILY_INTERVAL_H } from './game/economy'
 import { sfx } from './game/sound'
@@ -83,21 +84,21 @@ export default function App() {
         </div>
         <div className="header-stats">
           <span className="stat stat-credits" title="Credit balance">
-            {credits.toLocaleString()} <em>credits</em>
+            {fmt(credits)} <em>credits</em>
             {/* Coins are gathered where they fall; this is the receipt rising
                 off the balance they already landed in. */}
             {coinPops.map((c) => (
               <span className="coin-pop" key={c.id}>
-                <Icon name="token" /> +{c.amount.toLocaleString()}
+                <Icon name="token" /> +{fmt(c.amount)}
               </span>
             ))}
           </span>
           {/* What the shop has bought so far, which is the only number here
               that can go up by playing well rather than by playing more. */}
           <span className="stat" title={packSize > 0 ? 'Cards a pack holds, and what one costs' : 'Packs unlock with the Sapphire badge'}>
-            {packSize > 0 ? `×${packSize} packs` : 'packs locked'}
+            {packSize > 0 ? `×${fmtCount(packSize)} packs` : 'packs locked'}
           </span>
-          <span className="stat" title="Collection size">{collectionSize} owned</span>
+          <span className="stat" title="Collection size">{fmtCount(collectionSize)} owned</span>
           {/* Reads as a button rather than another read-out: the old version sat
               in a row of plain stats and nobody could tell it was clickable. */}
           <button

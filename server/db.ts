@@ -224,6 +224,37 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ALTER TABLE player_state DROP COLUMN pending_coins_json;
     `,
   },
+  {
+    name: '009_incremental',
+    sql: `
+    -- The Automaton stops being a browser timer and becomes a thing the
+    -- instance knows about: whether it is running, when it was last paid, and
+    -- what a pull has recently been worth to this player. The last of those is
+    -- how it is paid for the hours the tab was closed, without the server
+    -- having to replay a night of rolls when somebody comes back.
+    ALTER TABLE player_state ADD COLUMN auto_spin  INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE player_state ADD COLUMN auto_at    INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE player_state ADD COLUMN auto_yield REAL    NOT NULL DEFAULT 0;
+
+    -- Every upgrade line kept its level and changed its meaning: Deeper Packs
+    -- multiplies a pack instead of adding twenty-five cards to it, Appraisal
+    -- multiplies a sale instead of adding five percent, and neither has a last
+    -- level any more. Nobody loses a purchase; what everybody gets is a curve
+    -- that keeps going. The three new lines start where everything starts.
+    UPDATE player_state
+       SET upgrades_json = json_set(
+             json_set(
+               json_set(COALESCE(NULLIF(upgrades_json, ''), '{}'),
+                        '$.nightshift', 0),
+               '$.alchemy', 0),
+             '$.divination', 0);
+
+    -- A collection is the one thing here that can grow to five figures, and
+    -- every read of it sorts by claim time. One index, and the phone stops
+    -- being the slowest part of opening a pack.
+    CREATE INDEX IF NOT EXISTS idx_claims_player_claimed ON claims(player_id, claimed_at DESC);
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

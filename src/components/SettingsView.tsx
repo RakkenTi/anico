@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGame, useUi } from '../game/store'
 import { RARITY_NAMES } from '../game/economy'
+import { fmt, fmtCount } from '../game/format'
 import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
@@ -170,7 +171,7 @@ export default function SettingsView() {
             <dt>Packs</dt>
             <dd>
               {packSize > 0
-                ? `sealed, ×${packSize} cards for ${packPrice.toLocaleString()} credits, and every card in one is granted`
+                ? `sealed, ×${fmtCount(packSize)} cards for ${fmt(packPrice)} credits, and every card in one is granted`
                 : 'locked until the Sapphire badge in the shop opens them'}
             </dd>
           </div>
@@ -186,16 +187,20 @@ export default function SettingsView() {
             <dt>The Automaton</dt>
             <dd>
               {fx.autoSpinMs > 0
-                ? `opens a pull every ${(fx.autoSpinMs / 1000).toFixed(1)}s while it is switched on`
+                ? `tears, swipes and presses again every ${(fx.autoSpinMs / 1000).toFixed(2)}s while it is switched on`
                 : 'not bought — the shop sells a machine that presses the button for you'}
             </dd>
           </div>
           <div>
             <dt>Opening speed</dt>
+            <dd>{fx.cardRate} cards a second (Swift Hands)</dd>
+          </div>
+          <div>
+            <dt>Night shift</dt>
             <dd>
-              {fx.hasteMult < 1
-                ? `${Math.round(100 / fx.hasteMult)}% of normal (Swift Hands)`
-                : 'normal — Swift Hands in the shop makes big packs quick'}
+              {fx.offlineRate > 0
+                ? `the Automaton keeps ${Math.round(fx.offlineRate * 100)}% of its speed with the tab closed, for up to ${fx.offlineHours} hours`
+                : 'the machine stops when you close the tab — Night Shift in the shop changes that'}
             </dd>
           </div>
         </dl>

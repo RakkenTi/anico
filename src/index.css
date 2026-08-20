@@ -418,7 +418,11 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .rarity-legendary { --frame: var(--value); }
 .rarity-mythic { --frame: #e87ac8; }
 
-/* Foil shimmer is the one moving effect we keep: it marks the top rarity. */
+/* Foil shimmer is the one moving effect we keep: it marks the top rarity.
+   Both this and the star sweep animate `background-position`, which repaints
+   rather than composites -- fine for the handful of cards on a stage, and the
+   whole frame budget once a hundred of them are on screen at once. Anywhere
+   cards arrive in bulk they hold still (see `.hushed`). */
 .rarity-mythic .card-frame::after {
   content: '';
   position: absolute;
@@ -1008,6 +1012,11 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
   gap: 14px;
 }
+/* Only the rows on screen are mounted (see useVirtualGrid). The scroller is
+   as tall as the whole collection would be, so the scrollbar tells the truth,
+   and the mounted slice is translated into the right place inside it. */
+.collection-scroller { position: relative; }
+.collection-scroller > .collection-grid { will-change: transform; }
 
 .wish-grid {
   display: grid;
@@ -1102,55 +1111,83 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .modal-facts dd { margin: 0; }
 
 /* ------------------------------------------------ shop */
-.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+/* One shelf, not two. Badges and upgrades used to be separate panels stacked
+   vertically, which put the badge tree -- the half that decides whether packs
+   exist at all -- below the fold on every screen narrower than a desktop. */
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 14px; }
 
-.badge-card {
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--badge-color);
-  border-radius: 4px;
-  background: var(--surface-2);
-  padding: 16px;
+.shop-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  /* Off-screen shop cards are cheap to skip: the grid can hold twenty of them
+     and only a handful are ever in view. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
 }
-.badge-card.locked { opacity: 0.75; }
-.badge-card.maxed { border-color: var(--line-value); }
+/* A badge wears its metal on the edge, so the two kinds are still tellable
+   apart at a glance now that they share a grid. */
+.shop-card.kind-badge { border-left: 3px solid var(--badge-color); background: var(--surface-2); }
+.shop-card.locked { opacity: 0.72; }
+.shop-card.maxed { border-color: var(--line-value); opacity: 0.85; }
+/* The one thing a shop is asked: what can I buy right now. */
+.shop-card.affordable { border-color: var(--line-value); box-shadow: inset 0 0 0 1px var(--line-value); }
 
-.badge-head { display: flex; gap: 12px; align-items: center; }
-/* The medal used to be a coloured dot in a ring, which read as a status light
-   rather than a badge. It holds the line's icon now; the ring and the metal
-   colour are what still say which line it is. */
-.badge-medal {
-  width: 46px; height: 46px;
+.shop-head { display: flex; gap: 12px; align-items: center; }
+.shop-medal {
+  width: 44px; height: 44px;
   flex: none;
   display: grid;
   place-items: center;
-  border: 1px solid var(--badge-color);
+  border: 1px solid var(--badge-color, var(--line-strong));
   border-radius: 50%;
   background: var(--well);
-  color: var(--badge-color);
+  color: var(--badge-color, var(--accent));
   font-size: 17px;
 }
-.badge-card.locked .badge-medal { opacity: 0.6; }
-.badge-card.maxed .badge-medal { background: color-mix(in srgb, var(--badge-color) 18%, var(--well)); }
-.badge-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.05em; }
-.badge-level { color: var(--badge-color); }
-.badge-pips { display: flex; gap: 4px; margin-top: 5px; }
-.pip { width: 20px; height: 5px; border-radius: 1px; background: var(--line); }
+.shop-card.kind-upgrade .shop-medal { border-radius: 4px; }
+.shop-card.locked .shop-medal { opacity: 0.6; }
+.shop-card.maxed .shop-medal {
+  background: color-mix(in srgb, var(--badge-color, var(--value)) 18%, var(--well));
+}
+.shop-title { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.shop-name {
+  font-family: var(--serif); font-weight: 700; font-size: 1.02rem; letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 7px;
+}
+.shop-standing {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.badge-pips { display: flex; gap: 3px; margin-top: 4px; }
+.pip { width: 16px; height: 4px; border-radius: 1px; background: var(--line); }
 .pip.filled { background: var(--badge-color); }
 
-.badge-levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.badge-levels li {
-  font-size: 0.8rem; color: var(--text-dim); line-height: 1.45;
-  padding-left: 8px; border-left: 2px solid transparent;
+.shop-effect {
+  margin: 0 0 auto;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 10px;
 }
-.badge-levels li.owned { color: var(--text); border-left-color: var(--badge-color); }
-.badge-levels li.next { color: var(--text); border-left-color: var(--line-strong); }
-.lvl-roman { display: inline-block; min-width: 20px; color: var(--badge-color); font-weight: 700; }
-.badge-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
+.shop-effect .now,
+.shop-effect .next {
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+.shop-effect .next { color: var(--value-soft); }
+.shop-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
 
-/* The four numbers the shop moves, above both halves of it. */
+/* The numbers the shop moves, above the shelf itself. */
 .shop-status {
   display: flex;
   flex-wrap: wrap;
@@ -1161,7 +1198,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   border: 1px solid var(--line);
   border-radius: 4px;
 }
-.shop-status > div { min-width: 0; flex: 1 1 190px; }
+.shop-status > div { min-width: 0; flex: 1 1 170px; }
 .shop-status dt {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
@@ -1170,44 +1207,18 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 }
 .shop-status dd { margin: 3px 0 0; font-size: 0.88rem; }
 
-.upgrade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-.upgrade-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px 16px;
-  background: var(--well);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+/* Bulk views hold still.
+   A spread of two hundred and a collection of ten thousand are both places
+   where every card would otherwise be running its own repainting shimmer.
+   The frames, the colours and the stars all stay; only the movement goes. */
+.hushed .rarity-mythic .card-frame::after,
+.hushed .char-card.starred .card-frame::before {
+  animation: none;
+  background-position: 40% 0;
 }
-.upgrade-card.maxed { border-color: var(--line-value); }
-.upgrade-head { display: flex; align-items: center; gap: 12px; }
-.upgrade-head .icon { color: var(--accent); font-size: 17px; }
-.upgrade-title { display: flex; flex-direction: column; min-width: 0; }
-.upgrade-name { font-family: var(--serif); font-weight: 700; font-size: 1.02rem; letter-spacing: 0.03em; }
-.upgrade-level {
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.upgrade-blurb { margin: 0; color: var(--text-dim); font-size: 0.8rem; line-height: 1.5; }
-.upgrade-effect {
-  margin: 0 0 auto;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  border-left: 2px solid var(--line-strong);
-  padding-left: 10px;
-}
-.upgrade-effect .now,
-.upgrade-effect .next {
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-right: 4px;
-}
-.upgrade-effect .next { color: var(--value-soft); }
+/* Paint and layout stop at a card's own edge, so one card changing cannot
+   make the browser reconsider the grid around it. */
+.char-card { contain: layout paint style; }
 
 /* ------------------------------------------------ settings */
 .settings-view { max-width: 640px; }
@@ -1847,15 +1858,53 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
      Leave it that much room or it runs under the header. */
   padding-top: 34px;
 }
+/* Several wrappers, side by side. Both Hands buys *packs*: a pull of four
+   arriving as one stack four times as tall is the one thing that upgrade
+   should never look like, so each pack keeps its own foil and its own pile and
+   they share the room instead. */
+.pack-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 30px 20px;
+  width: 100%;
+  --pack-w: min(100%, clamp(210px, calc(64vh - 160px), 330px));
+  --pack-w: min(100%, clamp(210px, calc(64dvh - 160px), 330px));
+}
+/* The width leaves room for the fan, which leans about 36px past the card. */
+.pack-grid.packs-2 { --pack-w: min(calc(44% - 36px), 250px); }
+.pack-grid.packs-3 { --pack-w: min(calc(31% - 24px), 205px); }
+.pack-grid.packs-4,
+.pack-grid.packs-5,
+.pack-grid.packs-6 { --pack-w: min(calc(24% - 20px), 178px); }
+
 .pack-area {
   position: relative;
   /* A card's own measure. No forced aspect ratio: the top card is in normal
      flow and gives the stack its exact height. */
-  width: min(100%, clamp(210px, calc(64vh - 160px), 330px));
-  width: min(100%, clamp(210px, calc(64dvh - 160px), 330px));
+  width: var(--pack-w);
   touch-action: none;
   user-select: none;
   cursor: grab;
+}
+/* How many cards are still under the one on top. The stack itself only ever
+   mounts the top two dozen, so this is the part of it that is a number. */
+.pack-left {
+  position: absolute;
+  right: -8px;
+  bottom: -10px;
+  z-index: 40;
+  min-width: 26px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--well);
+  border: 1px solid var(--line-strong);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
 }
 .pack-area:active { cursor: grabbing; }
 /* A pack has to fit between the header and the floating tab dock without
@@ -1872,11 +1921,32 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
    would quietly eat the clearance on exactly the devices that have least of
    it. Guessing at 46dvh instead put the button under the dock on a 360x640. */
 @media (max-width: 860px) {
-  .pack-area {
-    width: min(
+  .pack-grid {
+    gap: 22px 12px;
+    --pack-w: min(
       calc(100% - 44px),
       clamp(140px, calc((100dvh - 440px - env(safe-area-inset-bottom, 0px)) / 1.5), 240px)
     );
+  }
+  /* A phone fits two wrappers across and no more; the rest wrap under. The
+     36px is the fan: the pile leans past its own right edge, and on the
+     right-hand pack that lean is the screen edge. */
+  .pack-grid.packs-2 {
+    --pack-w: min(
+      calc(50% - 36px),
+      clamp(96px, calc((100dvh - 460px - env(safe-area-inset-bottom, 0px)) / 1.5), 190px)
+    );
+  }
+  /* Three or more wrap onto a second row, so each one gets half the height. */
+  .pack-grid.packs-3,
+  .pack-grid.packs-4,
+  .pack-grid.packs-5,
+  .pack-grid.packs-6 {
+    --pack-w: min(
+      calc(50% - 36px),
+      clamp(84px, calc((100dvh - 470px - env(safe-area-inset-bottom, 0px)) / 3), 128px)
+    );
+    gap: 16px 10px;
   }
   .pack-hint { font-size: 0.78rem; max-width: 30ch; }
   .pack-opener { gap: 12px; }
@@ -1888,9 +1958,12 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   position: absolute;
   inset: 0;
   /* Up and to the right a few pixels each, so the pile fans towards the top
-     corner and shows a sliver of every card under the top one. */
-  transform: translate(calc(var(--depth) * 4px), calc(var(--depth) * -3px));
-  filter: brightness(calc(1 - var(--depth) * 0.045));
+     corner and shows a sliver of every card under the top one. The fan stops
+     growing after eight: a stack of twenty-five used to reach a hundred pixels
+     past its own edge and lie across the pack beside it. */
+  --fan: min(var(--depth), 8);
+  transform: translate(calc(var(--fan) * 4px), calc(var(--fan) * -3px));
+  filter: brightness(calc(1 - min(var(--depth), 10) * 0.045));
   pointer-events: none;
 }
 .pack-card.top {

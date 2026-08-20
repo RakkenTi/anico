@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { OwnedCharacter } from '../game/types'
 import { MAX_STARS, STAR_NAMES, rarityOf } from '../game/economy'
 import { sfx } from '../game/sound'
+import { fmt, fmtCount } from '../game/format'
 
 interface Props {
   character: OwnedCharacter
@@ -72,10 +73,10 @@ export default function CharacterModal({ character, onClose, onSell }: Props) {
             <dl className="modal-facts">
               <dt>Series</dt><dd>{character.series}</dd>
               <dt>Gender</dt><dd>{character.gender}</dd>
-              <dt>Credit value</dt><dd>{character.creditValue.toLocaleString()} each</dd>
+              <dt>Credit value</dt><dd>{fmt(character.creditValue)} each</dd>
               <dt>Copies held</dt>
               <dd>
-                {copies.toLocaleString()}
+                {fmtCount(copies)}
                 {stars > 0 && (
                   <span className="modal-star">
                     {' '}· {STAR_NAMES[Math.min(stars, MAX_STARS)]} {'★'.repeat(Math.min(stars, 5))}
@@ -89,7 +90,7 @@ export default function CharacterModal({ character, onClose, onSell }: Props) {
                 than quoting one card's worth of a pile of eight. */}
             <button className="btn btn-sell" onClick={onSell}>
               Sell {copies > 1 ? `all ${copies}` : ''} for{' '}
-              {(character.stackValue ?? character.creditValue).toLocaleString()} credits
+              {fmt(character.stackValue ?? character.creditValue)} credits
             </button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import type { RolledCharacter } from '../game/types'
 import { MAX_STARS, STAR_NAMES, rarityOf } from '../game/economy'
+import { fmt } from '../game/format'
 
 const GENDER_META: Record<string, { symbol: string; label: string; className: string }> = {
   Female: { symbol: '♀', label: 'Female', className: 'gender-female' },
@@ -91,7 +92,7 @@ export default function CharacterCard({
               className="char-value"
               title={value !== undefined && value !== character.creditValue ? 'What this stack sells for' : 'Credit value'}
             >
-              {(value ?? character.creditValue).toLocaleString()}
+              {fmt(value ?? character.creditValue)}
             </span>
           </div>
         </div>

@@ -34,6 +34,10 @@ export interface Snapshot {
   packPrice: number
   /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
   autoSpinMs: number
+  /** The Automaton is switched on. Server-side, so a closed tab keeps it running. */
+  autoSpin: boolean
+  /** Cards a second the opening animation manages (Swift Hands). */
+  cardRate: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
@@ -44,6 +48,8 @@ export interface Snapshot {
   wishes: RolledCharacter[]
   /** Present only on calls that could have changed it. */
   collection?: OwnedCharacter[]
+  /** What the Automaton did while the tab was closed. Absent when it did nothing. */
+  offline?: { pulls: number; credits: number; minutes: number }
   serverNow: number
 }
 
@@ -63,13 +69,19 @@ export interface RollResult {
 /** Everything one press produced, beyond the cards it put on screen. */
 export interface RollSummary {
   pack: boolean
+  /** Stacks laid side by side on screen, each with its own wrapper. */
+  packCount: number
+  /** Cards in each of those stacks. */
+  perPack: number
   claimed: number
   bonus: number
   coins: number
   autoSold: number
   autoSoldFor: number
   merged: number
+  /** Cards the pull held beyond what it dealt: appraised rather than shown. */
   hidden: number
+  hiddenFor: number
 }
 
 export interface SessionInfo {
@@ -127,6 +139,7 @@ export const api = {
     post<RollSummary & { results: RollResult[]; state: Snapshot }>('/roll', { count }),
   claim: (characterId: number) => post<{ state: Snapshot; notes: string[] }>('/claim', { characterId }),
   claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
+  autoSpin: (on: boolean) => post<{ state: Snapshot }>('/auto', { on }),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
   sell: (ids: number[]) => post<{ state: Snapshot; total: number; sold: number }>('/sell', { ids }),
