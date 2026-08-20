@@ -2,16 +2,22 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# --ignore-scripts skips better-sqlite3's node-gyp step. The package has a
+# binding.gyp with no install script, so npm compiles it by default even
+# though a prebuilt binary ships in the tarball; node-gyp then needs Python
+# just to configure a build that has nothing to do. Nothing in the client
+# build loads the binding, so skipping is free here.
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package*.json ./
-# better-sqlite3 ships N-API prebuilds for linux x64/arm64 (glibc and musl),
-# so no compiler is needed here and none reaches the runtime image.
-RUN npm ci --omit=dev
+# Same skip, for the runtime dependency tree. better-sqlite3 loads
+# prebuilds/<platform>.node at require time, and ships binaries for linux
+# x64 and arm64 on both glibc and musl, so no toolchain is needed at all.
+RUN npm ci --omit=dev --ignore-scripts
 
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production \

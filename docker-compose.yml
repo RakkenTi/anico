@@ -1,3 +1,6 @@
+# Project name, so the volume and network are not named after the folder.
+name: anico
+
 services:
   anico:
     build: .
