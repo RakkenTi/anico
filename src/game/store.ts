@@ -16,9 +16,10 @@ import { persist } from 'zustand/middleware'
 import type { LayoutKey, OwnedCharacter, RolledCharacter, ThemeKey, Toast } from './types'
 import { DAILY_INTERVAL_H, rarityOf } from './economy'
 import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects } from './badges'
-import { EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
+import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
 import { POOL_EVERYTHING } from './pool'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
+import { fmt, fmtCount } from './format'
 import { ApiError, api, type RollResult, type ServerSettings, type Snapshot } from '../api'
 
 const HOUR = 3_600_000
@@ -30,6 +31,46 @@ const EMPTY_SETTINGS: ServerSettings = {
 }
 
 let toastSeq = 1
+
+type PackState = NonNullable<GameState['pack']>
+
+/** One wrapper's cards: the pull is dealt in equal slices, pack by pack. */
+export function stackCards(
+  s: { rolled: RollResult[]; pack: PackState | null },
+  index: number,
+): RollResult[] {
+  if (!s.pack) return []
+  const from = index * s.pack.perPack
+  return s.rolled.slice(from, from + s.pack.perPack)
+}
+
+/**
+ * Ask the browser for a pull's artwork before it is needed.
+ *
+ * Card images come from AniList's CDN, and a spread that mounts two hundred
+ * <img> tags at once turns into two hundred simultaneous requests exactly as
+ * the deal animation starts -- which is how a pack opening ends up janking on
+ * a phone. Warming them while the wrapper is still on costs nothing (the
+ * requests are the same ones, just earlier) and the cards arrive decoded.
+ */
+const WARM_AHEAD = 60
+function warmImages(results: RollResult[]): void {
+  if (typeof Image === 'undefined') return
+  for (const r of results.slice(0, WARM_AHEAD)) {
+    const img = new Image()
+    img.decoding = 'async'
+    img.src = r.char.image
+  }
+}
+
+const patchStack = (
+  pack: PackState,
+  index: number,
+  patch: Partial<PackState['stacks'][number]>,
+): PackState => ({
+  ...pack,
+  stacks: pack.stacks.map((st, i) => (i === index ? { ...st, ...patch } : st)),
+})
 
 interface GameState {
   /* session */
@@ -60,15 +101,26 @@ interface GameState {
   packPrice: number
   /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
   autoSpinMs: number
+  /** Cards a second the hands manage: what Swift Hands buys. */
+  cardRate: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
   totalClaims: number
   /**
-   * The pack currently on screen, if the last summon was one. Presentation
-   * only: its cards are already claimed by the time it arrives.
+   * The packs currently on screen, if the last summon was a pull.
+   *
+   * Several of them, side by side, each with its own wrapper and its own
+   * counter: Both Hands buys *packs*, not a bigger pack, and one enormous
+   * stack is exactly what that upgrade should not look like. Presentation
+   * only -- every card in every one of them is claimed by the time it arrives.
    */
-  pack: { state: 'sealed' | 'sliced' | 'open'; revealed: number; claimed: number; bonus: number } | null
+  pack: {
+    perPack: number
+    claimed: number
+    bonus: number
+    stacks: { state: 'sealed' | 'sliced' | 'open'; revealed: number }[]
+  } | null
 
   /* browser only */
   /**
@@ -108,12 +160,12 @@ interface GameState {
   setRollSort: (sort: 'dealt' | 'rarity') => void
   claim: () => Promise<void>
   claimAll: () => Promise<void>
-  setAutoSpin: (on: boolean) => void
+  setAutoSpin: (on: boolean) => Promise<void>
   popCoins: (amount: number) => void
   dismissCoinPop: (id: number) => void
-  slicePack: () => void
-  tearPack: () => void
-  revealNext: () => void
+  slicePack: (index: number) => void
+  tearPack: (index: number) => void
+  revealNext: (index: number) => void
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
   sell: (id: number) => Promise<void>
@@ -135,7 +187,9 @@ export const useGame = create<GameState>()((set, get) => {
   const apply = (s: Snapshot) => {
     // Every animation timer reads its cadence from the sound module, so the
     // Swift Hands level is pushed there the moment the server confirms it.
-    setDealSpeed(computeEffects(s.badges, s.upgrades).hasteMult)
+    // Swift Hands is quoted in cards a second; the animation wants a multiple
+    // of its own base cadence, which is the rate a fresh account deals at.
+    setDealSpeed(BASE_CARD_RATE / Math.max(1, s.cardRate))
     return set((prev) => ({
       authed: true,
       username: s.username,
@@ -153,6 +207,8 @@ export const useGame = create<GameState>()((set, get) => {
       cardsPerPull: s.cardsPerPull,
       packPrice: s.packPrice,
       autoSpinMs: s.autoSpinMs,
+      cardRate: s.cardRate,
+      autoSpin: s.autoSpin,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
       totalRolls: s.totalRolls,
@@ -160,6 +216,27 @@ export const useGame = create<GameState>()((set, get) => {
       clockOffset: s.serverNow - Date.now(),
       now: s.serverNow,
     }))
+  }
+
+  /**
+   * Say what the Automaton did while the tab was closed.
+   *
+   * The credits are already in the balance by the time this runs -- the server
+   * settles them before it answers -- so this is a receipt, in the same shape
+   * as the one a coin drop leaves.
+   */
+  const reportOffline = (s: Snapshot) => {
+    if (!s.offline || s.offline.credits <= 0) return
+    const { pulls, credits, minutes } = s.offline
+    const spent =
+      minutes >= 60
+        ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+        : `${minutes}m`
+    sfx.payout(0.5)
+    get().pushToast(
+      `The Automaton worked ${spent} while you were away: ${fmtCount(pulls)} pulls, +${fmt(credits)} credits.`,
+      'credits',
+    )
   }
 
   /** Run a call, surfacing the server's own message and never wedging the UI. */
@@ -199,6 +276,7 @@ export const useGame = create<GameState>()((set, get) => {
     cardsPerPull: 0,
     packPrice: 0,
     autoSpinMs: 0,
+    cardRate: BASE_CARD_RATE,
     lastDailyAt: 0,
     dailyStreak: 0,
     totalRolls: 0,
@@ -225,7 +303,7 @@ export const useGame = create<GameState>()((set, get) => {
     },
     packBusy: () => {
       const p = get().pack
-      return !!p && p.state !== 'open'
+      return !!p && p.stacks.some((st) => st.state !== 'open')
     },
     dailyReady: () => {
       const s = get()
@@ -239,7 +317,9 @@ export const useGame = create<GameState>()((set, get) => {
           set({ authed: false, needsSetup: me.needsSetup })
           return
         }
-        apply(await api.state())
+        const snap = await api.state()
+        apply(snap)
+        reportOffline(snap)
       } catch {
         set({ error: 'Cannot reach the instance.' })
       } finally {
@@ -292,6 +372,7 @@ export const useGame = create<GameState>()((set, get) => {
         return
       }
       const firstFresh = res.results.findIndex((r) => !r.owned)
+      warmImages(res.results)
       apply(res.state)
       set((prev) => ({
         rolled: res.results,
@@ -299,14 +380,17 @@ export const useGame = create<GameState>()((set, get) => {
         selected: firstFresh === -1 ? 0 : firstFresh,
         rolling: false,
         rollCount: prev.rollCount + 1,
-        // The Automaton does not stand around tearing wrappers: a pull it made
-        // arrives open, because nobody is watching it happen.
+        // One entry per wrapper. Even the Automaton's pulls arrive sealed: it
+        // tears and swipes them itself, on screen, like a hand would.
         pack: res.pack
           ? {
-              state: (prev.autoSpin ? 'open' : 'sealed') as 'open' | 'sealed',
-              revealed: prev.autoSpin ? res.results.length : 0,
+              perPack: Math.max(1, res.perPack),
               claimed: res.claimed,
               bonus: res.bonus,
+              stacks: Array.from({ length: Math.max(1, res.packCount) }, () => ({
+                state: 'sealed' as const,
+                revealed: 0,
+              })),
             }
           : null,
         dealUntil:
@@ -322,14 +406,14 @@ export const useGame = create<GameState>()((set, get) => {
       }
       if (res.autoSold > 0) {
         get().pushToast(
-          `Auto-sold ${res.autoSold} card${res.autoSold === 1 ? '' : 's'} for +${res.autoSoldFor.toLocaleString()} credits`,
+          `Auto-sold ${fmtCount(res.autoSold)} card${res.autoSold === 1 ? '' : 's'} for +${fmt(res.autoSoldFor)} credits`,
           'credits',
         )
       }
       if (res.hidden > 0) {
         get().pushToast(
-          `${res.hidden.toLocaleString()} more cards from the packs behind this one.`,
-          'info',
+          `${fmtCount(res.hidden)} more cards behind these, appraised for +${fmt(res.hiddenFor)} credits`,
+          'credits',
         )
       }
       // A sealed pack sounds out as it is opened, not as it arrives.
@@ -352,11 +436,25 @@ export const useGame = create<GameState>()((set, get) => {
 
     dismissCoinPop: (id) => set((prev) => ({ coinPops: prev.coinPops.filter((c) => c.id !== id) })),
 
-    setAutoSpin: (on) => {
+    /**
+     * Switch the machine on or off.
+     *
+     * The server holds the switch, not the browser: Night Shift pays it for
+     * the hours the tab was closed, and it cannot do that for a flag that only
+     * ever existed in a page somebody navigated away from.
+     */
+    setAutoSpin: async (on) => {
       const s = get()
       if (on && s.autoSpinMs <= 0) return
       sfx.tap()
       set({ autoSpin: on })
+      const res = await guard(() => api.autoSpin(on))
+      if (!res) {
+        set({ autoSpin: false })
+        return
+      }
+      apply(res.state)
+      reportOffline(res.state)
     },
 
     setRollSort: (sort) => {
@@ -405,46 +503,49 @@ export const useGame = create<GameState>()((set, get) => {
       )
     },
 
-    /** The wrapper comes away, leaving the stack. */
-    slicePack: () => {
+    /** The wrapper comes away from one pack, leaving its stack. */
+    slicePack: (index) => {
       const s = get()
-      if (!s.pack || s.pack.state !== 'sealed') return
+      const stack = s.pack?.stacks[index]
+      if (!s.pack || !stack || stack.state !== 'sealed') return
       sfx.rollStart(1)
-      const first = s.rolled[0]
+      const first = s.rolled[index * s.pack.perPack]
       if (first) sfx.reveal(rarityOf(first.char.creditValue).key, 1)
-      set({ selected: 0, pack: { ...s.pack, state: 'sliced' } })
+      set({ selected: index * s.pack.perPack, pack: patchStack(s.pack, index, { state: 'sliced' }) })
     },
 
-    /** Skip the throwing and lay all ten out at once. */
-    tearPack: () => {
+    /** Skip the throwing and lay one pack's cards out at once. */
+    tearPack: (index) => {
       const s = get()
-      if (!s.pack || s.pack.state === 'open') return
-      const best = s.rolled.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
-      sfx.reveal(rarityOf(best).key, s.rolled.length)
-      set({ pack: { ...s.pack, state: 'open', revealed: s.rolled.length } })
+      const stack = s.pack?.stacks[index]
+      if (!s.pack || !stack || stack.state === 'open') return
+      const cards = stackCards(s, index)
+      const best = cards.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
+      sfx.reveal(rarityOf(best).key, cards.length)
+      set({ pack: patchStack(s.pack, index, { state: 'open', revealed: cards.length }) })
     },
 
     /**
-     * Throw the top card aside, uncovering the one under it.
+     * Throw the top card of one pack aside, uncovering the one under it.
      *
      * Deliberately does not end the pack when the last card goes: the card is
      * still in the air at that point, and the view calls tearPack once it has
      * actually landed. Throws can therefore overlap without one cutting the
      * previous one's animation short.
      */
-    revealNext: () => {
+    revealNext: (index) => {
       const s = get()
-      if (!s.pack || s.pack.state !== 'sliced') return
-      const next = s.pack.revealed + 1
-      if (next > s.rolled.length) return
+      const stack = s.pack?.stacks[index]
+      if (!s.pack || !stack || stack.state !== 'sliced') return
+      const cards = stackCards(s, index)
+      const next = stack.revealed + 1
+      if (next > cards.length) return
       // Follow whatever is now on top, so the bar under the stack describes
       // the card being looked at rather than the one just discarded.
-      const entry = s.rolled[Math.min(next, s.rolled.length - 1)]
+      const at = index * s.pack.perPack + Math.min(next, cards.length - 1)
+      const entry = s.rolled[at]
       if (entry) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
-      set({
-        selected: Math.min(next, s.rolled.length - 1),
-        pack: { ...s.pack, revealed: next },
-      })
+      set({ selected: at, pack: patchStack(s.pack, index, { revealed: next }) })
     },
 
     setSandbox: async (on) => {
@@ -483,7 +584,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.sell()
       apply(res.state)
       get().pushToast(
-        `Sold ${res.sold} character${res.sold === 1 ? '' : 's'} for +${res.total.toLocaleString()} credits`,
+        `Sold ${fmtCount(res.sold)} character${res.sold === 1 ? '' : 's'} for +${fmt(res.total)} credits`,
         'credits',
       )
     },

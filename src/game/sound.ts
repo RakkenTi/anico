@@ -141,7 +141,7 @@ if (typeof window !== 'undefined') {
 let hasteMult = 1
 
 export function setDealSpeed(mult: number): void {
-  hasteMult = Math.min(1, Math.max(0.2, mult))
+  hasteMult = Math.min(1, Math.max(0.08, mult))
 }
 
 export function dealSpeed(): number {

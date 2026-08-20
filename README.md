@@ -256,52 +256,75 @@ Claim the ones you want, sell the ones you do not, and pick who shows up in
 *Settings, Roll for* (Waifus / Husbandos / Everyone).
 
 **Packs are what credits are for.** A fresh account has the single summon and
-nothing else. The **Sapphire** badge unlocks a sealed ×10 and grows it to ×15,
-×20 and ×25; the **Deeper Packs** upgrade takes it to ×50, ×75, ×100 and past
-that. A pack costs twelve credits a card — always less than the cards inside
-are worth, so opening one and selling what you did not want is the loop
+nothing else. The **Sapphire** badge unlocks a sealed ×10 and grows it to ×60;
+the **Deeper Packs** upgrade makes a pack half again as deep every level, with
+no last level, so late pulls run to thousands and then millions of cards. A pack
+costs twelve credits a card — always less than the cards inside are worth, so
+opening one and selling what you did not want is the loop
 ([ADR 0005](./docs/adr/0005-credits-buy-packs.md)).
 
 A pack comes wrapped in seamless foil, tinted by the best card inside: drag
 across it and a rip travels along the seam, accumulating as you pull — a
 partial tear stays torn, so you can saw at it exactly as you would a real one.
 Underneath, the cards are face up in a stack showing a sliver of each; throw the
-top one aside to reach the next, as fast as you like. <kbd>Space</kbd> before
-the tear opens the whole thing for you; after a hand tear it throws one card a
-press — and past two dozen cards it lays the rest out at once rather than making
-you watch. **Every card in a pack is yours the moment it is rolled**, however
-you choose to open it, so how you open it is ceremony; the next summon waits
-until this one is out of the wrapper. Once it is laid out, *Best first* sorts
-the spread by value so the one card worth finding in a hundred is at the top.
+top one aside to reach the next, as fast as you like. **Both Hands** buys more
+packs at one press and they arrive side by side, each with its own wrapper and
+its own pile. <kbd>Space</kbd> means *finish it*: from sealed it tears every
+wrapper and empties them, and mid-open it takes over the throwing. Past what
+**Swift Hands** can throw in about six seconds the cards land in the spread all
+at once — the foil still comes off first, because a pack that is simply replaced
+by a grid looks skipped rather than opened.
 
-**The shop is the whole progression**, and it is deliberately long. Every price
-is a multiple of the one below it, so the first hour is generous and the tenth
-is deliberate.
+**Every card a pack deals is yours the moment it is rolled**, however you choose
+to open it, and the next summon waits until this one is out of the wrapper. Two
+hundred cards are dealt; when a pull holds more than that, the rest is opened by
+the machine and appraised into credits at what the dealt cards averaged
+([ADR 0007](./docs/adr/0007-the-numbers-have-no-ceiling.md)). Once a spread is
+laid out, *Best first* sorts it by value so the one card worth finding in a
+hundred is at the top.
 
-*Upgrades* are the long game — each level costs a multiple of the last:
+**The shop is one shelf, ordered by price.** Every line costs a multiple of its
+own last level, and the multiple is always larger than the effect it buys: that
+difference is the difficulty curve. Numbers grow past what digits are good for,
+so anything over ten thousand is quoted with a suffix — 4.18B, 12.4Qa.
 
-| Upgrade | What each level buys |
-| --- | --- |
-| **Deeper Packs** | +25 cards a pack |
-| **Both Hands** | One more pack torn at the same press |
-| **Swift Hands** | Packs deal and throw 10% faster, compounding |
-| **Appraisal** | +5% on everything you sell and every duplicate |
-| **Fortune** | Coins fall more often and are worth more |
-| **The Automaton** | Presses the summon button for you, faster each level |
+*Upgrades* are the curve. Six of the nine never end:
 
-*Badges* are six short ladders, four rungs each, every rung three times the last:
+| Upgrade | What each level buys | Ends? |
+| --- | --- | --- |
+| **Appraisal** | Everything sells for 1.22× more | no |
+| **Swift Hands** | +4 cards a second out of a pack | no |
+| **Deeper Packs** | A pack 1.3× as deep | no |
+| **Fortune** | Coins fall more often and are worth 1.25× more | no |
+| **Both Hands** | One more pack torn at the same press | no |
+| **Alchemy** | Every merged star multiplies a stack further | no |
+| **The Automaton** | Presses the button for you, faster each level | at 10 |
+| **Night Shift** | It keeps working with the tab closed, longer and faster | at 11 |
+| **Divination** | Wishes come true 1.6× as often | at 10 |
+
+*Badges* are six short ladders of six rungs, each rung five times the last. They
+decide what the game *is* rather than how fast it runs:
 
 | Badge | What it buys |
 | --- | --- |
-| **Bronze** | Wish slots, and +100 credits when you claim a wished character |
-| **Silver** | The chance your wishes barge into a roll, and double duplicate compensation |
-| **Gold** | Coin drop chance, and a doubled daily offering |
-| **Sapphire** | **Packs**: ×10 at I, then ×15, ×20, ×25 · at IV, every pack drops a coin |
-| **Ruby** | More wish slots, wish chance and coin chance · at IV, everything in the shop costs 25% less |
-| **Emerald** | A **guarantee**: every pack holds a Rare or better, rising to Mythic · at IV, claims pay back a quarter of a character's value |
+| **Bronze** | Wish slots, and credits when you claim a wished character |
+| **Silver** | The chance your wishes barge into a roll, and richer duplicate compensation |
+| **Gold** | Coin drop chance, a doubled daily offering, and coins worth double |
+| **Sapphire** | **Packs**: ×10 at I, up to ×60 at VI · coins with every pack from IV |
+| **Ruby** | More wish slots, wish chance and coin chance · from IV, everything in the shop costs less, up to half |
+| **Emerald** | A **guarantee**: a Rare or better in every pack, rising to three Mythics · from IV, claims pay back part of a character's value |
 
 Sapphire, Ruby and Emerald need progress in the first three lines, or any two
 badges raised to IV.
+
+**The Automaton** is the shop's machine for pressing the button. It tears the
+wrappers, swipes the cards away and presses again, on a timer that gets shorter
+with every level — an autoclicker rather than a shortcut, running in your own
+browser and charged and refused by the server exactly as you would be. With
+**Night Shift** it keeps going when the tab is closed, at a fraction of its
+speed and for as many hours as the upgrade bought, and hands over what it earned
+the moment you come back
+([ADR 0008](./docs/adr/0008-the-machine-works-while-you-are-away.md)).
 
 **Everything else.**
 
@@ -315,8 +338,9 @@ badges raised to IV.
   with the badges that improve the odds, and never more than one to a summon
 - **Duplicates stack.** A second copy of a character joins its stack instead of
   paying out, and every doubling merges the stack a star higher: ★1 at two
-  copies, ★2 at four, ★3 at eight. A star multiplies what the whole stack
-  sells for, so holding beats selling by a wide margin
+  copies, ★2 at four, ★3 at eight, up to ★12. A star multiplies what the whole
+  stack sells for — further with every level of **Alchemy** — so holding beats
+  selling by a wide margin
   ([ADR 0006](./docs/adr/0006-duplicates-are-copies.md))
 - **Auto-sell**: pick a rarity in the summon view and anything below it is sold
   as it lands. It never sells a wish, and never a stack that has begun to merge
@@ -327,7 +351,8 @@ badges raised to IV.
   the filters are showing — and sells the lot in one go
 - **Series sets**: claiming 3 / 5 / 10 characters from one series pays one-time
   bonuses
-- **Daily offering**: every 20 h, with a streak bonus
+- **Daily offering**: every 20 h, with a streak bonus — worth at least half a
+  minute of the Automaton's work, so it stays worth collecting
 - **Stats page**: animated charts over your collection, rolls and claims
 - **Sandbox**: an admin-granted privilege to switch into a *scratch profile* with
   its own credits and its own empty collection. Nothing done in it touches the

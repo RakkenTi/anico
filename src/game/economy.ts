@@ -71,6 +71,9 @@ export const COIN_BASE_MAX = 110
  */
 export const BASE_COIN_CHANCE = 0.02
 
+/** What a coin is worth on average, for pulls too large to roll one by one. */
+export const COIN_BASE_MEAN = (COIN_BASE_MIN + COIN_BASE_MAX) / 2
+
 /** Roll for a coin. `chance` is the final probability, `valueMult` its worth. */
 export function rollCoinDrop(chance: number, valueMult: number): { amount: number } | null {
   if (Math.random() >= chance) return null
@@ -95,7 +98,13 @@ export function coinAmount(valueMult: number): number {
  * by a wide margin -- which is the only reason anyone would keep them.
  */
 export const MERGE_MULT = 2.6
-export const MAX_STARS = 6
+/**
+ * Stars a stack can reach: one per doubling, so twelve is four thousand
+ * copies of one character. It used to stop at six -- sixty-four copies --
+ * which a late-game pull reaches in an afternoon, and a cap you hit is a
+ * reason to stop keeping things.
+ */
+export const MAX_STARS = 12
 
 /** The star a stack of `copies` has merged to: one per doubling. */
 export function starsFor(copies: number): number {
@@ -107,14 +116,17 @@ export function starsFor(copies: number): number {
  * What a whole stack sells for: the merged core, plus the copies that have not
  * found a partner yet at face value.
  */
-export function stackValue(value: number, copies: number, stars: number): number {
+export function stackValue(value: number, copies: number, stars: number, mult = MERGE_MULT): number {
   const merged = Math.pow(2, stars)
   const leftover = Math.max(0, copies - merged)
-  return Math.max(1, Math.round(value * Math.pow(MERGE_MULT, stars) + leftover * value))
+  return Math.max(1, Math.round(value * Math.pow(mult, stars) + leftover * value))
 }
 
 /** Names for the star tiers, so a card can say what it has become. */
-export const STAR_NAMES = ['', 'Gleaming', 'Radiant', 'Prismatic', 'Astral', 'Eclipse', 'Zenith']
+export const STAR_NAMES = [
+  '', 'Gleaming', 'Radiant', 'Prismatic', 'Astral', 'Eclipse', 'Zenith',
+  'Empyrean', 'Ascendant', 'Sovereign', 'Everlight', 'Apotheosis', 'Absolute',
+]
 
 /* ------------------------------------------------------------- constants */
 

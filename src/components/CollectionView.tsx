@@ -4,6 +4,8 @@ import { SERIES_MILESTONES, rarityOf } from '../game/economy'
 import type { OwnedCharacter } from '../game/types'
 import CharacterCard from './CharacterCard'
 import CharacterModal from './CharacterModal'
+import { useVirtualGrid } from './useVirtualGrid'
+import { fmt, fmtCount } from '../game/format'
 
 type SortKey = 'value' | 'newest' | 'name'
 type GenderFilter = 'all' | 'Female' | 'Male' | 'Other'
@@ -78,6 +80,15 @@ export default function CollectionView() {
     }
   }, [collection, search, sort, gender, rarity, seriesFilter, starsOnly, worth])
 
+  /**
+   * Only the rows on screen are mounted. A collection is the one list here
+   * that grows without bound, and every card in it is an image.
+   */
+  const { outerRef, innerRef, start, end, totalHeight, offset } = useVirtualGrid(
+    filtered.length,
+    `${search}|${sort}|${gender}|${rarity}|${seriesFilter}|${starsOnly}`,
+  )
+
   const totalWorth = collection.reduce((s, c) => s + worth(c), 0)
   const copiesHeld = collection.reduce((s, c) => s + (c.copies ?? 1), 0)
   const pickedWorth = collection.reduce((s, c) => (picked.has(c.id) ? s + worth(c) : s), 0)
@@ -102,15 +113,15 @@ export default function CollectionView() {
   }
 
   return (
-    <div className={`collection-view ${bulk ? 'is-bulk' : ''}`}>
+    <div className={`collection-view ${bulk ? 'is-bulk' : ''} ${collection.length > 40 ? 'hushed' : ''}`}>
       {/* Hierarchy: title + key numbers first, controls second, filters
           third (quiet until active), then the grid itself. */}
       <header className="col-head">
         <div className="col-title">
           <h2>Collection</h2>
           <p className="col-meta">
-            <b>{collection.length}</b> characters · {copiesHeld.toLocaleString()} cards · worth{' '}
-            <b className="credits-text">{totalWorth.toLocaleString()}</b> credits
+            <b>{fmtCount(collection.length)}</b> characters · {fmtCount(copiesHeld)} cards · worth{' '}
+            <b className="credits-text">{fmt(totalWorth)}</b> credits
           </p>
         </div>
         <div className="col-controls">
@@ -195,21 +206,31 @@ export default function CollectionView() {
       ) : filtered.length === 0 ? (
         <div className="empty-state"><p>No characters match your filters.</p></div>
       ) : (
-        <div className="collection-grid">
-          {filtered.map((c) => (
-            <CharacterCard
-              key={c.id}
-              character={c}
-              compact
-              copies={c.copies}
-              stars={c.stars}
-              value={worth(c)}
-              wished={wishes.some((w) => w.id === c.id)}
-              selectable={bulk}
-              selected={picked.has(c.id)}
-              onClick={() => (bulk ? toggle(c.id) : setSelected(c))}
-            />
-          ))}
+        <div
+          className="collection-scroller"
+          ref={outerRef}
+          style={{ height: totalHeight }}
+        >
+          <div
+            className="collection-grid"
+            ref={innerRef}
+            style={{ transform: `translateY(${offset}px)` }}
+          >
+            {filtered.slice(start, end).map((c) => (
+              <CharacterCard
+                key={c.id}
+                character={c}
+                compact
+                copies={c.copies}
+                stars={c.stars}
+                value={worth(c)}
+                wished={wishes.some((w) => w.id === c.id)}
+                selectable={bulk}
+                selected={picked.has(c.id)}
+                onClick={() => (bulk ? toggle(c.id) : setSelected(c))}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -221,7 +242,7 @@ export default function CollectionView() {
           <div className="bulk-count">
             <b>{picked.size}</b> selected
             {picked.size > 0 && (
-              <span className="credits-text"> · +{pickedWorth.toLocaleString()} credits</span>
+              <span className="credits-text"> · +{fmt(pickedWorth)} credits</span>
             )}
           </div>
           <div className="bulk-actions">
@@ -237,7 +258,7 @@ export default function CollectionView() {
                 })
               }}
             >
-              {allShownPicked ? 'Clear shown' : `Select all (${filtered.length})`}
+              {allShownPicked ? 'Clear shown' : `Select all (${fmtCount(filtered.length)})`}
             </button>
             <button
               className="btn btn-danger"
@@ -252,8 +273,8 @@ export default function CollectionView() {
               }}
             >
               {confirming
-                ? `Confirm: sell ${picked.size}`
-                : `Sell ${picked.size} · +${pickedWorth.toLocaleString()}`}
+                ? `Confirm: sell ${fmtCount(picked.size)}`
+                : `Sell ${fmtCount(picked.size)} · +${fmt(pickedWorth)}`}
             </button>
             <button className="btn btn-quiet" onClick={leaveBulk}>
               Done

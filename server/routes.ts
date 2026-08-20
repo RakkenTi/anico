@@ -192,6 +192,11 @@ export function createApp(db: DB, config: Config) {
     return c.json({ state: snapshot, notes })
   })
 
+  api.post('/auto', async (c) => {
+    const b = await c.req.json<{ on?: boolean }>().catch(() => ({}) as { on?: boolean })
+    return c.json({ state: game.setAutoSpin(db, c.get('player'), !!b.on) })
+  })
+
   api.post('/claim-all', (c) => {
     const { snapshot, claimed, bonus } = game.claimAll(db, c.get('player'))
     return c.json({ state: snapshot, claimed, bonus })

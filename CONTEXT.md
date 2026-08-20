@@ -61,20 +61,30 @@ see **Pack price**.
 single summon is the only place it is asked, because a pack grants its own contents.
 
 **Pack** — a sealed multi-card summon, unlocked and sized by the **Sapphire** badge and
-the **Deeper Packs** upgrade.
-Every card in it is granted the moment it is rolled, so opening it decides nothing and
-cannot be lost to a closed tab: tearing it with space and throwing the cards off one by
-one reach the same place. Presentation, deliberately. The cards are face up throughout —
-a pack is a thing you unwrap, not a guess.
+the **Deeper Packs** upgrade. Every card in it is granted the moment it is rolled, so
+opening it decides nothing and cannot be lost to a closed tab: tearing it with space and
+throwing the cards off one by one reach the same place. Presentation, deliberately. The
+cards are face up throughout — a pack is a thing you unwrap, not a guess.
+
+**Pull** — one press of the pack button, and everything it produces. A pull holds one
+pack until **Both Hands** is bought and several afterwards, torn side by side, each with
+its own wrapper and its own pile. The word exists because "pack" stopped being the unit
+of a press.
+
+**Appraised** — what happens to the part of a pull too large to deal. Two hundred cards
+are laid out and granted; the rest are opened by the machine and turned straight into
+credits at what the dealt cards averaged (ADR 0007). Not a penalty and not a rounding:
+it is what keeps a pull of a million cards from being a million rows.
 
 **Pack price** — what opening a pack costs, twelve credits a card, always less than the
 cards inside are worth. The sink the whole economy turns on (ADR 0005): credits used to
 have nothing to buy once the shop was finished, which took about ten minutes.
 
 **Guarantee** — the rarity floor **Emerald** promises every pack: a Rare or better at I,
-rising to Mythic at IV. Honoured by swapping the weakest card of a draw for one good
-enough, so a guarantee never makes a pack bigger, and skipped outright when the catalog
-holds nobody that good yet.
+rising to Mythic at IV and to three Mythics at VI. Honoured pack by pack, by swapping the
+weakest cards of that pack for ones good enough, so a guarantee never makes a pack bigger
+and never covers only the first wrapper of a pull. Skipped outright when the catalog holds
+nobody that good yet.
 
 **Bulk mode** — the Collection's selection state. Cards are picked rather than opened,
 "select all" takes everything the filters are showing, and the lot is sold in one go.
@@ -89,14 +99,21 @@ could say which of them was worth more than which.
 
 **Stack** — every copy of one character a player holds. A duplicate joins the stack rather
 than paying out, and every doubling **merges** it one **star** higher (★1 at two copies,
-★2 at four, ★3 at eight), which multiplies what the whole stack sells for. A stack sells
-whole or not at all (ADR 0006).
+★2 at four, ★3 at eight, up to ★12), which multiplies what the whole stack sells for —
+further with every level of **Alchemy**. A stack sells whole or not at all (ADR 0006).
 
 **Auto-sell** — a per-player setting: sell every pull below a chosen rarity as it lands.
 Never a wish come true, and never a stack that has started to merge.
 
-**Automaton** — the shop's machine for pressing the summon button. Runs in the player's
-own browser and is charged and refused by the server exactly as a player would be.
+**Automaton** — the shop's machine for pressing the summon button. An autoclicker rather
+than a shortcut: it tears the wrappers, swipes the cards away and presses again. Runs in
+the player's own browser and is charged and refused by the server exactly as a player
+would be.
+
+**Night shift** — the upgrade that keeps the Automaton working with the tab closed, at a
+fraction of its speed and for a bounded number of hours. Paid from a smoothed average of
+what a pull has recently been worth to that player rather than by replaying the loop
+(ADR 0008). Whether the machine is switched on is a column, not a flag in a page.
 
 **Collection** — the characters one player has claimed. Collections are **per player and
 isolated**: two players on the same instance can each own the same character, and no
@@ -127,15 +144,24 @@ survives only in older commits.
 rare — one to a summon at most — because a wishlist that arrives on demand is a way of
 ordering Mythics rather than hoping for one.
 
-**Badge** — a permanent perk bought with credits, in the Bronze through Emerald tree. Six
-lines of four levels, each level three times the price of the one below it. Badges change
-the rules of the loop (pack size, guarantees, wish slots, drop rates) rather than paying
-out once.
+**Shop** — one shelf holding both kinds of purchase, ordered by price. It was two panels
+stacked vertically, which put the half that decides whether packs exist at all below the
+fold on every screen narrower than a desktop.
 
-**Upgrade** — the other half of the shop: six lines with no last level worth reaching
-(Deeper Packs, Both Hands, Swift Hands, Appraisal, Fortune, The Automaton), each level
-costing a fixed multiple of the last. Badges give the game its shape; upgrades give it
-its curve.
+**Badge** — a permanent perk bought with credits, in the Bronze through Emerald tree. Six
+lines of six levels, each level five times the price of the one below it. Badges change
+what the loop *is* — whether packs exist, how many wishes may be pinned, what a pack
+promises — rather than how fast it runs, which is why they end and upgrades do not.
+
+**Upgrade** — the other half of the shop: nine lines, six of them with no last level
+(Appraisal, Swift Hands, Deeper Packs, Fortune, Both Hands, Alchemy) and three that buy a
+shape and finish (The Automaton, Night Shift, Divination). Every level costs a fixed
+multiple of the last, and always more than the effect it buys. Badges give the game its
+shape; upgrades give it its curve, and the curve has no end (ADR 0007).
+
+**Suffix** — how a number is said once it outgrows its digits: three significant figures
+and a short-scale name, 4.18B or 12.4Qa, and an exponent past the table. Everything the
+player is quoted a price or a payout in goes through it.
 
 **Icon** — the game art, all of it Kenney's CC0 packs, vendored in `src/assets/icons` and
 painted as CSS masks so one file serves every theme. Never drawn by hand here: the

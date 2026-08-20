@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useGame } from '../game/store'
+import { useGame, stackCards } from '../game/store'
 import { rarityOf } from '../game/economy'
-import { dealSpeed } from '../game/sound'
+import { STACK_RENDER_DEPTH } from '../game/upgrades'
 import { flapPath, foilPath } from '../game/tear'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
@@ -15,55 +15,171 @@ const TEAR_PX = 320
 /** How far along the rip has to be, on release, to finish by itself. */
 const TEAR_COMMIT = 0.5
 const THROW_PX = 80
-/**
- * How long a card takes to leave, and the gap between auto-thrown ones.
- *
- * Both are scaled by the Swift Hands upgrade, which is the whole reason to buy
- * it: a hundred cards thrown at the base cadence is eleven seconds of watching
- * a pack whose contents were settled before the wrapper came off.
- */
+/** How long a card takes to leave, once thrown. */
 const THROW_MS = 320
-const AUTO_STEP_MS = 110
 const AUTOTEAR_MS = 420
+/** Delay between one wrapper starting to tear and the next. */
+const STAGGER_MS = 130
+
 /**
- * Past this many cards, "open the rest" lays them out at once instead of
- * throwing them one by one. Two hundred cards thrown at eighty milliseconds
- * each is sixteen seconds of watching a pack you have already been given, and
- * the throw is a flourish, not a toll.
+ * How long the machine is allowed to spend emptying one pull, in seconds.
+ *
+ * Swift Hands buys cards a second, and a pull that outruns that budget is laid
+ * out at once instead of thrown card by card. Two hundred cards at four a
+ * second is fifty seconds of watching a pack whose contents were settled
+ * before the wrapper came off; the throw is a flourish, not a toll.
  */
-const AUTO_THROW_MAX = 24
+const THROW_BUDGET_S = 6
+/** Even a slow pair of hands throws this many rather than skipping the show. */
+const THROW_FLOOR = 12
 
 interface Props {
-  pack: { state: 'sealed' | 'sliced' | 'open'; revealed: number; claimed: number; bonus: number }
+  pack: NonNullable<ReturnType<typeof useGame.getState>['pack']>
   cards: RollResult[]
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 
 /**
- * A ten-card pack, opened by hand.
+ * The packs, opened by hand.
  *
- * The wrapper is opaque until it is torn: what is inside is a surprise even
- * though the server settled it long ago, and the lid comes away under the
- * pointer rather than on a click. Underneath, the cards are face up in a stack
- * offset by a few pixels each, and the top one is thrown aside to reach the
- * next.
+ * One wrapper per pack, side by side: Both Hands buys *packs*, and a pull of
+ * four used to arrive as one stack four times as tall, which is the one thing
+ * that upgrade should never look like. Each wrapper is opaque until it is
+ * torn, tears under the pointer rather than on a click, and holds its own
+ * stack of face-up cards that are thrown aside one at a time.
  *
- * Throws do not queue behind each other. Each departing card animates on its
- * own while the stack has already moved on, so a fast hand can send five cards
- * away before the first has landed.
+ * Nothing here decides anything: every card in every pack was granted the
+ * moment the pull was made. This is the unwrapping.
  */
 export default function PackOpener({ pack, cards }: Props) {
+  const autoSpin = useGame((s) => s.autoSpin)
+  const cardRate = useGame((s) => s.cardRate)
+  /**
+   * Which pull these wrappers belong to.
+   *
+   * Part of each stack's key, so a pull gets its own components. Without it
+   * React reuses the stack at index 0 from one pull to the next, and a stack
+   * keeps how far it was torn: the second pull's wrapper arrived already in
+   * pieces, seam and flap gone, while the game still called it sealed.
+   */
+  const gen = useGame((s) => s.rollCount)
+
+  /**
+   * Whether the whole pull gets thrown card by card, or laid out at once.
+   *
+   * One decision for the whole pull rather than per pack, so four packs of
+   * fifty do not each decide they are small enough to animate.
+   */
+  const budget = Math.max(THROW_FLOOR, Math.round(cardRate * THROW_BUDGET_S))
+  const instant = cards.length > budget
+  // Cards a second *per stack*, so the pull as a whole empties at the rate
+  // Swift Hands promises however many wrappers it arrived in.
+  const stepMs = Math.max(24, Math.round((1000 * pack.stacks.length) / Math.max(1, cardRate)))
+
+  /** Set once the player (or the machine) has asked for the whole thing. */
+  const [auto, setAuto] = useState(false)
+  const running = auto || autoSpin
+
+  /**
+   * Finish the whole pull without being asked again.
+   *
+   * Never a jump cut: the wrappers still come off on screen even when the
+   * cards inside are too many to throw one at a time. The Automaton arrives
+   * here as well, which is why it looks like somebody playing rather than a
+   * number going up.
+   */
+  const openAll = useCallback(() => setAuto(true), [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' && e.key !== ' ') return
+      const el = document.activeElement
+      if (el instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
+      e.preventDefault()
+      // Space always means "finish it": from sealed it tears every wrapper and
+      // empties them, and mid-open it takes over the throwing.
+      openAll()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openAll])
+
+  const left = pack.stacks.reduce(
+    (n, st, i) => n + Math.max(0, Math.min(pack.perPack, cards.length - i * pack.perPack) - st.revealed),
+    0,
+  )
+  const anySealed = pack.stacks.some((st) => st.state === 'sealed')
+
+  return (
+    <div className="pack-opener">
+      <div className={`pack-grid packs-${Math.min(pack.stacks.length, 6)}`}>
+        {pack.stacks.map((st, i) => (
+          <PackStack
+            key={`${gen}-${i}`}
+            index={i}
+            state={st.state}
+            thrown={st.revealed}
+            cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
+            auto={running}
+            instant={instant}
+            stepMs={stepMs}
+          />
+        ))}
+      </div>
+
+      <p className="pack-hint">
+        {anySealed ? (
+          pack.stacks.length > 1 ? (
+            <>Drag across a pack to tear it open — or take all {pack.stacks.length} at once.</>
+          ) : (
+            <>Drag across the pack to tear it open.</>
+          )
+        ) : (
+          <>
+            <b>{left}</b> of {cards.length} left — swipe or tap a top card away
+            {running ? '.' : <>, or <kbd>Space</kbd> to throw the rest.</>}
+          </>
+        )}
+      </p>
+
+      <button className="btn btn-quiet pack-skip" onClick={openAll}>
+        {anySealed
+          ? pack.stacks.length > 1
+            ? `Tear all ${pack.stacks.length} open`
+            : 'Tear it open'
+          : 'Open the rest'}
+        <kbd aria-hidden="true">Space</kbd>
+      </button>
+    </div>
+  )
+}
+
+/* --------------------------------------------------------------- one pack */
+
+interface StackProps {
+  index: number
+  state: 'sealed' | 'sliced' | 'open'
+  thrown: number
+  cards: RollResult[]
+  /** The machine (or Space) is emptying this pack without being asked again. */
+  auto: boolean
+  /** Too many cards to throw one by one: lay them out once the foil is off. */
+  instant: boolean
+  /** Milliseconds between automatic throws from this stack. */
+  stepMs: number
+}
+
+function PackStack({ index, state, thrown, cards, auto, instant, stepMs }: StackProps) {
   const slicePack = useGame((s) => s.slicePack)
   const tearPack = useGame((s) => s.tearPack)
 
-  const sealed = pack.state === 'sealed'
+  const sealed = state === 'sealed'
   // Foil takes its colour from the best card in the pack. It gives nothing
   // away that matters -- everything inside is already claimed -- but a pack
   // with something good in it ought to look like one.
   const best = cards.reduce((m, c) => Math.max(m, c.char.creditValue), 0)
   const rarity = rarityOf(best).key
-  const thrown = pack.revealed
   const remaining = cards.length - thrown
 
   /* ------------------------------------------------------------- tearing */
@@ -96,8 +212,8 @@ export default function PackOpener({ pack, cards }: Props) {
 
   /* ------------------------------------------------- throwing cards away */
 
-  // Cards mid-flight, keyed by their index in the spread. The stack has
-  // already moved past them; these are only here to finish leaving.
+  // Cards mid-flight, keyed by their index in this pack. The stack has already
+  // moved past them; these are only here to finish leaving.
   const [departing, setDeparting] = useState<
     { key: number; dir: number; fromX: number; fromY: number; fromRot: number }[]
   >([])
@@ -105,84 +221,59 @@ export default function PackOpener({ pack, cards }: Props) {
   const throwTop = useCallback(
     (dir: number, from = { x: 0, y: 0, rot: 0 }) => {
       const st = useGame.getState()
-      if (!st.pack || st.pack.state !== 'sliced') return
-      const idx = st.pack.revealed
-      if (idx >= st.rolled.length) return
-      setDeparting((d) => [
-        ...d,
-        { key: idx, dir, fromX: from.x, fromY: from.y, fromRot: from.rot },
-      ])
-      st.revealNext()
-      window.setTimeout(() => setDeparting((d) => d.filter((x) => x.key !== idx)), THROW_MS * dealSpeed())
+      const mine = st.pack?.stacks[index]
+      if (!mine || mine.state !== 'sliced') return
+      const idx = mine.revealed
+      if (idx >= stackCards(st, index).length) return
+      setDeparting((d) => [...d, { key: idx, dir, fromX: from.x, fromY: from.y, fromRot: from.rot }])
+      st.revealNext(index)
+      window.setTimeout(() => setDeparting((d) => d.filter((x) => x.key !== idx)), THROW_MS)
     },
-    [],
+    [index],
   )
 
-  // Space: tear it, then flick the whole stack away in a quick alternating fan.
-  const autoTimer = useRef(0)
-  const autoOpen = useCallback(() => {
-    // A big pack skips the ceremony: everything lands in the spread at once.
-    if (useGame.getState().rolled.length > AUTO_THROW_MAX) {
-      useGame.getState().tearPack()
-      return
-    }
+  /**
+   * Hands-off opening: tear the wrapper, then flick the stack away in a quick
+   * alternating fan. Both the Automaton and Space arrive here, which is why
+   * the machine looks like somebody playing rather than a number going up.
+   */
+  const timer = useRef(0)
+  useEffect(() => {
+    if (!auto) return
     let i = 0
-    const step = () => {
+    const throwLoop = () => {
       const st = useGame.getState()
-      if (!st.pack || st.pack.state !== 'sliced' || st.pack.revealed >= st.rolled.length) return
+      const mine = st.pack?.stacks[index]
+      if (!mine || mine.state !== 'sliced' || mine.revealed >= stackCards(st, index).length) return
       throwTop(i % 2 === 0 ? 1 : -1)
       i++
-      autoTimer.current = window.setTimeout(step, AUTO_STEP_MS * dealSpeed())
+      timer.current = window.setTimeout(throwLoop, stepMs)
     }
-    step()
-  }, [throwTop])
-  useEffect(() => () => clearTimeout(autoTimer.current), [])
-
-  /**
-   * Whether space opened this pack.
-   *
-   * Only affects what the hint says now. Space used to mean "one card" after a
-   * hand tear, on the theory that tearing by hand was a statement of intent --
-   * which is a fine theory until the pack holds a hundred cards and the
-   * statement becomes a hundred presses.
-   */
-  const [spaceTore, setSpaceTore] = useState(false)
-
-  /**
-   * Open the whole thing. Space does this from sealed, and so does the button,
-   * which is the only way to reach it on a phone: there is no space bar there,
-   * and tapping the stack deliberately means one card at a time.
-   */
-  const openAll = useCallback(() => {
-    if (sealed) {
-      setSpaceTore(true)
-      animateTear(1, AUTOTEAR_MS * dealSpeed(), () => {
-        slicePack()
-        autoOpen()
-      })
-    } else {
-      autoOpen()
+    // Past the throwing budget the cards land in the spread all at once. The
+    // foil still comes off first: a pack that is simply replaced by a grid
+    // never looks opened, it looks skipped.
+    const empty = () => (instant ? tearPack(index) : throwLoop())
+    const begin = () => {
+      if (useGame.getState().pack?.stacks[index]?.state === 'sealed') {
+        animateTear(1, AUTOTEAR_MS, () => {
+          slicePack(index)
+          empty()
+        })
+      } else {
+        empty()
+      }
     }
-  }, [sealed, animateTear, slicePack, autoOpen])
+    // Wrappers come off one after another rather than all in the same frame:
+    // four packs tearing in perfect unison reads as one animation, not four.
+    timer.current = window.setTimeout(begin, index * STAGGER_MS)
+    return () => clearTimeout(timer.current)
+  }, [auto, index, instant, stepMs, animateTear, slicePack, tearPack, throwTop])
+  useEffect(() => () => clearTimeout(timer.current), [])
 
+  // This pack is done once its last card has actually landed.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' && e.key !== ' ') return
-      const el = document.activeElement
-      if (el instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
-      e.preventDefault()
-      // Space always means "finish it": from sealed it tears and empties the
-      // pack, and mid-open it takes over the throwing.
-      openAll()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [openAll])
-
-  // The grid waits for the last card to actually land.
-  useEffect(() => {
-    if (pack.state === 'sliced' && thrown >= cards.length && departing.length === 0) tearPack()
-  }, [pack.state, thrown, cards.length, departing.length, tearPack])
+    if (state === 'sliced' && thrown >= cards.length && departing.length === 0) tearPack(index)
+  }, [state, thrown, cards.length, departing.length, tearPack, index])
 
   /* -------------------------------------------------------------- input */
 
@@ -228,7 +319,7 @@ export default function PackOpener({ pack, cards }: Props) {
     // it rather than being punished for stopping.
     if (sealed) {
       last.current = null
-      if (tearRef.current >= TEAR_COMMIT) animateTear(1, 190, slicePack)
+      if (tearRef.current >= TEAR_COMMIT) animateTear(1, 190, () => slicePack(index))
       else animateTear(0, 260)
       return
     }
@@ -250,113 +341,98 @@ export default function PackOpener({ pack, cards }: Props) {
       }
     : undefined
 
+  // Only the top of the stack is ever visible, so only the top of the stack is
+  // mounted. The rest is a number, and a depth marker under the corner.
+  const behind = cards.slice(thrown + 1, thrown + 1 + STACK_RENDER_DEPTH)
+
   return (
-    <div className="pack-opener">
-      <div
-        className={`pack-area foil-${rarity} ${sealed ? 'is-sealed' : ''}`}
-        ref={surface}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={release}
-        onPointerCancel={() => {
-          origin.current = null
-          last.current = null
-          if (!sealed) setDrag(null)
-        }}
-        style={{ ['--tear' as string]: tear }}
-        role="button"
-        tabIndex={0}
-        aria-label={sealed ? 'Sealed pack: drag to tear it open' : `${remaining} cards left`}
-      >
-        <div className="pack-stack">
-          {cards
-            .slice(thrown + 1)
-            .map((card, i) => (
-              <div
-                key={`${card.char.id}-${thrown + 1 + i}`}
-                className="pack-card behind"
-                style={{ ['--depth' as string]: i + 1, zIndex: cards.length - (i + 1) }}
-                aria-hidden="true"
-              >
-                <CharacterCard character={card.char} wished={card.wished} />
-              </div>
-            ))
-            .reverse()}
-
-          {top && (
+    <div
+      className={`pack-area foil-${rarity} ${sealed ? 'is-sealed' : ''}`}
+      ref={surface}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={release}
+      onPointerCancel={() => {
+        origin.current = null
+        last.current = null
+        if (!sealed) setDrag(null)
+      }}
+      style={{ ['--tear' as string]: tear }}
+      role="button"
+      tabIndex={0}
+      aria-label={sealed ? 'Sealed pack: drag to tear it open' : `${remaining} cards left`}
+    >
+      <div className="pack-stack">
+        {behind
+          .map((card, i) => (
             <div
-              className="pack-card top"
-              style={{ ['--depth' as string]: 0, zIndex: cards.length + 1, ...topStyle }}
-            >
-              <CharacterCard character={top.char} wished={top.wished} />
-            </div>
-          )}
-
-          {/* Each of these is already off the stack; it is only finishing. */}
-          {departing.map((d) => (
-            <div
-              key={d.key}
-              className="pack-card departing"
-              style={{
-                ['--dir' as string]: d.dir,
-                ['--from-x' as string]: `${d.fromX}px`,
-                ['--from-y' as string]: `${d.fromY}px`,
-                ['--from-rot' as string]: `${d.fromRot}deg`,
-                zIndex: cards.length + 2 + d.key,
-              }}
+              key={`${card.char.id}-${thrown + 1 + i}`}
+              className="pack-card behind"
+              style={{ ['--depth' as string]: i + 1, zIndex: behind.length - (i + 1) }}
               aria-hidden="true"
             >
-              <CharacterCard character={cards[d.key].char} wished={cards[d.key].wished} />
+              <CharacterCard character={card.char} wished={card.wished} />
             </div>
-          ))}
-        </div>
+          ))
+          .reverse()}
 
-        {sealed && (
-          <div className="pack-wrap" aria-hidden="true">
-            {/* One piece of foil, clipped to whatever the rip has left of it.
-                Seamless until torn, because there is no seam to see yet. */}
-            <span className="pack-foil" style={{ clipPath: foilPath(tear) }}>
-              <span className="pack-strip" />
-              <span className="pack-mark">
-                <span className="pack-brand">ANICO</span>
-                <span className="pack-sub">{cards.length} cards</span>
-              </span>
-            </span>
-            {/* The strip coming away, curling as it goes. */}
-            <span
-              className="pack-flap"
-              style={{
-                clipPath: flapPath(tear),
-                transform: `translate3d(${-tear * 10}px, ${-tear * 26}px, 0) rotate(${-tear * 5}deg)`,
-                // Torn foil is still foil: it stays solid until it is nearly
-                // away, rather than going translucent over the cards it covers.
-                opacity: tear > 0.82 ? Math.max(0, 1 - (tear - 0.82) * 4) : 1,
-              }}
-            >
-              <span className="pack-strip" />
-            </span>
-            <span className="pack-glint" style={{ opacity: tear > 0 && tear < 1 ? 1 : 0 }} />
+        {top && (
+          <div
+            className="pack-card top"
+            style={{ ['--depth' as string]: 0, zIndex: behind.length + 1, ...topStyle }}
+          >
+            <CharacterCard character={top.char} wished={top.wished} />
           </div>
         )}
+
+        {/* Each of these is already off the stack; it is only finishing. */}
+        {departing.map((d) => (
+          <div
+            key={d.key}
+            className="pack-card departing"
+            style={{
+              ['--dir' as string]: d.dir,
+              ['--from-x' as string]: `${d.fromX}px`,
+              ['--from-y' as string]: `${d.fromY}px`,
+              ['--from-rot' as string]: `${d.fromRot}deg`,
+              zIndex: behind.length + 2 + d.key,
+            }}
+            aria-hidden="true"
+          >
+            <CharacterCard character={cards[d.key].char} wished={cards[d.key].wished} />
+          </div>
+        ))}
+
+        {!sealed && remaining > 1 && <span className="pack-left">{remaining}</span>}
       </div>
 
-      <p className="pack-hint">
-        {sealed ? (
-          <>
-            Drag across the pack to tear it open.
-          </>
-        ) : (
-          <>
-            <b>{remaining}</b> of {cards.length} left — swipe or tap the top card away
-            {spaceTore ? '.' : <>, or <kbd>Space</kbd> to throw the rest.</>}
-          </>
-        )}
-      </p>
-
-      <button className="btn btn-quiet pack-skip" onClick={openAll}>
-        {sealed ? 'Tear it open' : 'Open the rest'}
-        <kbd aria-hidden="true">Space</kbd>
-      </button>
+      {sealed && (
+        <div className="pack-wrap" aria-hidden="true">
+          {/* One piece of foil, clipped to whatever the rip has left of it.
+              Seamless until torn, because there is no seam to see yet. */}
+          <span className="pack-foil" style={{ clipPath: foilPath(tear) }}>
+            <span className="pack-strip" />
+            <span className="pack-mark">
+              <span className="pack-brand">ANICO</span>
+              <span className="pack-sub">{cards.length} cards</span>
+            </span>
+          </span>
+          {/* The strip coming away, curling as it goes. */}
+          <span
+            className="pack-flap"
+            style={{
+              clipPath: flapPath(tear),
+              transform: `translate3d(${-tear * 10}px, ${-tear * 26}px, 0) rotate(${-tear * 5}deg)`,
+              // Torn foil is still foil: it stays solid until it is nearly
+              // away, rather than going translucent over the cards it covers.
+              opacity: tear > 0.82 ? Math.max(0, 1 - (tear - 0.82) * 4) : 1,
+            }}
+          >
+            <span className="pack-strip" />
+          </span>
+          <span className="pack-glint" style={{ opacity: tear > 0 && tear < 1 ? 1 : 0 }} />
+        </div>
+      )}
     </div>
   )
 }

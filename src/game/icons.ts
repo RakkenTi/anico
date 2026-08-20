@@ -21,6 +21,9 @@ import crown from '../assets/icons/crown_a.svg'
 import dollar from '../assets/icons/dollar.svg'
 import hourglass from '../assets/icons/hourglass.svg'
 import d20 from '../assets/icons/d20.svg'
+import flask from '../assets/icons/flask_full.svg'
+import campfire from '../assets/icons/campfire.svg'
+import cardsSeek from '../assets/icons/cards_seek.svg'
 import gear from '../assets/icons/gi_gear.png'
 import star from '../assets/icons/gi_star.png'
 import chart from '../assets/icons/gi_leaderboardsComplex.png'
@@ -39,6 +42,9 @@ export const ICONS = {
   dollar,
   hourglass,
   d20,
+  flask_full: flask,
+  campfire,
+  cards_seek: cardsSeek,
   gear,
   star,
   chart,

@@ -16,6 +16,7 @@ import {
   DAILY_INTERVAL_H,
   DAILY_STREAK_WINDOW_H,
   SERIES_MILESTONES,
+  COIN_BASE_MEAN,
   coinAmount,
   dailyAmount,
   duplicateCompensation,
@@ -29,6 +30,7 @@ import {
   BADGE_DEFS,
   EMPTY_BADGES,
   badgeCost,
+  BADGE_MAX,
   badgeUnlocked,
   computeEffects,
   type BadgeKey,
@@ -37,7 +39,7 @@ import {
 import {
   EMPTY_UPGRADES,
   MAX_DEALT,
-  MAX_PULL,
+  MAX_STACKS,
   UPGRADE_DEFS,
   upgradeCost,
   upgradeMaxed,
@@ -61,6 +63,16 @@ const HOUR = 3_600_000
  */
 const WISH_BASE_CHANCE = 0.0005
 const WISH_CHANCE_CAP = 0.006
+/**
+ * How much of a pull the Automaton is credited with while the tab is closed.
+ *
+ * A weighted average of what recent pulls were actually worth, kept per
+ * player, rather than a re-simulation: the machine cannot draw cards nobody is
+ * there to be dealt, so what it does out there is open packs and sell them.
+ * The average is the honest price of that -- it tracks every upgrade the
+ * player has bought without the server having to replay a million rolls.
+ */
+const YIELD_SMOOTHING = 0.3
 /** How long a rolled spread stays claimable. */
 const ROLL_SESSION_MS = 30 * 60_000
 /** Sandbox bulk summons, which answer to nothing else. */
@@ -83,6 +95,12 @@ interface StateRow {
   settings_json: string
   series_paid_json: string
   roll_session_json: string | null
+  /** The Automaton is switched on, and keeps running with the tab closed. */
+  auto_spin: number
+  /** When it was last settled: a real pull, or the last time it was read. */
+  auto_at: number
+  /** Smoothed net credits one pull is worth to this player. */
+  auto_yield: number
 }
 
 interface RollSessionEntry {
@@ -125,7 +143,7 @@ export interface OwnedCharacter extends PoolPick {
   stackValue: number
 }
 
-function collectionOf(db: DB, playerId: number, sellMult: number): OwnedCharacter[] {
+function collectionOf(db: DB, playerId: number, sellMult: number, mergeMult: number): OwnedCharacter[] {
   const rows = db
     .prepare(
       `SELECT c.*, cl.claimed_at, cl.credit_value AS claimed_value, cl.copies, cl.stars
@@ -148,7 +166,7 @@ function collectionOf(db: DB, playerId: number, sellMult: number): OwnedCharacte
     claimedAt: r.claimed_at,
     copies: r.copies,
     stars: r.stars,
-    stackValue: Math.round(stackValue(r.claimed_value, r.copies, r.stars) * sellMult),
+    stackValue: Math.round(stackValue(r.claimed_value, r.copies, r.stars, mergeMult) * sellMult),
   }))
 }
 
@@ -211,6 +229,10 @@ export interface Snapshot {
   packPrice: number
   /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
   autoSpinMs: number
+  /** The Automaton is switched on. Kept on the server so it survives a closed tab. */
+  autoSpin: boolean
+  /** Cards a second the opening animation manages (Swift Hands). */
+  cardRate: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
@@ -220,6 +242,8 @@ export interface Snapshot {
   settings: ServerSettings
   wishes: PoolPick[]
   collection?: OwnedCharacter[]
+  /** What the machine did while nobody was watching. Absent when it did nothing. */
+  offline?: { pulls: number; credits: number; minutes: number }
   serverNow: number
 }
 
@@ -239,6 +263,8 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     cardsPerPull: player.sandbox_of ? size : fx.cardsPerPull,
     packPrice: player.sandbox_of ? 0 : packCost(fx.cardsPerPull),
     autoSpinMs: player.sandbox_of ? 0 : fx.autoSpinMs,
+    autoSpin: !!row.auto_spin,
+    cardRate: fx.cardRate,
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
     totalRolls: row.total_rolls,
@@ -247,13 +273,75 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     upgrades,
     settings,
     wishes: wishesOf(db, player.id),
-    collection: withCollection ? collectionOf(db, player.id, fx.sellMult) : undefined,
+    collection: withCollection ? collectionOf(db, player.id, fx.sellMult, fx.mergeMult) : undefined,
     serverNow: Date.now(),
   }
 }
 
 export function fullState(db: DB, player: Player): Snapshot {
-  return snapshot(db, player, true)
+  // The one call every client makes on boot, which is exactly when the
+  // Automaton's night's work should be counted and handed over.
+  const away = settleOffline(db, player)
+  const snap = snapshot(db, player, true)
+  return away ? { ...snap, offline: away } : snap
+}
+
+/**
+ * Pay the Automaton for the time the tab was closed.
+ *
+ * It cannot deal cards to an empty room, so what it does out there is open
+ * packs and sell them: `auto_yield` is a smoothed average of what a pull has
+ * recently been worth to this player, and the machine is paid that per pull at
+ * a fraction of its normal rate, for as many hours as Night Shift bought. No
+ * cards are granted, nothing is drawn, and the whole settlement is three
+ * multiplications -- a player who leaves for a week does not cost the instance
+ * a week of rolls when they come back.
+ */
+export function settleOffline(
+  db: DB,
+  player: Player,
+): { pulls: number; credits: number; minutes: number } | null {
+  if (player.sandbox_of) return null
+  const row = loadState(db, player.id)
+  const { fx } = loadoutOf(row)
+  const now = Date.now()
+  const stamp = () =>
+    db.prepare('UPDATE player_state SET auto_at = ? WHERE player_id = ?').run(now, player.id)
+  if (!row.auto_spin || fx.autoSpinMs <= 0 || fx.offlineRate <= 0 || row.auto_yield <= 0) {
+    stamp()
+    return null
+  }
+  const since = row.auto_at > 0 ? row.auto_at : now
+  const elapsed = Math.min(Math.max(0, now - since), fx.offlineHours * HOUR)
+  const period = fx.autoSpinMs / fx.offlineRate
+  const pulls = Math.floor(elapsed / period)
+  if (pulls <= 0) {
+    // Not even one pull's worth: leave the clock where it is so the minutes
+    // that have passed still count towards the next one.
+    return null
+  }
+  const credits = Math.floor(pulls * row.auto_yield)
+  if (credits <= 0) {
+    stamp()
+    return null
+  }
+  db.prepare(
+    `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?, auto_at = ?
+      WHERE player_id = ?`,
+  ).run(credits, pulls, now, player.id)
+  return { pulls, credits, minutes: Math.round(elapsed / 60_000) }
+}
+
+/** Switch the machine on or off. Stored server-side so a closed tab keeps it. */
+export function setAutoSpin(db: DB, player: Player, on: boolean): Snapshot {
+  const away = on ? null : settleOffline(db, player)
+  db.prepare('UPDATE player_state SET auto_spin = ?, auto_at = ? WHERE player_id = ?').run(
+    on ? 1 : 0,
+    Date.now(),
+    player.id,
+  )
+  const snap = snapshot(db, player, !!away)
+  return away ? { ...snap, offline: away } : snap
 }
 
 /* -------------------------------------------------------------------- roll */
@@ -302,14 +390,20 @@ export function roll(
 ): {
   results: RollResult[]
   pack: boolean
+  /** Stacks laid side by side on screen, each its own wrapper. */
+  packCount: number
+  /** Cards in each of those stacks. */
+  perPack: number
   claimed: number
   bonus: number
   coins: number
   autoSold: number
   autoSoldFor: number
   merged: number
-  /** Cards granted by the extra packs of a multi-pack pull, not shown on screen. */
+  /** Cards the pull held beyond what it dealt: opened by the machine, not seen. */
   hidden: number
+  /** What those cards were appraised for. */
+  hiddenFor: number
   snapshot: Snapshot
 } {
   const row = loadState(db, player.id)
@@ -320,27 +414,46 @@ export function roll(
   const multi = wanted > 1
   const packSize = packSizeFor(fx, sandbox)
 
-  let draws = 1
+  let total = 1
   let price = 0
+  let packs = 1
   if (multi) {
     if (packSize <= 0) {
       fail('Packs are locked. The Sapphire badge in the shop opens them.')
     }
-    draws = sandbox
-      ? Math.min(SANDBOX_MAX_DRAW, wanted)
-      : Math.min(MAX_PULL, packSize * fx.packsPerPull)
-    price = sandbox ? 0 : packCost(draws)
-    // A pack is what credits are for. The single summon is always free, so an
-    // empty purse is never a dead end -- it just means selling something first.
-    if (row.credits < price) {
-      fail(`A pack of ${draws} costs ${price.toLocaleString()} credits. Sell something first.`)
+    if (sandbox) {
+      total = Math.min(SANDBOX_MAX_DRAW, wanted)
+    } else {
+      packs = Math.max(1, fx.packsPerPull)
+      total = packSize * packs
+      price = packCost(total)
+      // A pack is what credits are for. The single summon is always free, so an
+      // empty purse is never a dead end -- it just means selling something first.
+      if (row.credits < price) {
+        fail(`This pull costs ${price.toLocaleString()} credits. Sell something first.`)
+      }
     }
   }
   // Sandbox bulk stays a plain spread: it is for looking at a hundred cards at
   // once, and a sealed wrapper is the opposite of that.
   const pack = multi && !sandbox
-  // Everything past this is granted, sold and summarised rather than dealt.
-  const shown = Math.min(draws, MAX_DEALT)
+
+  /*
+   * How much of the pull is actually dealt.
+   *
+   * Pack sizes compound without a ceiling, which is the point of the shop, so
+   * past a few hundred cards a pull stops being something you look at. What
+   * fits on screen is dealt card by card and granted; the rest is opened by
+   * the machine and appraised into credits at what the dealt cards averaged.
+   * Without that, a pull of a million cards would be a million rows written,
+   * a million images mounted, and the same answer.
+   */
+  const packCount = pack ? Math.min(packs, MAX_STACKS) : 1
+  const perPack = pack
+    ? Math.max(1, Math.min(packSize, Math.floor(MAX_DEALT / packCount)))
+    : Math.min(total, MAX_DEALT)
+  const dealt = pack ? packCount * perPack : perPack
+  const overflow = Math.max(0, total - dealt)
 
   const ownedIds = new Set(
     (db.prepare('SELECT character_id FROM claims WHERE player_id = ?').all(player.id) as any[]).map(
@@ -351,7 +464,7 @@ export function roll(
   const openWishes = wishes.filter((w) => !ownedIds.has(w.id))
 
   const owner = settings.skipOwned ? player.id : null
-  const pool = drawFromPool(db, draws, settings.rollGender, settings.poolSize, owner)
+  const pool = drawFromPool(db, dealt, settings.rollGender, settings.poolSize, owner)
   if (pool.length === 0) {
     fail('The catalog has no characters matching your filters yet. Give the first crawl a minute.')
   }
@@ -362,12 +475,12 @@ export function roll(
   let coinFound = 0
   let wishGranted = false
 
-  for (let i = 0; i < draws; i++) {
+  for (let i = 0; i < dealt; i++) {
     let char: PoolPick | undefined
     let wished = false
     const stillOpen = wishGranted ? [] : openWishes.filter((w) => !used.has(w.id))
     const wishChance = Math.min(
-      WISH_CHANCE_CAP,
+      WISH_CHANCE_CAP * fx.wishChanceMult,
       stillOpen.length * WISH_BASE_CHANCE * fx.wishChanceMult,
     )
     if (stillOpen.length > 0 && Math.random() < wishChance) {
@@ -390,57 +503,73 @@ export function roll(
     results.push({ char, owned, wished, compensation })
   }
 
-  /*
-   * The Emerald guarantee.
-   *
-   * Applied to the dealt cards rather than to the pool they came from, because
-   * a wish can barge in after the draw and take the guaranteed card's place --
-   * checking the pool would promise a Legendary and hand over nine commons and
-   * a wish. It swaps the weakest card rather than adding one, so a guarantee
-   * never quietly makes a pack bigger; it never displaces a wish that came
-   * true, which is the one card in a pack somebody was actually waiting for;
-   * and it is skipped when the catalog holds nobody good enough, because an
-   * instance an hour into its first crawl owes nobody a Mythic.
-   */
-  if (multi && fx.guaranteeValue > 0 && !results.some((r) => r.char.creditValue >= fx.guaranteeValue)) {
-    let worst = -1
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].wished) continue
-      if (worst < 0 || results[i].char.creditValue < results[worst].char.creditValue) worst = i
-    }
-    const lucky =
-      worst < 0
-        ? null
-        : drawAboveValue(
-            db,
-            fx.guaranteeValue,
-            settings.rollGender,
-            settings.poolSize,
-            results.map((r) => r.char.id),
-            owner,
-          )
-    if (lucky) {
-      const owned = ownedIds.has(lucky.id)
-      const compensation = owned ? duplicateCompensation(lucky.creditValue, fx.dupCompMult) : 0
-      totalComp += compensation - results[worst].compensation
-      results[worst] = {
-        char: lucky,
-        owned,
-        wished: wishes.some((w) => w.id === lucky.id),
-        compensation,
-      }
+  // The Emerald guarantee, honoured pack by pack: every wrapper on screen
+  // promises its own floor, because a promise that only covers the first of
+  // four packs is not the promise the badge printed.
+  if (pack && fx.guaranteeValue > 0 && fx.guaranteeCount > 0) {
+    for (let g = 0; g < packCount; g++) {
+      totalComp += guarantee(
+        db,
+        results,
+        g * perPack,
+        Math.min(results.length, (g + 1) * perPack),
+        fx,
+        settings,
+        owner,
+        ownedIds,
+        wishes,
+      )
     }
   }
 
-  // Sapphire IV: a pack always turns one up, whatever the per-card chance did.
-  if (multi && fx.packCoin) coinFound += coinAmount(fx.coinValueMult)
+  /*
+   * What the pull was worth beyond what it dealt.
+   *
+   * The dealt cards are the sample: the packs behind them came out of the same
+   * pool, so their average is the honest price of the rest. Coins are settled
+   * the same way, at their expected rate rather than a million dice rolls.
+   */
+  const avgValue =
+    results.length > 0 ? results.reduce((n, r) => n + r.char.creditValue, 0) / results.length : 0
+  const hiddenFor = Math.floor(overflow * avgValue * fx.sellMult)
+  if (overflow > 0) {
+    coinFound += Math.floor(
+      overflow *
+        Math.min(1, BASE_COIN_CHANCE + fx.coinChanceBonus) *
+        COIN_BASE_MEAN *
+        fx.coinValueMult,
+    )
+  }
+
+  // Sapphire IV and VI: every pack turns coins up, whatever the per-card
+  // chance did, and every pack in the pull counts -- not just the ones dealt.
+  if (pack && fx.packCoins > 0) {
+    for (let i = 0; i < packs * fx.packCoins; i++) coinFound += coinAmount(fx.coinValueMult)
+  }
   const session: RollSession = { at: Date.now(), results }
+
+  /*
+   * What one press is worth, smoothed.
+   *
+   * Recorded on every real pack pull and read by `settleOffline`, so the
+   * Automaton's night shift is paid at this player's actual rate: every badge,
+   * every upgrade and the size of their own pool are already in the number.
+   */
+  const grossIfSold = total * avgValue * fx.sellMult
+  const pullYield = Math.max(0, grossIfSold + coinFound - price)
+  const now = Date.now()
 
   const opened = db.transaction(() => {
     db.prepare(
       `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?,
               roll_session_json = ? WHERE player_id = ?`,
-    ).run(totalComp + coinFound - price, results.length, JSON.stringify(session), player.id)
+    ).run(totalComp + coinFound + hiddenFor - price, results.length, JSON.stringify(session), player.id)
+    if (pack) {
+      db.prepare(
+        `UPDATE player_state SET auto_yield = auto_yield * ? + ? * ?, auto_at = ?
+          WHERE player_id = ?`,
+      ).run(1 - YIELD_SMOOTHING, pullYield, YIELD_SMOOTHING, now, player.id)
+    }
     if (!pack) return { claimed: 0, bonus: 0, autoSold: 0, autoSoldFor: 0, merged: 0 }
     // Remember what was already in the collection: takeAll marks everything it
     // hands over as owned, which would otherwise erase the difference between
@@ -464,17 +593,80 @@ export function roll(
   })()
 
   return {
-    results: results.slice(0, shown),
+    results,
     pack,
+    packCount,
+    perPack,
     claimed: opened.claimed,
     bonus: opened.bonus,
     coins: coinFound,
     autoSold: opened.autoSold,
     autoSoldFor: opened.autoSoldFor,
     merged: opened.merged,
-    hidden: Math.max(0, results.length - shown),
+    hidden: overflow,
+    hiddenFor,
     snapshot: snapshot(db, player, pack),
   }
+}
+
+/**
+ * Make one pack keep its promise.
+ *
+ * Applied to the dealt cards rather than to the pool they came from, because a
+ * wish can barge in after the draw and take the guaranteed card's place --
+ * checking the pool would promise a Legendary and hand over nine commons and a
+ * wish. It swaps the weakest cards rather than adding any, so a guarantee never
+ * quietly makes a pack bigger; it never displaces a wish that came true, which
+ * is the one card in a pack somebody was actually waiting for; and it is
+ * skipped when the catalog holds nobody good enough, because an instance an
+ * hour into its first crawl owes nobody a Mythic.
+ *
+ * Returns the change in duplicate compensation the swaps caused.
+ */
+function guarantee(
+  db: DB,
+  results: RollResult[],
+  from: number,
+  to: number,
+  fx: ReturnType<typeof computeEffects>,
+  settings: ServerSettings,
+  owner: number | null,
+  ownedIds: Set<number>,
+  wishes: PoolPick[],
+): number {
+  let delta = 0
+  const need = Math.min(fx.guaranteeCount, to - from)
+  for (let n = 0; n < need; n++) {
+    const good = []
+    for (let i = from; i < to; i++) if (results[i].char.creditValue >= fx.guaranteeValue) good.push(i)
+    if (good.length > n) continue
+    let worst = -1
+    for (let i = from; i < to; i++) {
+      if (results[i].wished) continue
+      if (results[i].char.creditValue >= fx.guaranteeValue) continue
+      if (worst < 0 || results[i].char.creditValue < results[worst].char.creditValue) worst = i
+    }
+    if (worst < 0) return delta
+    const lucky = drawAboveValue(
+      db,
+      fx.guaranteeValue,
+      settings.rollGender,
+      settings.poolSize,
+      results.map((r) => r.char.id),
+      owner,
+    )
+    if (!lucky) return delta
+    const owned = ownedIds.has(lucky.id)
+    const compensation = owned ? duplicateCompensation(lucky.creditValue, fx.dupCompMult) : 0
+    delta += compensation - results[worst].compensation
+    results[worst] = {
+      char: lucky,
+      owned,
+      wished: wishes.some((w) => w.id === lucky.id),
+      compensation,
+    }
+  }
+  return delta
 }
 
 /* ------------------------------------------------------------------- claim */
@@ -687,7 +879,13 @@ export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount
     fail('The daily offering is not ready yet.')
   }
   const streak = now - row.last_daily_at <= DAILY_STREAK_WINDOW_H * HOUR ? row.daily_streak + 1 : 1
-  const amount = dailyAmount(streak, fx.dailyMult)
+  // A hundred credits is a morning's play on day one and a rounding error by
+  // the end of the week, so the offering is also quoted in pulls: half a
+  // minute of the Automaton's work, whatever that has come to be worth.
+  const amount = Math.max(
+    dailyAmount(streak, fx.dailyMult),
+    Math.floor(row.auto_yield * 30 * fx.dailyMult),
+  )
   db.prepare(
     'UPDATE player_state SET credits = credits + ?, last_daily_at = ?, daily_streak = ? WHERE player_id = ?',
   ).run(amount, now, streak, player.id)
@@ -718,7 +916,7 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
   // would mean un-merging it, and a star that can be taken apart again is a
   // currency rather than a keepsake.
   const total = rows.reduce(
-    (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars) * fx.sellMult),
+    (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars, fx.mergeMult) * fx.sellMult),
     0,
   )
   db.transaction(() => {
@@ -756,9 +954,9 @@ export function buyBadge(db: DB, player: Player, key: BadgeKey): Snapshot {
   const def = BADGE_DEFS.find((d) => d.key === key)
   if (!def) fail('No such badge.')
   const level = badges[key]
-  if (level >= 4) fail('That badge is already at IV.')
+  if (level >= BADGE_MAX) fail('That badge line is already finished.')
   if (!badgeUnlocked(key, badges)) fail('That badge is still locked.')
-  const cost = badgeCost(def!, level + 1, badges.ruby >= 4)
+  const cost = badgeCost(def!, level + 1, computeEffects(badges, EMPTY_UPGRADES).priceMult)
   if (row.credits < cost) fail('Not enough credits.')
   const next: Badges = { ...badges, [key]: level + 1 }
   db.prepare('UPDATE player_state SET credits = credits - ?, badges_json = ? WHERE player_id = ?').run(
@@ -782,7 +980,7 @@ export function buyUpgrade(db: DB, player: Player, key: UpgradeKey): Snapshot {
   if (!def) fail('No such upgrade.')
   const level = upgrades[key] ?? 0
   if (upgradeMaxed(def!, level)) fail('That upgrade is already at its last level.')
-  const cost = upgradeCost(def!, level, fx.priceMult < 1)
+  const cost = upgradeCost(def!, level, fx.priceMult)
   if (row.credits < cost) fail('Not enough credits.')
   const next: Upgrades = { ...upgrades, [key]: level + 1 }
   db.prepare(
@@ -819,7 +1017,8 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
     db.prepare(
       `UPDATE player_state SET credits = 0, last_daily_at = 0, daily_streak = 0,
               total_rolls = 0, total_claims = 0, badges_json = ?, upgrades_json = ?,
-              series_paid_json = '{}', roll_session_json = NULL, pending_coins_json = NULL
+              series_paid_json = '{}', roll_session_json = NULL, auto_spin = 0,
+              auto_at = 0, auto_yield = 0
         WHERE player_id = ?`,
     ).run(JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), player.id)
   })()
