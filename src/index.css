@@ -1485,3 +1485,16 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .reset-error { margin: 0; font-size: 0.82rem; color: var(--red); font-weight: 700; }
 
 .invite-revoke { margin-left: auto; }
+
+/* Which build is actually running: worth being able to read off the page when
+   images update themselves in the background. */
+.version-line {
+  margin: 22px 0 0;
+  text-align: center;
+  font-family: var(--sans);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.version-line b { color: var(--value-soft); font-variant-numeric: tabular-nums; }
