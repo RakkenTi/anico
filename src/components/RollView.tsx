@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { useMemo } from 'react'
+import { useRef, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useGame } from '../game/store'
+import type { AutoSell } from '../api'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import CharacterCard from './CharacterCard'
 import Icon from './Icon'
@@ -14,6 +15,8 @@ export default function RollView() {
   // bigger from there. Zero means the only summon available is a single card.
   const packSize = s.packSize
   const affordable = s.canAffordPack()
+  const busy = s.packBusy()
+  const pullSize = s.cardsPerPull
   const entry = s.rolled[s.selected]
   const unclaimed = s.rolled.filter((r) => !r.owned).length
   const mega = s.rolled.length > 20
@@ -97,6 +100,32 @@ export default function RollView() {
     raf = requestAnimationFrame(tick)
     return stop
   }, [s.rollCount, mega, rolledCount])
+
+  /**
+   * The Automaton.
+   *
+   * A plain interval that presses the same button a player would, so it can
+   * never do anything a player could not: the server charges it for every pack
+   * and refuses it when the balance runs out, and the store switches it off on
+   * the first refusal. It keeps running while the tab is in the background,
+   * because grinding while you are elsewhere is the entire point of it.
+   */
+  const autoSpin = s.autoSpin
+  const autoSpinMs = s.autoSpinMs
+  useEffect(() => {
+    if (!autoSpin || autoSpinMs <= 0) return
+    const id = setInterval(() => {
+      const st = useGame.getState()
+      if (st.rolling || st.packBusy() || Date.now() + st.clockOffset < st.dealUntil) return
+      if (!st.canAffordPack()) {
+        st.setAutoSpin(false)
+        st.pushToast('The Automaton stops: not enough credits for the next pull.', 'info')
+        return
+      }
+      void st.roll(st.cardsPerPull)
+    }, autoSpinMs)
+    return () => clearInterval(id)
+  }, [autoSpin, autoSpinMs])
 
   // The spread's highest-value card gets a one-shot pulse once dealt.
   const bestIdx =
@@ -182,15 +211,15 @@ export default function RollView() {
           <button
             className="btn btn-primary btn-summon"
             onClick={() => s.roll(1)}
-            disabled={s.rolling || dealing}
+            disabled={s.rolling || dealing || busy}
           >
             {s.rolling ? 'Summoning…' : 'Summon'}
           </button>
           {packSize > 0 && (
             <button
               className="btn btn-quiet btn-summon btn-pack"
-              onClick={() => s.roll(packSize)}
-              disabled={s.rolling || dealing || !affordable}
+              onClick={() => s.roll(pullSize)}
+              disabled={s.rolling || dealing || busy || !affordable}
               title={
                 testing
                   ? `Sandbox: summon ${packSize} at once`
@@ -199,7 +228,10 @@ export default function RollView() {
                     : `A pack of ${packSize} costs ${s.packPrice.toLocaleString()} credits.`
               }
             >
-              <span className="pack-x">×{packSize}</span>
+              <span className="pack-x">
+                ×{pullSize}
+                {s.packsPerPull > 1 && <em className="pack-mult"> {s.packsPerPull} packs</em>}
+              </span>
               {!testing && (
                 <span className="pack-price">
                   <Icon name="token" /> {s.packPrice.toLocaleString()}
@@ -214,14 +246,52 @@ export default function RollView() {
             <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
           ) : packSize > 0 ? (
             <span className="testing-note">
-              Single summons are free · a pack of {packSize} costs{' '}
-              {s.packPrice.toLocaleString()}
+              Single summons are free ·{' '}
+              {s.packsPerPull > 1 ? `${s.packsPerPull} packs, ${pullSize} cards` : `a pack of ${packSize}`}{' '}
+              costs {s.packPrice.toLocaleString()}
             </span>
           ) : (
             /* The one thing the shop is for, said where the button would be. */
             <span className="testing-note">Summon freely · packs open at Sapphire I</span>
           )}
         </div>
+
+        {/* Two machines, both bought in the shop: one sells the chaff as it
+            lands, the other presses the button for you. Between them the late
+            game runs without a hand on it. */}
+        {!testing && (
+          <div className="auto-row">
+            <label className="auto-sell">
+              <span className="auto-label">Auto-sell</span>
+              <select
+                className="input"
+                value={s.settings.autoSell}
+                onChange={(e) => s.updateSettings({ autoSell: e.target.value as AutoSell })}
+              >
+                <option value="off">Keep everything</option>
+                <option value="rare">Sell below Rare</option>
+                <option value="epic">Sell below Epic</option>
+                <option value="legendary">Sell below Legendary</option>
+                <option value="mythic">Sell below Mythic</option>
+              </select>
+            </label>
+            {s.autoSpinMs > 0 && (
+              <button
+                className={`btn ${s.autoSpin ? 'btn-primary' : 'btn-quiet'} auto-spin`}
+                onClick={() => s.setAutoSpin(!s.autoSpin)}
+                title={`The Automaton opens a pull every ${(s.autoSpinMs / 1000).toFixed(1)}s while this is on`}
+              >
+                <Icon name="gear" className={s.autoSpin ? 'spinning' : undefined} />
+                {/* Two labels, one shown at a time: a phone has no room for
+                    the sentence and no patience for a mystery icon. */}
+                <span className="label-long">
+                  {s.autoSpin ? 'Automaton running' : 'Start the Automaton'}
+                </span>
+                <span className="label-short">{s.autoSpin ? 'Running' : 'Automaton'}</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Nothing about the contents until the wrapper is off: the bar was
             naming a card while the pack was still sealed. */}
@@ -276,13 +346,6 @@ export default function RollView() {
             title="Sandbox only: claim every unowned card in this spread"
           >
             Claim all ({unclaimed})
-          </button>
-        )}
-
-        {s.pendingCoins && (
-          <button className="coin-drop" onClick={s.collectCoins}>
-            <Icon name="token" className="icon-lg coin-mark" />
-            A coin: tap to gather <b>+{s.pendingCoins.amount.toLocaleString()}</b>
           </button>
         )}
 

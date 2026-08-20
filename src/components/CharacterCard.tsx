@@ -1,5 +1,5 @@
 import type { RolledCharacter } from '../game/types'
-import { rarityOf } from '../game/economy'
+import { MAX_STARS, STAR_NAMES, rarityOf } from '../game/economy'
 
 const GENDER_META: Record<string, { symbol: string; label: string; className: string }> = {
   Female: { symbol: '♀', label: 'Female', className: 'gender-female' },
@@ -9,6 +9,12 @@ const GENDER_META: Record<string, { symbol: string; label: string; className: st
 
 interface Props {
   character: RolledCharacter
+  /** Copies held, and the star they have merged to. */
+  copies?: number
+  stars?: number
+  /** What to show as the card's worth. Defaults to one card's credit value;
+   *  a collection quotes the whole stack instead, which is what it sells for. */
+  value?: number
   footer?: React.ReactNode
   compact?: boolean
   wished?: boolean
@@ -23,6 +29,9 @@ interface Props {
 
 export default function CharacterCard({
   character,
+  copies,
+  stars = 0,
+  value,
   footer,
   compact,
   wished,
@@ -35,7 +44,7 @@ export default function CharacterCard({
   const rarity = rarityOf(character.creditValue)
   return (
     <div
-      className={`char-card rarity-${rarity.key} ${compact ? 'compact' : ''} ${wished ? 'wished' : ''} ${onClick ? 'clickable' : ''} ${selectable ? 'selectable' : ''} ${selected ? 'picked' : ''}`}
+      className={`char-card rarity-${rarity.key} ${compact ? 'compact' : ''} ${wished ? 'wished' : ''} ${onClick ? 'clickable' : ''} ${selectable ? 'selectable' : ''} ${selected ? 'picked' : ''} ${stars > 0 ? `starred star-${Math.min(stars, 6)}` : ''}`}
       onClick={onClick}
       role={selectable ? 'checkbox' : onClick ? 'button' : undefined}
       aria-checked={selectable ? !!selected : undefined}
@@ -51,6 +60,13 @@ export default function CharacterCard({
           </span>
           {wished && <span className="wish-mark" title="On your wishlist">★</span>}
           {overlay}
+          {stars > 0 && (
+            <span className="star-mark" title={`${STAR_NAMES[Math.min(stars, MAX_STARS)]} · ${copies ?? 0} copies merged`}>
+              {'★'.repeat(Math.min(stars, 5))}
+              {stars > 5 && `+${stars - 5}`}
+            </span>
+          )}
+          {!stars && (copies ?? 0) > 1 && <span className="copy-mark">×{copies}</span>}
           {selectable && (
             <span className={`pick-mark ${selected ? 'on' : ''}`} aria-hidden="true">
               {selected ? '✓' : ''}
@@ -71,7 +87,12 @@ export default function CharacterCard({
           </div>
           <div className="char-sub">
             <span className="char-series" title={character.series}>{character.series}</span>
-            <span className="char-value" title="Credit value">{character.creditValue.toLocaleString()}</span>
+            <span
+              className="char-value"
+              title={value !== undefined && value !== character.creditValue ? 'What this stack sells for' : 'Credit value'}
+            >
+              {(value ?? character.creditValue).toLocaleString()}
+            </span>
           </div>
         </div>
         {footer && <div className="char-footer">{footer}</div>}

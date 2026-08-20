@@ -13,11 +13,38 @@
  */
 
 import { POOL_EVERYTHING, POOL_MIN } from '../src/game/pool.js'
+import { RARITY_MIN } from '../src/game/economy.js'
 
 export type RollGender = 'female' | 'male' | 'everyone'
 
+/**
+ * Which pulls are sold the moment they arrive.
+ *
+ * "rare" means "sell anything below Rare". Never touches a wish come true or a
+ * stack that has started to merge -- those are the two things in the game
+ * worth keeping, and a convenience that throws them away is a trap.
+ */
+export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
+
+export function autoSellFloor(mode: AutoSell): number {
+  switch (mode) {
+    case 'rare':
+      return RARITY_MIN.rare
+    case 'epic':
+      return RARITY_MIN.epic
+    case 'legendary':
+      return RARITY_MIN.legendary
+    case 'mythic':
+      return RARITY_MIN.mythic
+    default:
+      return 0
+  }
+}
+
 export interface ServerSettings {
   rollGender: RollGender
+  /** Sell every pull below this rarity as it lands. */
+  autoSell: AutoSell
   /** Size of the pool rolls draw from: the top N characters by favourites. */
   poolSize: number
   /** Never roll a character this player already owns. */
@@ -26,6 +53,7 @@ export interface ServerSettings {
 
 export const DEFAULT_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
+  autoSell: 'off',
   poolSize: POOL_EVERYTHING,
   skipOwned: false,
 }
@@ -47,6 +75,9 @@ export function sanitizeSettings(patch: any, current: ServerSettings): ServerSet
   }
   if (patch?.poolSize !== undefined) {
     next.poolSize = clampInt(patch.poolSize, POOL_MIN, POOL_EVERYTHING, current.poolSize)
+  }
+  if (['off', 'rare', 'epic', 'legendary', 'mythic'].includes(patch?.autoSell)) {
+    next.autoSell = patch.autoSell
   }
   if (typeof patch?.skipOwned === 'boolean') next.skipOwned = patch.skipOwned
   return next

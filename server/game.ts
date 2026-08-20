@@ -22,6 +22,8 @@ import {
   packCost,
   rarityOf,
   rollCoinDrop,
+  stackValue,
+  starsFor,
 } from '../src/game/economy.js'
 import {
   BADGE_DEFS,
@@ -34,6 +36,8 @@ import {
 } from '../src/game/badges.js'
 import {
   EMPTY_UPGRADES,
+  MAX_DEALT,
+  MAX_PULL,
   UPGRADE_DEFS,
   upgradeCost,
   upgradeMaxed,
@@ -41,12 +45,22 @@ import {
   type Upgrades,
 } from '../src/game/upgrades.js'
 import { drawAboveValue, drawFromPool, getCharacter, type PoolPick } from './catalog.js'
-import { sanitizeSettings, type ServerSettings } from './rules.js'
+import { autoSellFloor, sanitizeSettings, type ServerSettings } from './rules.js'
 import type { Player } from './auth.js'
 
 const HOUR = 3_600_000
-const WISH_BASE_CHANCE = 0.025
-const WISH_CHANCE_CAP = 0.6
+/**
+ * How rare a wish is.
+ *
+ * Per card, per open wish. It used to be 2.5% each, which is a coin flip in a
+ * forty-card pack and a certainty in a hundred -- a wishlist was a way of
+ * ordering Mythics rather than hoping for one. At a twentieth of that, and with
+ * at most one wish granted per summon, a wish is the thing you tell somebody
+ * about: roughly one pack of a hundred in seven with three wishes pinned, and
+ * one in two once the badges that improve the odds are paid for.
+ */
+const WISH_BASE_CHANCE = 0.0005
+const WISH_CHANCE_CAP = 0.006
 /** How long a rolled spread stays claimable. */
 const ROLL_SESSION_MS = 30 * 60_000
 /** Sandbox bulk summons, which answer to nothing else. */
@@ -69,7 +83,6 @@ interface StateRow {
   settings_json: string
   series_paid_json: string
   roll_session_json: string | null
-  pending_coins_json: string | null
 }
 
 interface RollSessionEntry {
@@ -77,6 +90,10 @@ interface RollSessionEntry {
   owned: boolean
   wished: boolean
   compensation: number
+  /** Set when this card joined a stack: the star that stack now carries. */
+  stars?: number
+  /** Set when the auto-sell setting sold this card the moment it arrived. */
+  autoSold?: boolean
 }
 interface RollSession {
   at: number
@@ -100,12 +117,18 @@ function loadoutOf(row: StateRow): { badges: Badges; upgrades: Upgrades; fx: Ret
 
 export interface OwnedCharacter extends PoolPick {
   claimedAt: number
+  /** How many of this character the player holds. */
+  copies: number
+  /** The star the stack has merged to, one per doubling. */
+  stars: number
+  /** What the whole stack fetches, stars and Appraisal included. */
+  stackValue: number
 }
 
-function collectionOf(db: DB, playerId: number): OwnedCharacter[] {
+function collectionOf(db: DB, playerId: number, sellMult: number): OwnedCharacter[] {
   const rows = db
     .prepare(
-      `SELECT c.*, cl.claimed_at, cl.credit_value AS claimed_value
+      `SELECT c.*, cl.claimed_at, cl.credit_value AS claimed_value, cl.copies, cl.stars
          FROM claims cl JOIN characters c ON c.id = cl.character_id
         WHERE cl.player_id = ? ORDER BY cl.claimed_at DESC`,
     )
@@ -123,7 +146,30 @@ function collectionOf(db: DB, playerId: number): OwnedCharacter[] {
     aliases: JSON.parse(r.aliases_json),
     covers: JSON.parse(r.covers_json),
     claimedAt: r.claimed_at,
+    copies: r.copies,
+    stars: r.stars,
+    stackValue: Math.round(stackValue(r.claimed_value, r.copies, r.stars) * sellMult),
   }))
+}
+
+/**
+ * Add one copy to a stack and merge it as far as it will go.
+ *
+ * Merging is not a thing a player does; it is what a second copy *means*. The
+ * star is derived from the count rather than stored as a separate currency, so
+ * a stack can never disagree with itself about how many copies it took.
+ */
+function addCopy(db: DB, playerId: number, characterId: number): { stars: number; merged: boolean } {
+  const row = db
+    .prepare('SELECT copies, stars FROM claims WHERE player_id = ? AND character_id = ?')
+    .get(playerId, characterId) as { copies: number; stars: number } | undefined
+  if (!row) return { stars: 0, merged: false }
+  const copies = row.copies + 1
+  const stars = starsFor(copies)
+  db.prepare(
+    'UPDATE claims SET copies = ?, stars = ? WHERE player_id = ? AND character_id = ?',
+  ).run(copies, stars, playerId, characterId)
+  return { stars, merged: stars > row.stars }
 }
 
 function wishesOf(db: DB, playerId: number): PoolPick[] {
@@ -157,8 +203,14 @@ export interface Snapshot {
   credits: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
-  /** What that pack costs to open. */
+  /** Packs torn at a single press. */
+  packsPerPull: number
+  /** Cards one press draws, ceiling applied. */
+  cardsPerPull: number
+  /** What one press costs: every card in the pull. */
   packPrice: number
+  /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
+  autoSpinMs: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
@@ -166,7 +218,6 @@ export interface Snapshot {
   badges: Badges
   upgrades: Upgrades
   settings: ServerSettings
-  pendingCoins: { amount: number } | null
   wishes: PoolPick[]
   collection?: OwnedCharacter[]
   serverNow: number
@@ -184,7 +235,10 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     sandboxAllowed: !!player.sandbox,
     credits: row.credits,
     packSize: size,
-    packPrice: player.sandbox_of ? 0 : packCost(size),
+    packsPerPull: player.sandbox_of ? 1 : fx.packsPerPull,
+    cardsPerPull: player.sandbox_of ? size : fx.cardsPerPull,
+    packPrice: player.sandbox_of ? 0 : packCost(fx.cardsPerPull),
+    autoSpinMs: player.sandbox_of ? 0 : fx.autoSpinMs,
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
     totalRolls: row.total_rolls,
@@ -192,9 +246,8 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     badges,
     upgrades,
     settings,
-    pendingCoins: row.pending_coins_json ? JSON.parse(row.pending_coins_json) : null,
     wishes: wishesOf(db, player.id),
-    collection: withCollection ? collectionOf(db, player.id) : undefined,
+    collection: withCollection ? collectionOf(db, player.id, fx.sellMult) : undefined,
     serverNow: Date.now(),
   }
 }
@@ -210,6 +263,10 @@ export interface RollResult {
   owned: boolean
   wished: boolean
   compensation: number
+  /** The star of the stack this card joined, if it joined one. */
+  stars?: number
+  /** Sold on arrival by the auto-sell setting. */
+  autoSold?: boolean
   /**
    * Granted by the pack that just produced it. Distinct from `owned`, which a
    * pack sets on everything it hands over: without this a brand new card and a
@@ -242,7 +299,19 @@ export function roll(
   db: DB,
   player: Player,
   count: number,
-): { results: RollResult[]; pack: boolean; claimed: number; bonus: number; snapshot: Snapshot } {
+): {
+  results: RollResult[]
+  pack: boolean
+  claimed: number
+  bonus: number
+  coins: number
+  autoSold: number
+  autoSoldFor: number
+  merged: number
+  /** Cards granted by the extra packs of a multi-pack pull, not shown on screen. */
+  hidden: number
+  snapshot: Snapshot
+} {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const { fx } = loadoutOf(row)
@@ -257,7 +326,9 @@ export function roll(
     if (packSize <= 0) {
       fail('Packs are locked. The Sapphire badge in the shop opens them.')
     }
-    draws = sandbox ? Math.min(SANDBOX_MAX_DRAW, wanted) : packSize
+    draws = sandbox
+      ? Math.min(SANDBOX_MAX_DRAW, wanted)
+      : Math.min(MAX_PULL, packSize * fx.packsPerPull)
     price = sandbox ? 0 : packCost(draws)
     // A pack is what credits are for. The single summon is always free, so an
     // empty purse is never a dead end -- it just means selling something first.
@@ -268,6 +339,8 @@ export function roll(
   // Sandbox bulk stays a plain spread: it is for looking at a hundred cards at
   // once, and a sealed wrapper is the opposite of that.
   const pack = multi && !sandbox
+  // Everything past this is granted, sold and summarised rather than dealt.
+  const shown = Math.min(draws, MAX_DEALT)
 
   const ownedIds = new Set(
     (db.prepare('SELECT character_id FROM claims WHERE player_id = ?').all(player.id) as any[]).map(
@@ -287,15 +360,22 @@ export function roll(
   const used = new Set<number>()
   let totalComp = 0
   let coinFound = 0
+  let wishGranted = false
 
   for (let i = 0; i < draws; i++) {
     let char: PoolPick | undefined
     let wished = false
-    const stillOpen = openWishes.filter((w) => !used.has(w.id))
-    const wishChance = Math.min(WISH_CHANCE_CAP, stillOpen.length * WISH_BASE_CHANCE * fx.wishChanceMult)
+    const stillOpen = wishGranted ? [] : openWishes.filter((w) => !used.has(w.id))
+    const wishChance = Math.min(
+      WISH_CHANCE_CAP,
+      stillOpen.length * WISH_BASE_CHANCE * fx.wishChanceMult,
+    )
     if (stillOpen.length > 0 && Math.random() < wishChance) {
       char = stillOpen[Math.floor(Math.random() * stillOpen.length)]
       wished = true
+      // One to a summon. Without this a big pack rolls the dice a hundred
+      // times and empties the whole wishlist in one go.
+      wishGranted = true
     } else {
       char = pool.find((c) => !used.has(c.id)) ?? pool[i % pool.length]
       wished = wishes.some((w) => w.id === char!.id)
@@ -354,22 +434,14 @@ export function roll(
 
   // Sapphire IV: a pack always turns one up, whatever the per-card chance did.
   if (multi && fx.packCoin) coinFound += coinAmount(fx.coinValueMult)
-  const pendingCoins = coinFound > 0 ? { amount: coinFound } : null
   const session: RollSession = { at: Date.now(), results }
 
   const opened = db.transaction(() => {
     db.prepare(
       `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?,
-              roll_session_json = ?, pending_coins_json = ?
-        WHERE player_id = ?`,
-    ).run(
-      totalComp - price,
-      results.length,
-      JSON.stringify(session),
-      pendingCoins ? JSON.stringify(pendingCoins) : null,
-      player.id,
-    )
-    if (!pack) return { claimed: 0, bonus: 0 }
+              roll_session_json = ? WHERE player_id = ?`,
+    ).run(totalComp + coinFound - price, results.length, JSON.stringify(session), player.id)
+    if (!pack) return { claimed: 0, bonus: 0, autoSold: 0, autoSoldFor: 0, merged: 0 }
     // Remember what was already in the collection: takeAll marks everything it
     // hands over as owned, which would otherwise erase the difference between
     // a new card and a duplicate.
@@ -387,14 +459,20 @@ export function roll(
       `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
               series_paid_json = ?, roll_session_json = ? WHERE player_id = ?`,
     ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
-    return r
+    const sold = autoSell(db, player, settings, fx, session)
+    return { ...r, ...sold }
   })()
 
   return {
-    results,
+    results: results.slice(0, shown),
     pack,
     claimed: opened.claimed,
     bonus: opened.bonus,
+    coins: coinFound,
+    autoSold: opened.autoSold,
+    autoSoldFor: opened.autoSoldFor,
+    merged: opened.merged,
+    hidden: Math.max(0, results.length - shown),
     snapshot: snapshot(db, player, pack),
   }
 }
@@ -498,15 +576,23 @@ function takeAll(
   session: RollSession,
   fx: ReturnType<typeof computeEffects>,
   seriesPaid: Record<string, number>,
-): { claimed: number; bonus: number } {
+): { claimed: number; bonus: number; merged: number } {
   const now = Date.now()
   let claimed = 0
   let bonus = 0
+  let merged = 0
   for (const entry of session.results) {
     const owns = db
       .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
       .get(player.id, entry.char.id)
-    if (owns) continue
+    if (owns) {
+      // A duplicate is a copy, not a consolation. It goes on the stack, and if
+      // that doubles the stack it merges a star higher.
+      const r = addCopy(db, player.id, entry.char.id)
+      if (r.merged) merged++
+      entry.stars = r.stars
+      continue
+    }
     db.prepare(
       'INSERT INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?, ?, ?, ?)',
     ).run(player.id, entry.char.id, now, entry.char.creditValue)
@@ -523,7 +609,53 @@ function takeAll(
     entry.owned = true
     entry.compensation = 0
   }
-  return { claimed, bonus }
+  return { claimed, bonus, merged }
+}
+
+/**
+ * Sell what the player asked not to be bothered with.
+ *
+ * Only ever single copies: a stack is the one thing in this game worth
+ * holding, so nothing that has started to merge is ever sold automatically,
+ * and neither is a wish come true.
+ */
+function autoSell(
+  db: DB,
+  player: Player,
+  settings: ServerSettings,
+  fx: ReturnType<typeof computeEffects>,
+  session: RollSession,
+): { autoSold: number; autoSoldFor: number } {
+  const floor = autoSellFloor(settings.autoSell)
+  if (floor <= 0) return { autoSold: 0, autoSoldFor: 0 }
+  const ids = new Set<number>()
+  for (const entry of session.results) {
+    if (entry.wished) continue
+    if (entry.char.creditValue >= floor) continue
+    ids.add(entry.char.id)
+  }
+  if (ids.size === 0) return { autoSold: 0, autoSoldFor: 0 }
+  const list = [...ids]
+  const holes = list.map(() => '?').join(',')
+  const rows = db
+    .prepare(
+      `SELECT character_id, credit_value, copies, stars FROM claims
+        WHERE player_id = ? AND copies = 1 AND stars = 0 AND character_id IN (${holes})`,
+    )
+    .all(player.id, ...list) as { character_id: number; credit_value: number; copies: number; stars: number }[]
+  if (rows.length === 0) return { autoSold: 0, autoSoldFor: 0 }
+  const total = rows.reduce((n, r) => n + Math.round(r.credit_value * fx.sellMult), 0)
+  const sold = rows.map((r) => r.character_id)
+  const soldHoles = sold.map(() => '?').join(',')
+  db.prepare(`DELETE FROM claims WHERE player_id = ? AND character_id IN (${soldHoles})`).run(
+    player.id,
+    ...sold,
+  )
+  db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
+  for (const entry of session.results) {
+    if (sold.includes(entry.char.id)) entry.autoSold = true
+  }
+  return { autoSold: rows.length, autoSoldFor: total }
 }
 
 export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed: number; bonus: number } {
@@ -546,16 +678,6 @@ export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed:
 }
 
 /* ------------------------------------------------------- economy and timers */
-
-export function collectCoins(db: DB, player: Player): Snapshot {
-  const row = loadState(db, player.id)
-  if (!row.pending_coins_json) fail('No coins are waiting.')
-  const coins = JSON.parse(row.pending_coins_json!) as { amount: number }
-  db.prepare(
-    'UPDATE player_state SET credits = credits + ?, pending_coins_json = NULL WHERE player_id = ?',
-  ).run(coins.amount, player.id)
-  return snapshot(db, player)
-}
 
 export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount: number; streak: number } {
   const row = loadState(db, player.id)
@@ -584,11 +706,21 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
   if (ids.length === 0) fail('Nothing to sell.')
   const placeholders = ids.map(() => '?').join(',')
   const rows = db
-    .prepare(`SELECT character_id, credit_value FROM claims WHERE player_id = ? AND character_id IN (${placeholders})`)
-    .all(player.id, ...ids) as { character_id: number; credit_value: number }[]
+    .prepare(
+      `SELECT character_id, credit_value, copies, stars FROM claims
+        WHERE player_id = ? AND character_id IN (${placeholders})`,
+    )
+    .all(player.id, ...ids) as
+    | { character_id: number; credit_value: number; copies: number; stars: number }[]
   if (rows.length === 0) fail('You do not own that.')
   const { fx } = loadoutOf(loadState(db, player.id))
-  const total = rows.reduce((n, r) => n + Math.round(r.credit_value * fx.sellMult), 0)
+  // A stack sells whole, at what the merge made it worth. Selling half a stack
+  // would mean un-merging it, and a star that can be taken apart again is a
+  // currency rather than a keepsake.
+  const total = rows.reduce(
+    (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars) * fx.sellMult),
+    0,
+  )
   db.transaction(() => {
     db.prepare(`DELETE FROM claims WHERE player_id = ? AND character_id IN (${placeholders})`).run(
       player.id,

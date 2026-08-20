@@ -5,6 +5,7 @@ import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
 import type { RollGender } from '../game/types'
+import type { ServerSettings } from '../api'
 
 export default function SettingsView() {
   const settings = useGame((s) => s.settings)
@@ -13,7 +14,6 @@ export default function SettingsView() {
   const sandbox = useGame((s) => s.sandbox)
   const isAdmin = useGame((s) => s.isAdmin)
   const ui = useUi()
-  const badges = useGame((s) => s.badges)
   const effects = useGame((s) => s.effects)
   const update = useGame((s) => s.updateSettings)
   const resetSave = useGame((s) => s.resetSave)
@@ -116,6 +116,26 @@ export default function SettingsView() {
         </div>
 
         <div className="setting-row">
+          <label>Auto-sell</label>
+          <select
+            className="input"
+            value={settings.autoSell}
+            onChange={(e) => update({ autoSell: e.target.value as ServerSettings['autoSell'] })}
+          >
+            <option value="off">Keep everything</option>
+            <option value="rare">Sell anything below Rare</option>
+            <option value="epic">Sell anything below Epic</option>
+            <option value="legendary">Sell anything below Legendary</option>
+            <option value="mythic">Sell anything below Mythic</option>
+          </select>
+          <p className="setting-hint">
+            Sells pulls as they land, so a pack of a hundred does not become a hundred
+            things to tidy up. It never sells a wish come true, and never a stack that has
+            started to merge — those are the two things worth keeping.
+          </p>
+        </div>
+
+        <div className="setting-row">
           <label className="toggle-row">
             <input
               type="checkbox"
@@ -124,7 +144,11 @@ export default function SettingsView() {
             />
             <span>Skip characters I already own</span>
           </label>
-          <p className="setting-hint">When off, duplicates pay 10% of the character's value{badges.silver >= 4 ? ' (20% with Silver IV)' : ''}.</p>
+          <p className="setting-hint">
+            Leave this off if you want to merge. A duplicate joins that character's stack,
+            and every doubling of a stack merges it a star higher — worth far more sold
+            whole than the copies ever were apart.
+          </p>
         </div>
       </div>
 
@@ -156,6 +180,14 @@ export default function SettingsView() {
               {fx.guaranteeRarity
                 ? `every pack holds a ${RARITY_NAMES[fx.guaranteeRarity]} or better (Emerald)`
                 : 'none yet — the Emerald badge promises a rarity floor'}
+            </dd>
+          </div>
+          <div>
+            <dt>The Automaton</dt>
+            <dd>
+              {fx.autoSpinMs > 0
+                ? `opens a pull every ${(fx.autoSpinMs / 1000).toFixed(1)}s while it is switched on`
+                : 'not bought — the shop sells a machine that presses the button for you'}
             </dd>
           </div>
           <div>

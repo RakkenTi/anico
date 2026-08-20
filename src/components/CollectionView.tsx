@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useGame } from '../game/store'
 import { SERIES_MILESTONES, rarityOf } from '../game/economy'
 import type { OwnedCharacter } from '../game/types'
@@ -29,6 +29,7 @@ export default function CollectionView() {
   const sellMany = useGame((s) => s.sellMany)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('value')
+  const [starsOnly, setStarsOnly] = useState(false)
   const [gender, setGender] = useState<GenderFilter>('all')
   const [rarity, setRarity] = useState<RarityFilter>('all')
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null)
@@ -45,6 +46,12 @@ export default function CollectionView() {
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [confirming, setConfirming] = useState(false)
 
+  // The server already quotes a stack's worth with Appraisal folded in.
+  const worth = useCallback(
+    (c: OwnedCharacter) => c.stackValue ?? Math.round(c.creditValue * sellMult),
+    [sellMult],
+  )
+
   const seriesCounts = useMemo(() => {
     const m = new Map<string, number>()
     for (const c of collection) m.set(c.series, (m.get(c.series) ?? 0) + 1)
@@ -55,6 +62,7 @@ export default function CollectionView() {
     const q = search.trim().toLowerCase()
     const list = collection.filter(
       (c) =>
+        (!starsOnly || c.stars > 0) &&
         (gender === 'all' || c.gender === gender) &&
         (rarity === 'all' || rarityOf(c.creditValue).key === rarity) &&
         (seriesFilter === null || c.series === seriesFilter) &&
@@ -62,16 +70,16 @@ export default function CollectionView() {
     )
     switch (sort) {
       case 'value':
-        return [...list].sort((a, b) => b.creditValue - a.creditValue)
+        return [...list].sort((a, b) => worth(b) - worth(a))
       case 'newest':
         return [...list].sort((a, b) => b.claimedAt - a.claimedAt)
       case 'name':
         return [...list].sort((a, b) => a.name.localeCompare(b.name))
     }
-  }, [collection, search, sort, gender, rarity, seriesFilter])
+  }, [collection, search, sort, gender, rarity, seriesFilter, starsOnly, worth])
 
-  const worth = (c: OwnedCharacter) => Math.round(c.creditValue * sellMult)
   const totalWorth = collection.reduce((s, c) => s + worth(c), 0)
+  const copiesHeld = collection.reduce((s, c) => s + (c.copies ?? 1), 0)
   const pickedWorth = collection.reduce((s, c) => (picked.has(c.id) ? s + worth(c) : s), 0)
   // "Select all" means all of what is on screen, so a filter is how you say
   // "every common" or "everything from this series" without tapping each one.
@@ -101,7 +109,7 @@ export default function CollectionView() {
         <div className="col-title">
           <h2>Collection</h2>
           <p className="col-meta">
-            <b>{collection.length}</b> characters · worth{' '}
+            <b>{collection.length}</b> characters · {copiesHeld.toLocaleString()} cards · worth{' '}
             <b className="credits-text">{totalWorth.toLocaleString()}</b> credits
           </p>
         </div>
@@ -147,6 +155,15 @@ export default function CollectionView() {
               {r.label}
             </button>
           ))}
+          {/* Merged stacks are the thing worth finding in a collection of
+              thousands, and nothing else in these filters can find them. */}
+          <button
+            className={`chip chip-star ${starsOnly ? 'active' : ''}`}
+            onClick={() => setStarsOnly(!starsOnly)}
+            title="Only stacks that have merged at least once"
+          >
+            ★ Merged
+          </button>
         </div>
 
         {seriesCounts.length > 0 && (
@@ -184,6 +201,9 @@ export default function CollectionView() {
               key={c.id}
               character={c}
               compact
+              copies={c.copies}
+              stars={c.stars}
+              value={worth(c)}
               wished={wishes.some((w) => w.id === c.id)}
               selectable={bulk}
               selected={picked.has(c.id)}

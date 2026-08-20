@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { OwnedCharacter } from '../game/types'
-import { rarityOf } from '../game/economy'
+import { MAX_STARS, STAR_NAMES, rarityOf } from '../game/economy'
 import { sfx } from '../game/sound'
 
 interface Props {
@@ -11,6 +11,8 @@ interface Props {
 
 export default function CharacterModal({ character, onClose, onSell }: Props) {
   const rarity = rarityOf(character.creditValue)
+  const copies = character.copies ?? 1
+  const stars = character.stars ?? 0
   // Portrait first, then any series artwork we have (AniList only stores one
   // image per character, so the "set" is portrait + series covers).
   const images = [character.image, ...(character.covers ?? [])]
@@ -70,12 +72,24 @@ export default function CharacterModal({ character, onClose, onSell }: Props) {
             <dl className="modal-facts">
               <dt>Series</dt><dd>{character.series}</dd>
               <dt>Gender</dt><dd>{character.gender}</dd>
-              <dt>Credit value</dt><dd>{character.creditValue.toLocaleString()}</dd>
+              <dt>Credit value</dt><dd>{character.creditValue.toLocaleString()} each</dd>
+              <dt>Copies held</dt>
+              <dd>
+                {copies.toLocaleString()}
+                {stars > 0 && (
+                  <span className="modal-star">
+                    {' '}· {STAR_NAMES[Math.min(stars, MAX_STARS)]} {'★'.repeat(Math.min(stars, 5))}
+                  </span>
+                )}
+              </dd>
               <dt>AniList favourites</dt><dd>{character.favourites.toLocaleString()}</dd>
               <dt>Claimed</dt><dd>{new Date(character.claimedAt).toLocaleDateString()}</dd>
             </dl>
+            {/* Selling takes the whole stack, so the button says so rather
+                than quoting one card's worth of a pile of eight. */}
             <button className="btn btn-sell" onClick={onSell}>
-              Sell for {character.creditValue.toLocaleString()} credits
+              Sell {copies > 1 ? `all ${copies}` : ''} for{' '}
+              {(character.stackValue ?? character.creditValue).toLocaleString()} credits
             </button>
           </div>
         </div>

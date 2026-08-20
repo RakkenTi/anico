@@ -365,6 +365,35 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   flex: 0 0 auto;
 }
 
+/* Coins land in the balance by themselves; this is the receipt rising off it.
+   There used to be a button to press, which is a strange thing to ask of
+   somebody who has just been handed money. */
+.coin-pop {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--value);
+  pointer-events: none;
+  animation: coinrise 1.6s ease-out forwards;
+}
+@keyframes coinrise {
+  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+  18% { opacity: 1; transform: translate(-50%, -2px) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -26px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coin-pop { animation-duration: 1.2s; }
+}
+.stat-credits { position: relative; }
+
 /* ------------------------------------------------ character card & rarity */
 .char-card { --frame: var(--line-strong); }
 
@@ -466,6 +495,72 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .rarity-tag b { font-family: var(--serif); color: var(--frame); margin-right: 2px; }
 .rarity-legendary .rarity-tag, .rarity-legendary .rarity-tag b { color: #e8cf7a; }
 .rarity-mythic .rarity-tag { color: #ffd9f1; }
+
+/* A merged stack, and how many copies made it. Stars sit on the artwork with
+   the other overlays and never on the card's own text. */
+.star-mark {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  transform: translateY(24px);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: #ffe9a3;
+  text-shadow: 0 0 6px rgba(255, 210, 90, 0.65);
+  pointer-events: none;
+}
+.copy-mark {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  transform: translateY(24px);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: rgba(10, 12, 18, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 1px 5px;
+  pointer-events: none;
+}
+
+/* The special effect a merged card earns: a slow sweep of light across the
+   frame, brighter the further it has merged. Mythic foil is a rarity; this is
+   an achievement, so it reads warmer and it moves. */
+.char-card.starred .card-frame {
+  border-color: #e8c86a;
+  box-shadow: 0 0 0 1px var(--bg), 0 0 14px rgba(232, 200, 106, calc(0.12 * var(--star, 1)));
+}
+.char-card.starred .card-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 42%,
+    rgba(255, 236, 178, calc(0.1 + 0.06 * var(--star, 1))) 50%,
+    transparent 58%
+  );
+  background-size: 260% 100%;
+  animation: starsweep 3.4s linear infinite;
+}
+.char-card.star-1 { --star: 1; }
+.char-card.star-2 { --star: 2; }
+.char-card.star-3 { --star: 3; }
+.char-card.star-4 { --star: 4; }
+.char-card.star-5 { --star: 5; }
+.char-card.star-6 { --star: 6; }
+@keyframes starsweep {
+  from { background-position: 180% 0; }
+  to { background-position: -80% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .char-card.starred .card-frame::before { animation: none; }
+}
+.chip-star.active { border-color: #e8c86a; color: #ffe9a3; }
+.modal-star { color: #ffe9a3; }
 
 .wish-mark {
   position: absolute; bottom: 8px; left: 8px;
@@ -787,6 +882,24 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .claim-bar-note { color: var(--text-dim); font-size: 0.84rem; }
 .claim-bar .btn { white-space: nowrap; }
 
+/* The two machines: the auto-sell picker and the Automaton's switch. */
+.auto-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.auto-sell { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.auto-label {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.auto-sell .input { flex: 1; min-width: 0; font-size: 0.82rem; padding: 7px 9px; }
+.auto-spin { flex: 1 1 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.label-short { display: none; }
+.icon.spinning { animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .icon.spinning { animation: none; }
+}
+
 /* Order control for a spread. Lives in the rail with the other things you can
    press, and only exists while there is a spread to order. */
 .sort-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -804,6 +917,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 /* A pack has a price, and the price belongs on the button that charges it. */
 .btn-pack { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.15; }
 .pack-x { font-size: 1rem; }
+.pack-mult { font-style: normal; font-size: 0.72rem; letter-spacing: 0.04em; color: var(--text-dim); }
 .pack-price {
   display: inline-flex;
   align-items: center;
@@ -1369,6 +1483,21 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
      that started this, and half a button beside nothing reads like a bug. */
   .search-row input { flex: 1 1 100%; }
   .search-row .btn { width: 100%; }
+
+  /* The rail carries two machines and an order control now, and every row it
+     takes is a row the cards do not get. One line for the pair, short labels,
+     and the select says "Sell below Rare" without needing to be told it is the
+     auto-sell. */
+  .auto-row { flex-wrap: nowrap; gap: 6px; }
+  .auto-label { display: none; }
+  .auto-sell { flex: 1 1 55%; }
+  .auto-sell .input { font-size: 0.78rem; padding: 7px 8px; }
+  .auto-spin { flex: 0 1 auto; white-space: nowrap; font-size: 0.74rem; padding: 8px 10px; }
+  .label-long { display: none; }
+  .label-short { display: inline; }
+  .sort-row { gap: 5px; }
+  .sort-label { font-size: 0.66rem; }
+  .sort-row .chip { padding: 5px 8px; font-size: 0.74rem; }
 
   .bulk-bar { gap: 8px; padding: 9px 10px; }
   .bulk-count { width: 100%; margin-right: 0; font-size: 0.8rem; }

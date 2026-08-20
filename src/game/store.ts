@@ -24,6 +24,7 @@ import { ApiError, api, type RollResult, type ServerSettings, type Snapshot } fr
 const HOUR = 3_600_000
 const EMPTY_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
+  autoSell: 'off',
   poolSize: POOL_EVERYTHING,
   skipOwned: false,
 }
@@ -51,13 +52,18 @@ interface GameState {
   settings: ServerSettings
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
-  /** What that pack costs to open. */
+  /** Packs torn at a single press. */
+  packsPerPull: number
+  /** Cards one press draws, ceiling applied. */
+  cardsPerPull: number
+  /** What one press costs: every card in the pull. */
   packPrice: number
+  /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
+  autoSpinMs: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
   totalClaims: number
-  pendingCoins: { amount: number } | null
   /**
    * The pack currently on screen, if the last summon was one. Presentation
    * only: its cards are already claimed by the time it arrives.
@@ -65,6 +71,14 @@ interface GameState {
   pack: { state: 'sealed' | 'sliced' | 'open'; revealed: number; claimed: number; bonus: number } | null
 
   /* browser only */
+  /**
+   * Coins that have just been gathered, for the little rising markers over the
+   * balance. They are already in `credits` -- these are the receipt, not the
+   * money.
+   */
+  coinPops: { id: number; amount: number }[]
+  /** The Automaton is running: it pulls on its own until it cannot pay. */
+  autoSpin: boolean
   rolled: RollResult[]
   /** How the spread on screen is ordered: as dealt, or best card first. */
   rollSort: 'dealt' | 'rarity'
@@ -80,6 +94,8 @@ interface GameState {
   effects: () => Effects
   dailyReady: () => boolean
   canAffordPack: () => boolean
+  /** True while a pack is on screen with cards still to come out of it. */
+  packBusy: () => boolean
 
   boot: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
@@ -92,7 +108,9 @@ interface GameState {
   setRollSort: (sort: 'dealt' | 'rarity') => void
   claim: () => Promise<void>
   claimAll: () => Promise<void>
-  collectCoins: () => Promise<void>
+  setAutoSpin: (on: boolean) => void
+  popCoins: (amount: number) => void
+  dismissCoinPop: (id: number) => void
   slicePack: () => void
   tearPack: () => void
   revealNext: () => void
@@ -131,12 +149,14 @@ export const useGame = create<GameState>()((set, get) => {
       upgrades: s.upgrades,
       settings: s.settings,
       packSize: s.packSize,
+      packsPerPull: s.packsPerPull,
+      cardsPerPull: s.cardsPerPull,
       packPrice: s.packPrice,
+      autoSpinMs: s.autoSpinMs,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
       totalRolls: s.totalRolls,
       totalClaims: s.totalClaims,
-      pendingCoins: s.pendingCoins,
       clockOffset: s.serverNow - Date.now(),
       now: s.serverNow,
     }))
@@ -175,12 +195,16 @@ export const useGame = create<GameState>()((set, get) => {
     upgrades: { ...EMPTY_UPGRADES },
     settings: { ...EMPTY_SETTINGS },
     packSize: 0,
+    packsPerPull: 1,
+    cardsPerPull: 0,
     packPrice: 0,
+    autoSpinMs: 0,
     lastDailyAt: 0,
     dailyStreak: 0,
     totalRolls: 0,
     totalClaims: 0,
-    pendingCoins: null,
+    coinPops: [],
+    autoSpin: false,
     pack: null,
 
     rolled: [],
@@ -198,6 +222,10 @@ export const useGame = create<GameState>()((set, get) => {
     canAffordPack: () => {
       const s = get()
       return s.packSize > 0 && (s.sandbox || s.credits >= s.packPrice)
+    },
+    packBusy: () => {
+      const p = get().pack
+      return !!p && p.state !== 'open'
     },
     dailyReady: () => {
       const s = get()
@@ -250,12 +278,17 @@ export const useGame = create<GameState>()((set, get) => {
 
     roll: async (count = 1) => {
       const s = get()
-      if (s.rolling || s.now < s.dealUntil) return
+      // A pack keeps the button until its last card is out. Pulling again
+      // mid-open used to wipe a spread nobody had finished looking at, and it
+      // made the tearing optional in a way that rather defeated the pack.
+      if (s.rolling || s.now < s.dealUntil || s.packBusy()) return
       sfx.rollStart(count)
-      set({ rolling: true, error: null, pendingCoins: null })
+      set({ rolling: true, error: null })
       const res = await guard(() => api.roll(count))
       if (!res) {
-        set({ rolling: false })
+        // The Automaton stops the moment a pull is refused, which is almost
+        // always "you cannot afford this any more".
+        set({ rolling: false, autoSpin: false })
         return
       }
       const firstFresh = res.results.findIndex((r) => !r.owned)
@@ -266,12 +299,39 @@ export const useGame = create<GameState>()((set, get) => {
         selected: firstFresh === -1 ? 0 : firstFresh,
         rolling: false,
         rollCount: prev.rollCount + 1,
+        // The Automaton does not stand around tearing wrappers: a pull it made
+        // arrives open, because nobody is watching it happen.
         pack: res.pack
-          ? { state: 'sealed' as const, revealed: 0, claimed: res.claimed, bonus: res.bonus }
+          ? {
+              state: (prev.autoSpin ? 'open' : 'sealed') as 'open' | 'sealed',
+              revealed: prev.autoSpin ? res.results.length : 0,
+              claimed: res.claimed,
+              bonus: res.bonus,
+            }
           : null,
         dealUntil:
           Date.now() + prev.clockOffset + res.results.length * dealStepMs(res.results.length) + 700,
       }))
+      if (res.coins > 0) get().popCoins(res.coins)
+      if (res.merged > 0) {
+        sfx.payout(0.4)
+        get().pushToast(
+          `${res.merged} stack${res.merged === 1 ? '' : 's'} merged a star higher.`,
+          'credits',
+        )
+      }
+      if (res.autoSold > 0) {
+        get().pushToast(
+          `Auto-sold ${res.autoSold} card${res.autoSold === 1 ? '' : 's'} for +${res.autoSoldFor.toLocaleString()} credits`,
+          'credits',
+        )
+      }
+      if (res.hidden > 0) {
+        get().pushToast(
+          `${res.hidden.toLocaleString()} more cards from the packs behind this one.`,
+          'info',
+        )
+      }
       // A sealed pack sounds out as it is opened, not as it arrives.
       if (res.pack) return
       const best = res.results.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
@@ -280,6 +340,23 @@ export const useGame = create<GameState>()((set, get) => {
         sfx.wish()
         get().pushToast('A wish appears before you.', 'wish')
       }
+    },
+
+    /** The rising "+N" over the balance. Coins are already banked by then. */
+    popCoins: (amount) => {
+      sfx.coins()
+      const id = toastSeq++
+      set((prev) => ({ coinPops: [...prev.coinPops.slice(-4), { id, amount }] }))
+      setTimeout(() => get().dismissCoinPop(id), 1600)
+    },
+
+    dismissCoinPop: (id) => set((prev) => ({ coinPops: prev.coinPops.filter((c) => c.id !== id) })),
+
+    setAutoSpin: (on) => {
+      const s = get()
+      if (on && s.autoSpinMs <= 0) return
+      sfx.tap()
+      set({ autoSpin: on })
     },
 
     setRollSort: (sort) => {
@@ -326,12 +403,6 @@ export const useGame = create<GameState>()((set, get) => {
         `Claimed ${res.claimed} character${res.claimed === 1 ? '' : 's'}${res.bonus > 0 ? ` (+${res.bonus} credits)` : ''} (sandbox)`,
         'info',
       )
-    },
-
-    collectCoins: async () => {
-      sfx.coins()
-      const res = await guard(() => api.coins())
-      if (res) apply(res.state)
     },
 
     /** The wrapper comes away, leaving the stack. */

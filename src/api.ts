@@ -8,8 +8,12 @@ import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
 
+export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
+
 export interface ServerSettings {
   rollGender: 'female' | 'male' | 'everyone'
+  /** Sell every pull below this rarity as it lands. */
+  autoSell: AutoSell
   poolSize: number
   skipOwned: boolean
 }
@@ -22,8 +26,14 @@ export interface Snapshot {
   credits: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
-  /** What that pack costs to open. */
+  /** Packs torn at a single press. */
+  packsPerPull: number
+  /** Cards one press draws, ceiling applied. */
+  cardsPerPull: number
+  /** What one press costs: every card in the pull. */
   packPrice: number
+  /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
+  autoSpinMs: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
@@ -31,7 +41,6 @@ export interface Snapshot {
   badges: Badges
   upgrades: Upgrades
   settings: ServerSettings
-  pendingCoins: { amount: number } | null
   wishes: RolledCharacter[]
   /** Present only on calls that could have changed it. */
   collection?: OwnedCharacter[]
@@ -45,6 +54,22 @@ export interface RollResult {
   compensation: number
   /** Granted by the pack that just produced it, rather than already owned. */
   fresh?: boolean
+  /** The star of the stack this card joined, if it joined one. */
+  stars?: number
+  /** Sold on arrival by the auto-sell setting. */
+  autoSold?: boolean
+}
+
+/** Everything one press produced, beyond the cards it put on screen. */
+export interface RollSummary {
+  pack: boolean
+  claimed: number
+  bonus: number
+  coins: number
+  autoSold: number
+  autoSoldFor: number
+  merged: number
+  hidden: number
 }
 
 export interface SessionInfo {
@@ -99,13 +124,9 @@ export const api = {
   catalog: () => request<CatalogStatus>('/catalog'),
 
   roll: (count: number) =>
-    post<{ results: RollResult[]; pack: boolean; claimed: number; bonus: number; state: Snapshot }>(
-      '/roll',
-      { count },
-    ),
+    post<RollSummary & { results: RollResult[]; state: Snapshot }>('/roll', { count }),
   claim: (characterId: number) => post<{ state: Snapshot; notes: string[] }>('/claim', { characterId }),
   claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
-  coins: () => post<{ state: Snapshot }>('/coins'),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
   sell: (ids: number[]) => post<{ state: Snapshot; total: number; sold: number }>('/sell', { ids }),
