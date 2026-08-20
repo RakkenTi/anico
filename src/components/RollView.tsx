@@ -37,6 +37,14 @@ export default function RollView() {
     const idx = s.rolled.map((_, i) => i)
     if (s.rollSort === 'rarity') {
       idx.sort((a, b) => s.rolled[b].char.creditValue - s.rolled[a].char.creditValue)
+    } else if (s.rollSort === 'wished') {
+      // Wishes first, then the best of the rest: a pinned character in a
+      // hundred-card spread is the one card worth finding.
+      idx.sort((a, b) => {
+        const wa = s.rolled[a].wished ? 1 : 0
+        const wb = s.rolled[b].wished ? 1 : 0
+        return wb - wa || s.rolled[b].char.creditValue - s.rolled[a].char.creditValue
+      })
     }
     return idx
   }, [s.rolled, s.rollSort])
@@ -352,6 +360,13 @@ export default function RollView() {
               onClick={() => s.setRollSort('rarity')}
             >
               Best first
+            </button>
+            <button
+              className={`chip ${s.rollSort === 'wished' ? 'active' : ''}`}
+              onClick={() => s.setRollSort('wished')}
+              title="Anything on your wishlist first"
+            >
+              ★ Wishlist
             </button>
           </div>
         )}

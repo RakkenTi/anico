@@ -58,6 +58,12 @@ warm, play does not depend on AniList being reachable.
 query can reach the whole catalog; the segments are how it is reached anyway, and they
 run one after another into the same table.
 
+**Pool** — how wide a net every roll on the instance casts: the top N characters by
+AniList favourites, turned into a favourites floor at roll time. One number for everybody,
+set by the admin. It was a per-player setting until it became clear it is not a preference
+but a difficulty: the top two thousand characters are worth several times what the long
+tail is (ADR 0003).
+
 **Series** — the show or work a character appears in. Owning several characters from one
 series is a **series set**, which pays a one-time bonus at 3, 5 and 10.
 

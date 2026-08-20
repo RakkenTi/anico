@@ -33,7 +33,6 @@ const HOUR = 3_600_000
 const EMPTY_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
   autoSell: 'off',
-  poolSize: POOL_EVERYTHING,
   skipOwned: false,
 }
 
@@ -96,6 +95,8 @@ interface GameState {
 
   /* mirrored from the server */
   credits: number
+  /** How wide a net rolls cast here. An instance setting, not a player's. */
+  poolSize: number
   collection: OwnedCharacter[]
   /** The instance's collection revision, and the one our copy was fetched at. */
   collectionRev: number
@@ -145,8 +146,8 @@ interface GameState {
   /** The Automaton is running: it pulls on its own until it cannot pay. */
   autoSpin: boolean
   rolled: RollResult[]
-  /** How the spread on screen is ordered: as dealt, or best card first. */
-  rollSort: 'dealt' | 'rarity'
+  /** How the spread on screen is ordered: as dealt, best first, or wishes first. */
+  rollSort: 'dealt' | 'rarity' | 'wished'
   selected: number
   rolling: boolean
   rollCount: number
@@ -165,6 +166,8 @@ interface GameState {
   boot: () => Promise<void>
   /** Fetch the collection again when another device has changed it. */
   refreshCollection: () => Promise<void>
+  /** Pull the whole snapshot again, for the few things nothing pushes. */
+  refreshState: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
   signUp: (username: string, password: string, invite?: string) => Promise<string | null>
   signOut: () => Promise<void>
@@ -172,7 +175,7 @@ interface GameState {
   tick: () => void
   roll: (packs?: number) => Promise<void>
   selectRolled: (index: number) => void
-  setRollSort: (sort: 'dealt' | 'rarity') => void
+  setRollSort: (sort: 'dealt' | 'rarity' | 'wished') => void
   setAutoSpin: (on: boolean) => Promise<void>
   popCoins: (amount: number) => void
   dismissCoinPop: (id: number) => void
@@ -220,6 +223,7 @@ export const useGame = create<GameState>()((set, get) => {
       sandbox: s.sandbox,
       sandboxAllowed: s.sandboxAllowed,
       credits: s.credits,
+      poolSize: s.poolSize,
       collection: s.collection ?? prev.collection,
       collectionRev: s.collectionRev,
       // A pushed snapshot carries no collection, so the copy we hold keeps the
@@ -311,6 +315,7 @@ export const useGame = create<GameState>()((set, get) => {
     sandboxAllowed: false,
 
     credits: 0,
+    poolSize: POOL_EVERYTHING,
     collection: [],
     collectionRev: 0,
     collectionAt: 0,
@@ -360,6 +365,11 @@ export const useGame = create<GameState>()((set, get) => {
     refreshCollection: async () => {
       const st = get()
       if (st.collectionAt === st.collectionRev) return
+      const snap = await guard(() => api.state())
+      if (snap) apply(snap)
+    },
+
+    refreshState: async () => {
       const snap = await guard(() => api.state())
       if (snap) apply(snap)
     },

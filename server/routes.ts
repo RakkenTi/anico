@@ -21,6 +21,7 @@ import {
   type Player,
 } from './auth.js'
 import * as game from './game.js'
+import { setInstancePool } from './rules.js'
 import { GameError } from './game.js'
 import { UpstreamError, crawlStatus, searchCharacters, startCrawl } from './catalog.js'
 import { publish, streamsFor, subscribe } from './bus.js'
@@ -373,6 +374,13 @@ export function createApp(db: DB, config: Config) {
     }
     db.prepare('DELETE FROM invites WHERE code = ?').run(code)
     return c.json({ ok: true })
+  })
+
+  /** The one rule an admin owns rather than a player: how wide the pool is. */
+  api.patch('/admin/instance', adminOnly, async (c) => {
+    const b = await body(c)
+    const poolSize = setInstancePool(db, b.poolSize)
+    return c.json({ poolSize })
   })
 
   api.patch('/admin/users/:id', adminOnly, async (c) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type CatalogStatus } from '../api'
 import { useGame } from '../game/store'
+import { POOL_OPTIONS } from '../game/pool'
 
 /**
  * Instance administration, shown only to the admin account: who can join, who
@@ -18,6 +19,7 @@ export default function AdminPanel() {
   // The player whose sign-out is one click from happening, following the same
   // two-click pattern as the danger zone rather than a browser confirm().
   const [confirmSignOut, setConfirmSignOut] = useState<number | null>(null)
+  const poolSize = useGame((s) => s.poolSize)
   const refresh = () => setNonce((n) => n + 1)
 
   useEffect(() => {
@@ -84,6 +86,34 @@ export default function AdminPanel() {
       <h2 className="section-title">Instance</h2>
       <p className="section-sub">You are the admin of this instance.</p>
 
+      {/* The one game rule an admin owns rather than a player: a narrow pool
+          is a richer game, so it cannot be a personal preference. */}
+      <div className="setting-row">
+        <label>Character pool</label>
+        <select
+          className="input"
+          value={poolSize}
+          onChange={(e) => {
+            const next = Number(e.target.value)
+            void api.setPool(next).then(async () => {
+              refresh()
+              // The pool lives on the snapshot, so the whole app hears about it.
+              await useGame.getState().refreshState()
+              pushToast('Character pool updated for the whole instance.', 'info')
+            })
+          }}
+        >
+          {POOL_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <p className="setting-hint">
+          How wide a net every roll on this instance casts, ranked by AniList favourites.
+          The whole catalog is the default. A smaller pool means everybody meets characters
+          they recognise, and everybody's cards are worth more.
+        </p>
+      </div>
+
       <div className="setting-row">
         <label>Catalog</label>
         {catalog ? (
@@ -102,7 +132,7 @@ export default function AdminPanel() {
         )}
         <p className="setting-hint">
           Rolls draw from this local catalog, so AniList is only reached while it fills. The
-          crawl walks four sweeps — anime then manga, headline cast then supporting — because
+          crawl walks four sweeps (anime then manga, headline cast then supporting) because
           no single AniList query reaches past 5,000 entries. It is deliberately slow, takes
           a few hours from empty, and resumes where it left off across restarts.
         </p>

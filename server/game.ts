@@ -47,7 +47,7 @@ import {
   type Upgrades,
 } from '../src/game/upgrades.js'
 import { drawAboveValue, drawFromPool, getCharacter, type PoolPick } from './catalog.js'
-import { autoSellFloor, sanitizeSettings, type ServerSettings } from './rules.js'
+import { autoSellFloor, instancePool, sanitizeSettings, type ServerSettings } from './rules.js'
 import { streamsFor } from './bus.js'
 import type { Player } from './auth.js'
 
@@ -263,6 +263,8 @@ export interface Snapshot {
   /** Allowed to switch the sandbox on at all. */
   sandboxAllowed: boolean
   credits: number
+  /** How wide a net every roll on this instance casts. Set by the admin. */
+  poolSize: number
   /** Bumped whenever the player's claims change. A device holding a stale
    *  collection refetches when this moves. */
   collectionRev: number
@@ -305,6 +307,7 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     sandbox: !!player.sandbox_of,
     sandboxAllowed: !!player.sandbox,
     credits: row.credits,
+    poolSize: instancePool(db),
     collectionRev: row.collection_rev,
     packSize: size,
     packsPerPull: player.sandbox_of ? 1 : fx.packsPerPull,
@@ -548,7 +551,9 @@ export function roll(
   const openWishes = wishes.filter((w) => !ownedIds.has(w.id))
 
   const owner = settings.skipOwned ? player.id : null
-  const pool = drawFromPool(db, dealt, settings.rollGender, settings.poolSize, owner)
+  // The pool belongs to the instance, not the player: see `instancePool`.
+  const poolSize = instancePool(db)
+  const pool = drawFromPool(db, dealt, settings.rollGender, poolSize, owner)
   if (pool.length === 0) {
     fail('The catalog has no characters matching your filters yet. Give the first crawl a minute.')
   }
@@ -599,6 +604,7 @@ export function roll(
         Math.min(results.length, (g + 1) * perPack),
         fx,
         settings,
+        poolSize,
         owner,
         ownedIds,
         wishes,
@@ -731,6 +737,7 @@ function guarantee(
   to: number,
   fx: ReturnType<typeof computeEffects>,
   settings: ServerSettings,
+  poolSize: number,
   owner: number | null,
   ownedIds: Set<number>,
   wishes: PoolPick[],
@@ -752,7 +759,7 @@ function guarantee(
       db,
       fx.guaranteeValue,
       settings.rollGender,
-      settings.poolSize,
+      poolSize,
       results.map((r) => r.char.id),
       owner,
     )
