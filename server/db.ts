@@ -131,6 +131,18 @@ const MIGRATIONS: { name: string; sql: string }[] = [
      WHERE json_extract(settings_json, '$.mode') IS NULL;
     `,
   },
+  {
+    name: '004_sandbox_profiles',
+    sql: `
+    -- Sandbox stops being a mode the account is permanently in and becomes a
+    -- permission to enter one. A shadow profile owns its own state, so testing
+    -- can never touch the collection someone actually cares about. These rows
+    -- are temporary by design and are purged on boot.
+    ALTER TABLE players ADD COLUMN sandbox_of INTEGER REFERENCES players(id) ON DELETE CASCADE;
+    ALTER TABLE players ADD COLUMN sandbox_active INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX idx_players_sandbox_of ON players(sandbox_of);
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

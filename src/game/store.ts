@@ -43,7 +43,10 @@ interface GameState {
   needsSetup: boolean
   username: string
   isAdmin: boolean
+  /** Currently playing the throwaway sandbox profile. */
   sandbox: boolean
+  /** Allowed to switch the sandbox on at all. */
+  sandboxAllowed: boolean
 
   /* mirrored from the server */
   credits: number
@@ -96,6 +99,7 @@ interface GameState {
   claimAll: () => Promise<void>
   collectGem: () => Promise<void>
   flip: (index: number) => Promise<void>
+  setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
   claimRitual: () => Promise<void>
   sell: (id: number) => Promise<void>
@@ -120,6 +124,7 @@ export const useGame = create<GameState>()((set, get) => {
       username: s.username,
       isAdmin: s.isAdmin,
       sandbox: s.sandbox,
+      sandboxAllowed: s.sandboxAllowed,
       credits: s.credits,
       collection: s.collection ?? prev.collection,
       wishes: s.wishes,
@@ -166,6 +171,7 @@ export const useGame = create<GameState>()((set, get) => {
     username: '',
     isAdmin: false,
     sandbox: false,
+    sandboxAllowed: false,
 
     credits: 0,
     collection: [],
@@ -369,6 +375,18 @@ export const useGame = create<GameState>()((set, get) => {
       }
     },
 
+    setSandbox: async (on) => {
+      const res = await guard(() => api.sandbox(on))
+      if (!res) return
+      apply(res.state)
+      set({ rolled: [], selected: 0, covered: res.state.covered })
+      get().pushToast(
+        on
+          ? 'Sandbox on. This is a scratch profile: nothing here is kept.'
+          : 'Sandbox off, and its data is gone. Back to your own collection.',
+        'info',
+      )
+    },
 
     claimDaily: async () => {
       sfx.daily()

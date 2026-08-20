@@ -35,7 +35,7 @@ import { PACING, sanitizeSettings, type ServerSettings } from './rules.js'
 
 /** Fun mode and sandbox both mean "no timers apply". */
 const unpaced = (settings: ServerSettings, player: Player) =>
-  settings.mode === 'fun' || !!player.sandbox
+  settings.mode === 'fun' || !!player.sandbox_of
 import type { Player } from './auth.js'
 
 const HOUR = 3_600_000
@@ -180,7 +180,10 @@ function wishesOf(db: DB, playerId: number): PoolPick[] {
 export interface Snapshot {
   username: string
   isAdmin: boolean
+  /** Currently playing the throwaway sandbox profile. */
   sandbox: boolean
+  /** Allowed to switch the sandbox on at all. */
+  sandboxAllowed: boolean
   credits: number
   rollsLeft: number
   rollsMax: number
@@ -221,7 +224,8 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
-    sandbox: !!player.sandbox,
+    sandbox: !!player.sandbox_of,
+    sandboxAllowed: !!player.sandbox,
     credits: row.credits,
     rollsLeft: row.rolls_left,
     rollsMax: rollCapacity(badges),
@@ -270,7 +274,7 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
   row = applyRefill(db, row, badges)
-  const sandbox = !!player.sandbox
+  const sandbox = !!player.sandbox_of
   const free = unpaced(settings, player)
   const now = Date.now()
   const wanted = Math.max(1, Math.round(count))
@@ -514,7 +518,7 @@ export function flip(
 
 /** Sandbox only: claim every unowned card in the current spread. */
 export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed: number; bonus: number } {
-  if (!player.sandbox) fail('Sandbox is not enabled for this account.')
+  if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
   const row = loadState(db, player.id)
   const badges: Badges = JSON.parse(row.badges_json)
   const fx = computeEffects(badges)
@@ -572,7 +576,7 @@ export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount
   const row = loadState(db, player.id)
   const badges: Badges = JSON.parse(row.badges_json)
   const now = Date.now()
-  if (!player.sandbox && now - row.last_daily_at < DAILY_INTERVAL_H * HOUR) {
+  if (!player.sandbox_of && now - row.last_daily_at < DAILY_INTERVAL_H * HOUR) {
     fail('The daily offering is not ready yet.')
   }
   const streak = now - row.last_daily_at <= DAILY_STREAK_WINDOW_H * HOUR ? row.daily_streak + 1 : 1
@@ -588,7 +592,7 @@ export function claimRitual(db: DB, player: Player): Snapshot {
   const badges: Badges = JSON.parse(row.badges_json)
   const fx = computeEffects(badges)
   if (!fx.claimResetUnlocked) fail('The Claim Reset ritual is locked.')
-  const ready = player.sandbox ? 0 : row.last_ritual_at + fx.claimResetHours * HOUR
+  const ready = player.sandbox_of ? 0 : row.last_ritual_at + fx.claimResetHours * HOUR
   if (Date.now() < ready) fail('The ritual is not ready yet.')
   db.prepare('UPDATE player_state SET next_claim_at = 0, last_ritual_at = ? WHERE player_id = ?').run(
     Date.now(),
@@ -598,7 +602,7 @@ export function claimRitual(db: DB, player: Player): Snapshot {
 }
 
 export function sell(db: DB, player: Player, ids: number[], bulk: boolean): { snapshot: Snapshot; total: number; sold: number } {
-  if (bulk && !player.sandbox) fail('Bulk selling is sandbox only.')
+  if (bulk && !player.sandbox_of) fail('Bulk selling is sandbox only.')
   if (ids.length === 0) fail('Nothing to sell.')
   const placeholders = ids.map(() => '?').join(',')
   const rows = db
@@ -689,7 +693,7 @@ export function updateSettings(db: DB, player: Player, patch: unknown): Snapshot
 
 /** Sandbox only: the debug credit grant. */
 export function grantCredits(db: DB, player: Player, amount: number): Snapshot {
-  if (!player.sandbox) fail('Sandbox is not enabled for this account.')
+  if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
   const n = Math.max(0, Math.min(100_000, Math.round(amount)))
   db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(n, player.id)
   return snapshot(db, player)

@@ -10,7 +10,7 @@ import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { openDb } from './db.js'
+import { openDb, purgeSandboxProfiles } from './db.js'
 import { purgeExpiredSessions } from './auth.js'
 import { createApp } from './routes.js'
 import { startCrawl, catalogSize } from './catalog.js'
@@ -24,6 +24,9 @@ const CRAWL_ON_BOOT = (process.env.CRAWL_ON_BOOT ?? 'true') !== 'false'
 
 const db = openDb(join(DATA_DIR, 'anico.db'))
 purgeExpiredSessions(db)
+// Sandbox data is temporary by definition, so a restart starts it over.
+const dropped = purgeSandboxProfiles(db)
+if (dropped > 0) console.log(`[anico] cleared ${dropped} sandbox profile(s)`)
 setInterval(() => purgeExpiredSessions(db), 6 * 3_600_000).unref()
 
 const app = createApp(db, { cookieSecure: COOKIE_SECURE })
