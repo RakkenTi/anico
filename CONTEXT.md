@@ -28,7 +28,10 @@ invites and holds sandbox access.
 **Invite** — a code or link, issued by the admin, that permits one registration. After
 the first account exists, registration is closed except through an invite.
 
-**Sandbox** — testing mode: no roll limits, no cooldowns, and bulk operations (×100
+**Sandbox** — a scratch *profile*, not a state the account is in. The admin grants the
+privilege; the player switches it on, and gets a separate empty collection with its own
+credits. Nothing done there touches their real one, and none of it survives switching
+back or restarting the instance. No roll limits, no cooldowns, and bulk operations (×100
 summons, claim all, sell all). An admin privilege, not a setting a player can grant
 themselves.
 
@@ -53,9 +56,18 @@ summon** is its own once-a-day event that spends no hourly summons.
 **Claim** — a player taking ownership of a rolled character. Claims are gated by their
 own cooldown, one an hour, separate from both roll budgets.
 
-**Pacing** — the roll and claim rates. Fixed by the instance and identical for everyone
-on it. They were once per-player sliders, which on a shared instance only meant each
-player set their own difficulty.
+**Mode** — how strictly time is kept, chosen per player. **Fun** is the default and has
+no cooldowns at all; its ×10 deals face down and the player turns one card over, which is
+what it trades for that freedom. **Normal** is the paced game. Switching is not a cheat
+vector because the permissive mode is the default: the only thing a switch can do is add
+limits.
+
+**Pacing** — the roll and claim rates that Normal mode keeps. Fixed by the instance and
+identical for everyone on it. They were once per-player sliders, which on a shared
+instance only meant each player set their own difficulty.
+
+**Coin** — a minted drop that sometimes accompanies a summon, worth a band of credits
+when gathered. Roughly one summon in twenty-five. Called a gem until it was rethemed.
 
 **Collection** — the characters one player has claimed. Collections are **per player and
 isolated**: two players on the same instance can each own the same character, and no
@@ -65,7 +77,7 @@ action by one player can remove or block a character for another (see ADR 0002).
 frame and its credit value. A card is a view of a character, not a separate thing a
 player owns.
 
-**Credit** — the currency. Earned by claiming, selling, daily offerings and gem drops;
+**Credit** — the currency. Earned by claiming, selling, daily offerings and coin drops;
 spent in the shop.
 
 **Credit value** — a character's worth, derived from its AniList favourites on a power
@@ -75,8 +87,8 @@ duplicate compensation all descend from it.
 **Rarity** — the band a credit value falls into: Common, Rare, Epic, Legendary, Mythic. A
 presentation of credit value, not a separate fact about a character.
 
-**Gem** — a coloured drop that sometimes accompanies a roll, worth a band of credits when
-gathered. The gem is the container; credits are what it pays.
+**Gem** — what a **Coin** was called before it was rethemed. Kept here only so the
+term is recognisable in older commits and comments.
 
 **Wish** — a character a player has pinned. Wishes can barge into any roll.
 

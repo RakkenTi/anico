@@ -156,6 +156,27 @@ export async function login(
   return { ok: true, player: toPlayer(row) }
 }
 
+/** Confirm a player's own password, for actions that should not be one click. */
+export async function verifyPlayerPassword(
+  db: DB,
+  player: Player,
+  username: string,
+  password: string,
+): Promise<boolean> {
+  const row = db
+    .prepare('SELECT username_lower, password_hash FROM players WHERE id = ?')
+    .get(player.sandbox_of ?? player.id) as
+    | { username_lower: string; password_hash: string }
+    | undefined
+  if (!row) return false
+  if (row.username_lower !== username.trim().toLowerCase()) {
+    // Hash anyway, so a wrong name and a wrong password take the same time.
+    await verifyPassword(password, row.password_hash)
+    return false
+  }
+  return verifyPassword(password, row.password_hash)
+}
+
 export function createSession(db: DB, playerId: number): string {
   const token = randomBytes(32).toString('base64url')
   const now = Date.now()

@@ -91,13 +91,16 @@ export default function App() {
             {free ? 'claim any time' : claimReady ? 'claim ready' : `claim ${formatDuration(nextClaimAt - now)}`}
           </span>
           <span className="stat" title="Collection size">{collectionSize} owned</span>
+          {/* Reads as a button rather than another read-out: the old version sat
+              in a row of plain stats and nobody could tell it was clickable. */}
           <button
-            className={`stat stat-daily ${dailyReady ? 'stat-ready' : ''}`}
+            className={`stat stat-daily ${dailyReady ? 'daily-ready' : ''}`}
             disabled={!dailyReady}
             onClick={claimDaily}
             title={dailyReady ? 'Collect your daily offering' : `Daily offering in ${formatDuration(dailyAt - now)}`}
           >
-            {dailyReady ? 'daily ready' : `daily ${formatDuration(dailyAt - now)}`}
+            <span className="daily-coin" aria-hidden="true">¢</span>
+            {dailyReady ? 'collect daily' : `daily ${formatDuration(dailyAt - now)}`}
             {dailyStreak > 1 && <span className="streak"> ×{dailyStreak}</span>}
           </button>
           <button className="stat stat-user" onClick={signOut} title="Sign out of this instance">

@@ -184,12 +184,27 @@ export default function AdminPanel() {
               <span className="admin-meta">
                 {i.used_by ? `used by ${i.used_by}` : 'unused'}
               </span>
+              {!i.used_by && (
+                <button
+                  className="btn btn-ghost admin-action invite-revoke"
+                  title="Withdraw this invite so the link stops working"
+                  onClick={async () => {
+                    await api.deleteInvite(i.code)
+                    pushToast('Invite withdrawn. That link no longer works.', 'info')
+                    refresh()
+                  }}
+                >
+                  Withdraw
+                </button>
+              )}
             </li>
           ))}
           {invites.length === 0 && <li className="admin-meta">No invites yet.</li>}
         </ul>
         <p className="setting-hint">
-          Each invite works once. Registration is closed to anyone without one.
+          Each invite works once, and registration is closed to anyone without one. An unused
+          invite can be withdrawn; a used one stays, because it is the record of how that
+          account came to exist.
         </p>
       </div>
     </div>

@@ -122,7 +122,8 @@ export const api = {
   updateSettings: (patch: Partial<ServerSettings>) =>
     request<{ state: Snapshot }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
   grant: (amount: number) => post<{ state: Snapshot }>('/grant', { amount }),
-  reset: () => post<{ state: Snapshot }>('/reset'),
+  reset: (username: string, password: string) =>
+    post<{ state: Snapshot }>('/reset', { username, password }),
 
   adminUsers: () =>
     request<{
@@ -144,5 +145,7 @@ export const api = {
     request<{ ok: true }>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ sandbox }) }),
   revokeSessions: (id: number) =>
     request<{ revoked: number }>(`/admin/users/${id}/sessions`, { method: 'DELETE' }),
+  deleteInvite: (code: string) =>
+    request<{ ok: true }>(`/admin/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   recrawl: () => post<{ ok: true }>('/admin/crawl'),
 }

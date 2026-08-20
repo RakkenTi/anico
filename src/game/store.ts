@@ -110,7 +110,7 @@ interface GameState {
   buyConsumable: (key: ConsumableKey) => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
   grantCredits: (amount: number) => Promise<void>
-  resetSave: () => Promise<void>
+  resetSave: (username: string, password: string) => Promise<string | null>
   clearError: () => void
   pushToast: (text: string, flavor?: Toast['flavor']) => void
   dismissToast: (id: number) => void
@@ -466,11 +466,20 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    resetSave: async () => {
-      const res = await guard(() => api.reset())
-      if (!res) return
+    /** Wiping a collection asks for the account's own credentials first. */
+    resetSave: async (username, password) => {
+      let failure: string | null = null
+      const res = await guard(
+        () => api.reset(username, password),
+        (m) => {
+          failure = m
+        },
+      )
+      if (!res) return failure ?? 'Could not reach the instance.'
       apply(res.state)
       set({ rolled: [], selected: 0, rollCount: 0, covered: null })
+      get().pushToast('Your collection has been erased.', 'info')
+      return null
     },
 
     clearError: () => set({ error: null }),
