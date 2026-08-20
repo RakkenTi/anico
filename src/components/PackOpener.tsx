@@ -11,6 +11,8 @@ import CharacterCard from './CharacterCard'
  * so sawing at it works exactly as it does on a real wrapper.
  */
 const TEAR_PX = 320
+/** How far along the rip has to be, on release, to finish by itself. */
+const TEAR_COMMIT = 0.5
 const THROW_PX = 80
 /** How long a card takes to leave, and the gap between auto-thrown ones. */
 const THROW_MS = 320
@@ -184,12 +186,7 @@ export default function PackOpener({ pack, cards }: Props) {
       const prev = last.current ?? origin.current
       const travel = Math.hypot(e.clientX - prev.x, e.clientY - prev.y)
       last.current = { x: e.clientX, y: e.clientY }
-      const next = clamp(tearRef.current + travel / TEAR_PX, 0, 1)
-      setTearBoth(next)
-      if (next >= 1) {
-        origin.current = null
-        slicePack()
-      }
+      setTearBoth(clamp(tearRef.current + travel / TEAR_PX, 0, 1))
       return
     }
     const dx = e.clientX - origin.current.x
@@ -205,10 +202,14 @@ export default function PackOpener({ pack, cards }: Props) {
     const dx = e.clientX - start.x
     const dy = e.clientY - start.y
 
-    // A partial tear stays torn: it is the one thing about a wrapper that
-    // cannot be taken back, and springing shut made the seam meaningless.
+    // Past halfway the rip has committed and finishes on its own; short of
+    // that the wrapper closes back up. Pulling accumulates while the hand is
+    // down, so a hesitant tug can still be carried over the line by sawing at
+    // it rather than being punished for stopping.
     if (sealed) {
       last.current = null
+      if (tearRef.current >= TEAR_COMMIT) animateTear(1, 190, slicePack)
+      else animateTear(0, 260)
       return
     }
     setDrag(null)

@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "dev:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput & node --watch dist/server/server/index.js",
     "build:server": "tsc -p tsconfig.server.json",
-    "start": "node dist/server/server/index.js"
+    "start": "node dist/server/server/index.js",
+    "shots": "node scripts/shots.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
@@ -27,6 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright-core": "^1.62.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }

@@ -217,6 +217,14 @@ npm run dev           # Vite dev server on :5173, proxying /api to :8080
 Run `npm start` and `npm run dev` together for hot reload against a live API. `npm run
 lint` runs oxlint.
 
+`npm run shots` drives the running instance with a real browser and writes screenshots to
+`shots/` at a desktop, a phone and a small phone size. Every mobile problem this app has
+had was found by looking rather than by reasoning, and it captures the states that only
+exist mid-gesture — a pack half torn, a card mid-throw — which are exactly the ones that
+went wrong. It uses `playwright-core`, which ships no browsers of its own and borrows a
+Chromium already on the machine; `npx playwright install chromium` provides one if there
+is none, or point `PLAYWRIGHT_CHROMIUM` at an existing binary.
+
 ## How it fits together
 
 - **Client**: React 19 + Zustand + Vite. Holds a mirror of the server's snapshot plus
