@@ -15,9 +15,10 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { LayoutKey, OwnedCharacter, RolledCharacter, ThemeKey, Toast } from './types'
 import { DAILY_INTERVAL_H, rarityOf } from './economy'
-import { EMPTY_BADGES, computeEffects, type BadgeEffects, type BadgeKey, type Badges } from './badges'
+import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects } from './badges'
+import { EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
 import { POOL_EVERYTHING } from './pool'
-import { bindSoundSettings, dealStepMs, sfx } from './sound'
+import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { ApiError, api, type RollResult, type ServerSettings, type Snapshot } from '../api'
 
 const HOUR = 3_600_000
@@ -46,14 +47,17 @@ interface GameState {
   collection: OwnedCharacter[]
   wishes: RolledCharacter[]
   badges: Badges
+  upgrades: Upgrades
   settings: ServerSettings
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
+  /** What that pack costs to open. */
+  packPrice: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
   totalClaims: number
-  pendingCoins: { tier: string; amount: number } | null
+  pendingCoins: { amount: number } | null
   /**
    * The pack currently on screen, if the last summon was one. Presentation
    * only: its cards are already claimed by the time it arrives.
@@ -62,6 +66,8 @@ interface GameState {
 
   /* browser only */
   rolled: RollResult[]
+  /** How the spread on screen is ordered: as dealt, or best card first. */
+  rollSort: 'dealt' | 'rarity'
   selected: number
   rolling: boolean
   rollCount: number
@@ -71,8 +77,9 @@ interface GameState {
   error: string | null
   toasts: Toast[]
 
-  effects: () => BadgeEffects
+  effects: () => Effects
   dailyReady: () => boolean
+  canAffordPack: () => boolean
 
   boot: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
@@ -82,6 +89,7 @@ interface GameState {
   tick: () => void
   roll: (count?: number) => Promise<void>
   selectRolled: (index: number) => void
+  setRollSort: (sort: 'dealt' | 'rarity') => void
   claim: () => Promise<void>
   claimAll: () => Promise<void>
   collectCoins: () => Promise<void>
@@ -95,6 +103,7 @@ interface GameState {
   addWish: (char: RolledCharacter) => Promise<void>
   removeWish: (id: number) => Promise<void>
   buyBadge: (key: BadgeKey) => Promise<void>
+  buyUpgrade: (key: UpgradeKey) => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
   grantCredits: (amount: number) => Promise<void>
   resetSave: (username: string, password: string) => Promise<string | null>
@@ -105,8 +114,11 @@ interface GameState {
 
 export const useGame = create<GameState>()((set, get) => {
   /** Fold an authoritative snapshot into the mirror. */
-  const apply = (s: Snapshot) =>
-    set((prev) => ({
+  const apply = (s: Snapshot) => {
+    // Every animation timer reads its cadence from the sound module, so the
+    // Swift Hands level is pushed there the moment the server confirms it.
+    setDealSpeed(computeEffects(s.badges, s.upgrades).hasteMult)
+    return set((prev) => ({
       authed: true,
       username: s.username,
       isAdmin: s.isAdmin,
@@ -116,8 +128,10 @@ export const useGame = create<GameState>()((set, get) => {
       collection: s.collection ?? prev.collection,
       wishes: s.wishes,
       badges: s.badges,
+      upgrades: s.upgrades,
       settings: s.settings,
       packSize: s.packSize,
+      packPrice: s.packPrice,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
       totalRolls: s.totalRolls,
@@ -126,6 +140,7 @@ export const useGame = create<GameState>()((set, get) => {
       clockOffset: s.serverNow - Date.now(),
       now: s.serverNow,
     }))
+  }
 
   /** Run a call, surfacing the server's own message and never wedging the UI. */
   const guard = async <T,>(fn: () => Promise<T>, onError?: (m: string) => void): Promise<T | null> => {
@@ -157,8 +172,10 @@ export const useGame = create<GameState>()((set, get) => {
     collection: [],
     wishes: [],
     badges: { ...EMPTY_BADGES },
+    upgrades: { ...EMPTY_UPGRADES },
     settings: { ...EMPTY_SETTINGS },
     packSize: 0,
+    packPrice: 0,
     lastDailyAt: 0,
     dailyStreak: 0,
     totalRolls: 0,
@@ -167,6 +184,7 @@ export const useGame = create<GameState>()((set, get) => {
     pack: null,
 
     rolled: [],
+    rollSort: 'dealt' as const,
     selected: 0,
     rolling: false,
     rollCount: 0,
@@ -176,7 +194,11 @@ export const useGame = create<GameState>()((set, get) => {
     error: null,
     toasts: [],
 
-    effects: () => computeEffects(get().badges),
+    effects: () => computeEffects(get().badges, get().upgrades),
+    canAffordPack: () => {
+      const s = get()
+      return s.packSize > 0 && (s.sandbox || s.credits >= s.packPrice)
+    },
     dailyReady: () => {
       const s = get()
       return s.sandbox || s.now - s.lastDailyAt >= DAILY_INTERVAL_H * HOUR
@@ -240,6 +262,7 @@ export const useGame = create<GameState>()((set, get) => {
       apply(res.state)
       set((prev) => ({
         rolled: res.results,
+        rollSort: 'dealt' as const,
         selected: firstFresh === -1 ? 0 : firstFresh,
         rolling: false,
         rollCount: prev.rollCount + 1,
@@ -257,6 +280,12 @@ export const useGame = create<GameState>()((set, get) => {
         sfx.wish()
         get().pushToast('A wish appears before you.', 'wish')
       }
+    },
+
+    setRollSort: (sort) => {
+      if (get().rollSort === sort) return
+      sfx.tap()
+      set({ rollSort: sort })
     },
 
     selectRolled: (index) => {
@@ -406,6 +435,15 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.buy()
       const res = await guard(
         () => api.buyBadge(key),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (res) apply(res.state)
+    },
+
+    buyUpgrade: async (key) => {
+      sfx.buy()
+      const res = await guard(
+        () => api.buyUpgrade(key),
         (m) => get().pushToast(m, 'info'),
       )
       if (res) apply(res.state)

@@ -252,6 +252,11 @@ export function createApp(db: DB, config: Config) {
     return c.json({ state: game.buyBadge(db, c.get('player'), b.key) })
   })
 
+  api.post('/upgrade', async (c) => {
+    const b = await body(c)
+    return c.json({ state: game.buyUpgrade(db, c.get('player'), b.key) })
+  })
+
   api.patch('/settings', async (c) => {
     const b = await body(c)
     return c.json({ state: game.updateSettings(db, c.get('player'), b) })

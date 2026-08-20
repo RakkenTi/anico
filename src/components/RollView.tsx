@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useGame } from '../game/store'
-import { coinTier } from '../game/economy'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import CharacterCard from './CharacterCard'
+import Icon from './Icon'
 import PackOpener from './PackOpener'
 
 export default function RollView() {
@@ -12,9 +13,26 @@ export default function RollView() {
   // Packs are the whole of the progression: nothing until Sapphire I, and
   // bigger from there. Zero means the only summon available is a single card.
   const packSize = s.packSize
+  const affordable = s.canAffordPack()
   const entry = s.rolled[s.selected]
   const unclaimed = s.rolled.filter((r) => !r.owned).length
   const mega = s.rolled.length > 20
+
+  /**
+   * The order the spread is laid out in.
+   *
+   * A pack of a hundred lands as a wall of cards, and the one worth looking at
+   * is somewhere in it. Sorting is a view: the cards keep their own identity,
+   * and claiming works off the character rather than the position, so nothing
+   * downstream can be confused by re-ordering them.
+   */
+  const view = useMemo(() => {
+    const idx = s.rolled.map((_, i) => i)
+    if (s.rollSort === 'rarity') {
+      idx.sort((a, b) => s.rolled[b].char.creditValue - s.rolled[a].char.creditValue)
+    }
+    return idx
+  }, [s.rolled, s.rollSort])
 
   // Mega spreads lock the page: html/body stop scrolling entirely and only
   // the card pane scrolls, so the rail's buttons can never leave the screen.
@@ -117,11 +135,13 @@ export default function RollView() {
               ['--pulse-delay' as string]: `${s.rolled.length * dealStepMs(s.rolled.length) + 80}ms`,
             }}
           >
-            {s.rolled.map((r, i) => (
+            {view.map((i) => s.rolled[i]).map((r, pos) => {
+              const i = view[pos]
+              return (
               <div
                 key={`${r.char.id}-${i}`}
                 className={`spread-slot ${i === s.selected ? 'selected' : ''} ${r.owned && !r.fresh ? 'owned' : ''} ${i === bestIdx ? 'spotlight' : ''}`}
-                style={{ ['--deal-delay' as string]: `${dealDelayMs(i, s.rolled.length).toFixed(1)}ms` }}
+                style={{ ['--deal-delay' as string]: `${dealDelayMs(pos, s.rolled.length).toFixed(1)}ms` }}
               >
                 <div className="flip-inner">
                   <div className="flip-back" aria-hidden="true">✦</div>
@@ -130,21 +150,22 @@ export default function RollView() {
                     wished={r.wished}
                     compact
                     onClick={() => s.selectRolled(i)}
+                    overlay={
+                      r.wished && !r.owned ? (
+                        <span className="spread-tag wished">a wish</span>
+                      ) : r.fresh ? (
+                        <span className="spread-tag fresh">new</span>
+                      ) : r.owned ? (
+                        <span className="spread-tag">
+                          {r.compensation > 0 ? `dupe +${r.compensation}` : 'owned'}
+                        </span>
+                      ) : null
+                    }
                   />
                 </div>
-                {r.wished && !r.owned ? (
-                  <span className="spread-tag wished">a wish</span>
-                ) : r.fresh ? (
-                  <span className="spread-tag fresh">new</span>
-                ) : (
-                  r.owned && (
-                    <span className="spread-tag">
-                      {r.compensation > 0 ? `dupe +${r.compensation}` : 'owned'}
-                    </span>
-                  )
-                )}
               </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <div className="card-back idle">
@@ -167,16 +188,23 @@ export default function RollView() {
           </button>
           {packSize > 0 && (
             <button
-              className="btn btn-quiet btn-summon"
+              className="btn btn-quiet btn-summon btn-pack"
               onClick={() => s.roll(packSize)}
-              disabled={s.rolling || dealing}
+              disabled={s.rolling || dealing || !affordable}
               title={
                 testing
                   ? `Sandbox: summon ${packSize} at once`
-                  : `Open a sealed pack of ${packSize}. Every card in it is yours.`
+                  : affordable
+                    ? `Open a sealed pack of ${packSize}. Every card in it is yours.`
+                    : `A pack of ${packSize} costs ${s.packPrice.toLocaleString()} credits.`
               }
             >
-              ×{packSize}
+              <span className="pack-x">×{packSize}</span>
+              {!testing && (
+                <span className="pack-price">
+                  <Icon name="token" /> {s.packPrice.toLocaleString()}
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -185,7 +213,10 @@ export default function RollView() {
           {testing ? (
             <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
           ) : packSize > 0 ? (
-            <span className="testing-note">Summon freely · packs hold {packSize}</span>
+            <span className="testing-note">
+              Single summons are free · a pack of {packSize} costs{' '}
+              {s.packPrice.toLocaleString()}
+            </span>
           ) : (
             /* The one thing the shop is for, said where the button would be. */
             <span className="testing-note">Summon freely · packs open at Sapphire I</span>
@@ -220,6 +251,24 @@ export default function RollView() {
           </div>
         )}
 
+        {s.rolled.length > 1 && !s.rolling && !pack && (
+          <div className="sort-row" role="group" aria-label="Spread order">
+            <span className="sort-label">Order</span>
+            <button
+              className={`chip ${s.rollSort === 'dealt' ? 'active' : ''}`}
+              onClick={() => s.setRollSort('dealt')}
+            >
+              As dealt
+            </button>
+            <button
+              className={`chip ${s.rollSort === 'rarity' ? 'active' : ''}`}
+              onClick={() => s.setRollSort('rarity')}
+            >
+              Best first
+            </button>
+          </div>
+        )}
+
         {testing && !s.rolling && s.rolled.length > 1 && unclaimed > 0 && (
           <button
             className="btn btn-primary"
@@ -231,13 +280,9 @@ export default function RollView() {
         )}
 
         {s.pendingCoins && (
-          <button
-            className="coin-drop"
-            onClick={s.collectCoins}
-            style={{ ['--coin-color' as string]: coinTier(s.pendingCoins.tier).color }}
-          >
-            <span className="coin-mark" aria-hidden="true">¢</span>
-            {coinTier(s.pendingCoins.tier).label}: tap to gather <b>+{s.pendingCoins.amount}</b>
+          <button className="coin-drop" onClick={s.collectCoins}>
+            <Icon name="token" className="icon-lg coin-mark" />
+            A coin: tap to gather <b>+{s.pendingCoins.amount.toLocaleString()}</b>
           </button>
         )}
 

@@ -180,6 +180,32 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     DELETE FROM meta WHERE key IN ('crawl_page', 'crawl_done');
     `,
   },
+  {
+    name: '007_upgrades',
+    sql: `
+    -- The shop grew a second half: repeatable lines with no top level, stored
+    -- beside the badges they sit next to.
+    ALTER TABLE player_state ADD COLUMN upgrades_json TEXT NOT NULL DEFAULT '{}';
+
+    -- Coins stopped being a nine-rung ladder of metals and became one coin, so
+    -- an undelivered drop from the old shape is cleared rather than carried.
+    UPDATE player_state SET pending_coins_json = NULL;
+
+    -- Badges cost triple per level now instead of a flat multiple, and packs
+    -- cost credits to open. Anyone who finished the old tree in an evening
+    -- keeps every badge they bought; what changed is the price of the next
+    -- thing, and there is a great deal more of it.
+
+    -- Sapphire IV used to hand over fifty cards (fifty-five with Ruby IV, which
+    -- is how a badge advertising fifty lied). The ladder ends at twenty-five
+    -- now and Deeper Packs carries it from there, so anyone who had already
+    -- maxed the line is granted the first level of that upgrade: same pack,
+    -- and nothing anybody paid for is taken back.
+    UPDATE player_state
+       SET upgrades_json = json_set(COALESCE(NULLIF(upgrades_json, ''), '{}'), '$.packs', 1)
+     WHERE json_extract(badges_json, '$.sapphire') >= 4;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

@@ -1,0 +1,13 @@
+Icons in this directory are by Kenney (kenney.nl), released under
+Creative Commons Zero (CC0 1.0 Universal):
+
+  https://creativecommons.org/publicdomain/zero/1.0/
+
+  *.svg      Board Game Icons 1.1 (kenney.nl/assets/board-game-icons)
+             Vector originals, unchanged except for an added viewBox: the
+             pack ships them without one, and a mask needs the aspect ratio.
+  gi_*.png   Game Icons 1.0 (kenney.nl/assets/game-icons), 100px rasters.
+             That pack's vectors are one sprite sheet rather than files.
+
+CC0 asks for nothing, but Anico credits Kenney in Settings anyway, beside
+the sound kit which comes from the same place.

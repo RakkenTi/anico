@@ -13,12 +13,13 @@
 import type { DB } from './db.js'
 import {
   BASE_COIN_CHANCE,
-  COIN_TIERS,
   DAILY_INTERVAL_H,
   DAILY_STREAK_WINDOW_H,
   SERIES_MILESTONES,
+  coinAmount,
   dailyAmount,
   duplicateCompensation,
+  packCost,
   rarityOf,
   rollCoinDrop,
 } from '../src/game/economy.js'
@@ -31,6 +32,14 @@ import {
   type BadgeKey,
   type Badges,
 } from '../src/game/badges.js'
+import {
+  EMPTY_UPGRADES,
+  UPGRADE_DEFS,
+  upgradeCost,
+  upgradeMaxed,
+  type UpgradeKey,
+  type Upgrades,
+} from '../src/game/upgrades.js'
 import { drawAboveValue, drawFromPool, getCharacter, type PoolPick } from './catalog.js'
 import { sanitizeSettings, type ServerSettings } from './rules.js'
 import type { Player } from './auth.js'
@@ -56,6 +65,7 @@ interface StateRow {
   total_rolls: number
   total_claims: number
   badges_json: string
+  upgrades_json: string
   settings_json: string
   series_paid_json: string
   roll_session_json: string | null
@@ -79,6 +89,13 @@ function loadState(db: DB, playerId: number): StateRow {
     | undefined
   if (!row) fail('No game state for this account.')
   return row!
+}
+
+/** Badges and upgrades are two columns and one set of effects. */
+function loadoutOf(row: StateRow): { badges: Badges; upgrades: Upgrades; fx: ReturnType<typeof computeEffects> } {
+  const badges: Badges = { ...EMPTY_BADGES, ...JSON.parse(row.badges_json) }
+  const upgrades: Upgrades = { ...EMPTY_UPGRADES, ...JSON.parse(row.upgrades_json || '{}') }
+  return { badges, upgrades, fx: computeEffects(badges, upgrades) }
 }
 
 export interface OwnedCharacter extends PoolPick {
@@ -140,13 +157,16 @@ export interface Snapshot {
   credits: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
+  /** What that pack costs to open. */
+  packPrice: number
   lastDailyAt: number
   dailyStreak: number
   totalRolls: number
   totalClaims: number
   badges: Badges
+  upgrades: Upgrades
   settings: ServerSettings
-  pendingCoins: { tier: string; amount: number } | null
+  pendingCoins: { amount: number } | null
   wishes: PoolPick[]
   collection?: OwnedCharacter[]
   serverNow: number
@@ -155,19 +175,22 @@ export interface Snapshot {
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
-  const badges: Badges = JSON.parse(row.badges_json)
+  const { badges, upgrades, fx } = loadoutOf(row)
+  const size = packSizeFor(fx, !!player.sandbox_of)
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
     sandbox: !!player.sandbox_of,
     sandboxAllowed: !!player.sandbox,
     credits: row.credits,
-    packSize: packSizeFor(badges, !!player.sandbox_of),
+    packSize: size,
+    packPrice: player.sandbox_of ? 0 : packCost(size),
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
     totalRolls: row.total_rolls,
     totalClaims: row.total_claims,
     badges,
+    upgrades,
     settings,
     pendingCoins: row.pending_coins_json ? JSON.parse(row.pending_coins_json) : null,
     wishes: wishesOf(db, player.id),
@@ -202,8 +225,8 @@ export interface RollResult {
  * a fresh account summons one card at a time, and Sapphire is what turns that
  * into a sealed pack.
  */
-function packSizeFor(badges: Badges, sandbox: boolean): number {
-  return sandbox ? SANDBOX_MAX_DRAW : computeEffects(badges).packSize
+function packSizeFor(fx: ReturnType<typeof computeEffects>, sandbox: boolean): number {
+  return sandbox ? SANDBOX_MAX_DRAW : fx.packSize
 }
 
 /**
@@ -222,24 +245,30 @@ export function roll(
 ): { results: RollResult[]; pack: boolean; claimed: number; bonus: number; snapshot: Snapshot } {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
-  const badges: Badges = JSON.parse(row.badges_json)
+  const { fx } = loadoutOf(row)
   const sandbox = !!player.sandbox_of
   const wanted = Math.max(1, Math.round(count))
   const multi = wanted > 1
-  const packSize = packSizeFor(badges, sandbox)
+  const packSize = packSizeFor(fx, sandbox)
 
   let draws = 1
+  let price = 0
   if (multi) {
     if (packSize <= 0) {
       fail('Packs are locked. The Sapphire badge in the shop opens them.')
     }
     draws = sandbox ? Math.min(SANDBOX_MAX_DRAW, wanted) : packSize
+    price = sandbox ? 0 : packCost(draws)
+    // A pack is what credits are for. The single summon is always free, so an
+    // empty purse is never a dead end -- it just means selling something first.
+    if (row.credits < price) {
+      fail(`A pack of ${draws} costs ${price.toLocaleString()} credits. Sell something first.`)
+    }
   }
   // Sandbox bulk stays a plain spread: it is for looking at a hundred cards at
   // once, and a sealed wrapper is the opposite of that.
   const pack = multi && !sandbox
 
-  const fx = computeEffects(badges)
   const ownedIds = new Set(
     (db.prepare('SELECT character_id FROM claims WHERE player_id = ?').all(player.id) as any[]).map(
       (r) => r.character_id as number,
@@ -257,8 +286,7 @@ export function roll(
   const results: RollResult[] = []
   const used = new Set<number>()
   let totalComp = 0
-  let coinAmount = 0
-  let coinBestIdx = -1
+  let coinFound = 0
 
   for (let i = 0; i < draws; i++) {
     let char: PoolPick | undefined
@@ -277,12 +305,8 @@ export function roll(
     const owned = ownedIds.has(char.id)
     const compensation = owned ? duplicateCompensation(char.creditValue, fx.dupCompMult) : 0
     totalComp += compensation
-    const coin = rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinUpgrade)
-    if (coin) {
-      coinAmount += coin.amount
-      const tierIdx = COIN_TIERS.findIndex((t) => t.key === coin.tier)
-      if (tierIdx > coinBestIdx) coinBestIdx = tierIdx
-    }
+    const coin = rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinValueMult)
+    if (coin) coinFound += coin.amount
     results.push({ char, owned, wished, compensation })
   }
 
@@ -328,8 +352,9 @@ export function roll(
     }
   }
 
-  const pendingCoins =
-    coinBestIdx >= 0 ? { tier: COIN_TIERS[coinBestIdx].key, amount: coinAmount } : null
+  // Sapphire IV: a pack always turns one up, whatever the per-card chance did.
+  if (multi && fx.packCoin) coinFound += coinAmount(fx.coinValueMult)
+  const pendingCoins = coinFound > 0 ? { amount: coinFound } : null
   const session: RollSession = { at: Date.now(), results }
 
   const opened = db.transaction(() => {
@@ -338,7 +363,7 @@ export function roll(
               roll_session_json = ?, pending_coins_json = ?
         WHERE player_id = ?`,
     ).run(
-      totalComp,
+      totalComp - price,
       results.length,
       JSON.stringify(session),
       pendingCoins ? JSON.stringify(pendingCoins) : null,
@@ -396,9 +421,10 @@ function payClaimBonuses(
     bonus += fx.wishClaimBonus
     notes.push(`Wish fulfilled! +${fx.wishClaimBonus} credits (Bronze IV)`)
   }
-  if (fx.claimPaysValue) {
-    bonus += char.creditValue
-    notes.push(`Emerald IV pays the dowry: +${char.creditValue} credits`)
+  if (fx.claimPayback > 0) {
+    const paid = Math.max(1, Math.round(char.creditValue * fx.claimPayback))
+    bonus += paid
+    notes.push(`Emerald IV pays the dowry: +${paid} credits`)
   }
   const paid = seriesPaid[char.series] ?? 0
   let seriesBonus = 0
@@ -421,7 +447,7 @@ export function claim(
   characterId: number,
 ): { snapshot: Snapshot; notes: string[] } {
   const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
+  const { fx } = loadoutOf(row)
   const session = readSession(row)
   const entry = session.results.find((r) => r.char.id === characterId)
   if (!entry) fail('That character was not in your last summon.')
@@ -430,7 +456,6 @@ export function claim(
     .get(player.id, characterId)
   if (already) fail('You already own that character.')
 
-  const fx = computeEffects(badges)
   const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
   const now = Date.now()
   const notes = db.transaction(() => {
@@ -504,8 +529,7 @@ function takeAll(
 export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed: number; bonus: number } {
   if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
   const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
-  const fx = computeEffects(badges)
+  const { fx } = loadoutOf(row)
   const session = readSession(row)
   const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
 
@@ -535,13 +559,13 @@ export function collectCoins(db: DB, player: Player): Snapshot {
 
 export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount: number; streak: number } {
   const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
+  const { fx } = loadoutOf(row)
   const now = Date.now()
   if (!player.sandbox_of && now - row.last_daily_at < DAILY_INTERVAL_H * HOUR) {
     fail('The daily offering is not ready yet.')
   }
   const streak = now - row.last_daily_at <= DAILY_STREAK_WINDOW_H * HOUR ? row.daily_streak + 1 : 1
-  const amount = dailyAmount(streak, computeEffects(badges).dailyMult)
+  const amount = dailyAmount(streak, fx.dailyMult)
   db.prepare(
     'UPDATE player_state SET credits = credits + ?, last_daily_at = ?, daily_streak = ? WHERE player_id = ?',
   ).run(amount, now, streak, player.id)
@@ -563,7 +587,8 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
     .prepare(`SELECT character_id, credit_value FROM claims WHERE player_id = ? AND character_id IN (${placeholders})`)
     .all(player.id, ...ids) as { character_id: number; credit_value: number }[]
   if (rows.length === 0) fail('You do not own that.')
-  const total = rows.reduce((n, r) => n + r.credit_value, 0)
+  const { fx } = loadoutOf(loadState(db, player.id))
+  const total = rows.reduce((n, r) => n + Math.round(r.credit_value * fx.sellMult), 0)
   db.transaction(() => {
     db.prepare(`DELETE FROM claims WHERE player_id = ? AND character_id IN (${placeholders})`).run(
       player.id,
@@ -576,8 +601,7 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
 
 export function addWish(db: DB, player: Player, characterId: number): Snapshot {
   const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
-  const slots = computeEffects(badges).wishSlots
+  const slots = loadoutOf(row).fx.wishSlots
   const have = (
     db.prepare('SELECT COUNT(*) AS n FROM wishes WHERE player_id = ?').get(player.id) as { n: number }
   ).n
@@ -596,7 +620,7 @@ export function removeWish(db: DB, player: Player, characterId: number): Snapsho
 
 export function buyBadge(db: DB, player: Player, key: BadgeKey): Snapshot {
   const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
+  const { badges } = loadoutOf(row)
   const def = BADGE_DEFS.find((d) => d.key === key)
   if (!def) fail('No such badge.')
   const level = badges[key]
@@ -610,6 +634,28 @@ export function buyBadge(db: DB, player: Player, key: BadgeKey): Snapshot {
     JSON.stringify(next),
     player.id,
   )
+  return snapshot(db, player)
+}
+
+/**
+ * Buy the next level of an upgrade line.
+ *
+ * Unlike a badge there is no prerequisite chart and no top level worth
+ * mentioning: the price is the gate, and it triples-ish every time.
+ */
+export function buyUpgrade(db: DB, player: Player, key: UpgradeKey): Snapshot {
+  const row = loadState(db, player.id)
+  const { upgrades, fx } = loadoutOf(row)
+  const def = UPGRADE_DEFS.find((d) => d.key === key)
+  if (!def) fail('No such upgrade.')
+  const level = upgrades[key] ?? 0
+  if (upgradeMaxed(def!, level)) fail('That upgrade is already at its last level.')
+  const cost = upgradeCost(def!, level, fx.priceMult < 1)
+  if (row.credits < cost) fail('Not enough credits.')
+  const next: Upgrades = { ...upgrades, [key]: level + 1 }
+  db.prepare(
+    'UPDATE player_state SET credits = credits - ?, upgrades_json = ? WHERE player_id = ?',
+  ).run(cost, JSON.stringify(next), player.id)
   return snapshot(db, player)
 }
 
@@ -640,10 +686,10 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
     db.prepare('DELETE FROM wishes WHERE player_id = ?').run(player.id)
     db.prepare(
       `UPDATE player_state SET credits = 0, last_daily_at = 0, daily_streak = 0,
-              total_rolls = 0, total_claims = 0, badges_json = ?, series_paid_json = '{}',
-              roll_session_json = NULL, pending_coins_json = NULL
+              total_rolls = 0, total_claims = 0, badges_json = ?, upgrades_json = ?,
+              series_paid_json = '{}', roll_session_json = NULL, pending_coins_json = NULL
         WHERE player_id = ?`,
-    ).run(JSON.stringify(EMPTY_BADGES), player.id)
+    ).run(JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), player.id)
   })()
   return snapshot(db, player, true)
 }

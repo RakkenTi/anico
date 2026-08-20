@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGame } from '../game/store'
 import { rarityOf } from '../game/economy'
+import { dealSpeed } from '../game/sound'
 import { flapPath, foilPath } from '../game/tear'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
@@ -14,7 +15,13 @@ const TEAR_PX = 320
 /** How far along the rip has to be, on release, to finish by itself. */
 const TEAR_COMMIT = 0.5
 const THROW_PX = 80
-/** How long a card takes to leave, and the gap between auto-thrown ones. */
+/**
+ * How long a card takes to leave, and the gap between auto-thrown ones.
+ *
+ * Both are scaled by the Swift Hands upgrade, which is the whole reason to buy
+ * it: a hundred cards thrown at the base cadence is eleven seconds of watching
+ * a pack whose contents were settled before the wrapper came off.
+ */
 const THROW_MS = 320
 const AUTO_STEP_MS = 110
 const AUTOTEAR_MS = 420
@@ -99,7 +106,7 @@ export default function PackOpener({ pack, cards }: Props) {
         { key: idx, dir, fromX: from.x, fromY: from.y, fromRot: from.rot },
       ])
       st.revealNext()
-      window.setTimeout(() => setDeparting((d) => d.filter((x) => x.key !== idx)), THROW_MS)
+      window.setTimeout(() => setDeparting((d) => d.filter((x) => x.key !== idx)), THROW_MS * dealSpeed())
     },
     [],
   )
@@ -113,7 +120,7 @@ export default function PackOpener({ pack, cards }: Props) {
       if (!st.pack || st.pack.state !== 'sliced' || st.pack.revealed >= st.rolled.length) return
       throwTop(i % 2 === 0 ? 1 : -1)
       i++
-      autoTimer.current = window.setTimeout(step, AUTO_STEP_MS)
+      autoTimer.current = window.setTimeout(step, AUTO_STEP_MS * dealSpeed())
     }
     step()
   }, [throwTop])
@@ -137,7 +144,7 @@ export default function PackOpener({ pack, cards }: Props) {
   const openAll = useCallback(() => {
     if (sealed) {
       setSpaceTore(true)
-      animateTear(1, AUTOTEAR_MS, () => {
+      animateTear(1, AUTOTEAR_MS * dealSpeed(), () => {
         slicePack()
         autoOpen()
       })

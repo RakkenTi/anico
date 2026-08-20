@@ -8,20 +8,23 @@ import WishesView from './components/WishesView'
 import ShopView from './components/ShopView'
 import StatsView from './components/StatsView'
 import SettingsView from './components/SettingsView'
-import BarsIcon from './components/BarsIcon'
-import BagIcon from './components/BagIcon'
+import Icon from './components/Icon'
+import type { IconName } from './game/icons'
 import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
 
 type Tab = 'roll' | 'collection' | 'wishes' | 'shop' | 'stats' | 'settings'
 
-const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  { key: 'roll', label: 'Summon', icon: '✦' },
-  { key: 'collection', label: 'Collection', icon: '▦' },
-  { key: 'wishes', label: 'Wishes', icon: '★' },
-  { key: 'shop', label: 'Shop', icon: <BagIcon /> },
-  { key: 'stats', label: 'Stats', icon: <BarsIcon /> },
-  { key: 'settings', label: 'Settings', icon: '⚙' },
+/* Icons are Kenney's CC0 art (see src/assets/icons/LICENSE.txt). The tabs
+   used to carry typographic glyphs -- ✦ ▦ ★ ⚙ -- which every platform draws
+   differently and some draw in colour. */
+const TABS: { key: Tab; label: string; icon: IconName }[] = [
+  { key: 'roll', label: 'Summon', icon: 'cards_fan' },
+  { key: 'collection', label: 'Collection', icon: 'cards_collection' },
+  { key: 'wishes', label: 'Wishes', icon: 'star' },
+  { key: 'shop', label: 'Shop', icon: 'pouch' },
+  { key: 'stats', label: 'Stats', icon: 'chart' },
+  { key: 'settings', label: 'Settings', icon: 'gear' },
 ]
 
 export default function App() {
@@ -83,7 +86,7 @@ export default function App() {
           </span>
           {/* What the shop has bought so far, which is the only number here
               that can go up by playing well rather than by playing more. */}
-          <span className="stat" title={packSize > 0 ? 'Cards a pack holds' : 'Packs unlock with the Sapphire badge'}>
+          <span className="stat" title={packSize > 0 ? 'Cards a pack holds, and what one costs' : 'Packs unlock with the Sapphire badge'}>
             {packSize > 0 ? `×${packSize} packs` : 'packs locked'}
           </span>
           <span className="stat" title="Collection size">{collectionSize} owned</span>
@@ -95,7 +98,7 @@ export default function App() {
             onClick={claimDaily}
             title={dailyReady ? 'Collect your daily offering' : `Daily offering in ${formatDuration(dailyAt - now)}`}
           >
-            <span className="daily-coin" aria-hidden="true">¢</span>
+            <Icon name="token" className="daily-coin" />
             {dailyReady ? 'collect daily' : `daily ${formatDuration(dailyAt - now)}`}
             {dailyStreak > 1 && <span className="streak"> ×{dailyStreak}</span>}
           </button>
@@ -115,7 +118,7 @@ export default function App() {
               setTab(t.key)
             }}
           >
-            <span className="tab-kanji">{t.icon}</span>
+            <Icon name={t.icon} className="tab-kanji" />
             <span className="tab-label">{t.label}</span>
           </button>
         ))}

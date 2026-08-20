@@ -258,14 +258,13 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   transition: color 0.15s, border-color 0.15s;
 }
 .tab-kanji {
-  font-family: var(--serif);
-  font-size: 1.05rem;
+  font-size: 19px;
   line-height: 1;
   color: var(--line-strong);
   transition: color 0.15s;
 }
-/* icon tabs (Stats) paint in currentColor, so they follow the same states */
-.tab-kanji svg { display: block; }
+/* Every tab icon is a mask painted in currentColor, so they all follow the
+   same hover and active states without a second file. */
 .tab:hover { color: var(--text); }
 .tab:hover .tab-kanji { color: var(--text-dim); }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
@@ -345,6 +344,27 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .credits-text { color: var(--value-soft); }
 .bonus { color: var(--value-soft); font-weight: 600; font-size: 0.9em; }
 
+/* ------------------------------------------------ icons
+   Kenney's CC0 art, painted as a mask so a single file follows the theme,
+   the accent and every disabled state without a second copy. */
+.icon-lg { width: 1.5em; height: 1.5em; }
+.icon {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.18em;
+  background: currentColor;
+  -webkit-mask-image: var(--icon);
+  mask-image: var(--icon);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  flex: 0 0 auto;
+}
+
 /* ------------------------------------------------ character card & rarity */
 .char-card { --frame: var(--line-strong); }
 
@@ -410,8 +430,29 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .gender-badge.gender-male { color: #6fa3e0; }
 .gender-badge.gender-other { color: #58c9b4; }
 
+/*
+ * Card overlays, and the room they have.
+ *
+ * A spread slot on a desktop is about 105px wide. "L LEGENDARY" plus a gender
+ * badge does not fit in that, so the tag wrapped to two lines and came to rest
+ * underneath the badge -- which reads exactly like a second card stacked
+ * behind the first. The card is its own container query below: under 130px the
+ * tag keeps its rarity letter and drops the word, which is unreadable at that
+ * size anyway and still on the tooltip.
+ */
+.char-card { container-type: inline-size; }
+@container (max-width: 132px) {
+  .rarity-tag .tag-word { display: none; }
+  .rarity-tag { padding: 3px 5px; }
+  .gender-badge { width: 21px; height: 21px; font-size: 0.78rem; top: 6px; right: 6px; }
+}
 .rarity-tag {
   position: absolute; top: 8px; left: 8px;
+  /* Never wrap, and never reach the badge: an overlay that overlaps another
+     overlay is the bug this whole block exists to prevent. */
+  white-space: nowrap;
+  max-width: calc(100% - 44px);
+  overflow: hidden;
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -626,6 +667,10 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
     max-height: none;
     overflow: visible;
   }
+  /* A pack of seventy-five in two columns is thirty-eight rows of scrolling.
+     Three columns on a phone makes it a spread you can take in; the cards go
+     narrow enough that their own container query drops the rarity word. */
+  .roll-view.mega .roll-spread { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 }
 
 .spread-slot {
@@ -639,11 +684,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   animation-delay: var(--deal-delay, 0ms);
 }
 /* Owned/dupe tags wait until their card has flipped face-up. */
-.spread-slot .spread-tag.wished {
-  color: var(--value-soft);
-  border-color: var(--value);
-}
-.spread-tag {
+.spread-slot .spread-tag {
   animation: fadeIn 0.25s ease-out backwards;
   animation-delay: calc(var(--deal-delay, 0ms) + 320ms);
 }
@@ -679,6 +720,9 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   color: var(--value-soft);
   border-color: var(--value);
 }
+/* On the artwork, not on the card's own text: at the bottom of the slot it sat
+   squarely over the series and the credit value, which is the number that says
+   what the card is worth selling. */
 .spread-tag {
   position: absolute;
   bottom: 8px; right: 8px;
@@ -743,8 +787,32 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .claim-bar-note { color: var(--text-dim); font-size: 0.84rem; }
 .claim-bar .btn { white-space: nowrap; }
 
+/* Order control for a spread. Lives in the rail with the other things you can
+   press, and only exists while there is a spread to order. */
+.sort-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sort-label {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+.sort-row .chip { padding: 5px 10px; }
+
 .roll-actions { display: flex; flex-direction: column; gap: 8px; }
 .btn-summon { font-size: 1rem; letter-spacing: 0.1em; min-height: 46px; width: 100%; }
+/* A pack has a price, and the price belongs on the button that charges it. */
+.btn-pack { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.15; }
+.pack-x { font-size: 1rem; }
+.pack-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--value-soft);
+}
+.btn-pack:disabled .pack-price { color: var(--red); }
 
 .roll-meta {
   color: var(--text-dim);
@@ -761,7 +829,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   display: flex; align-items: center; gap: 10px;
   width: 100%;
   background: var(--surface);
-  border: 1px solid var(--coin-color, var(--value));
+  border: 1px solid var(--value);
   border-radius: 2px;
   color: var(--text);
   font-family: var(--sans);
@@ -770,22 +838,9 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   cursor: pointer;
   animation: coinFlip 2.4s ease-in-out infinite;
 }
-.coin-drop b { color: var(--coin-color); }
+.coin-drop b { color: var(--value); }
 /* A struck coin: milled rim, denomination in the middle. */
-.coin-mark {
-  width: 18px; height: 18px;
-  flex: none;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  background: var(--coin-color);
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
-  color: rgba(0, 0, 0, 0.62);
-  font-family: var(--sans);
-  font-size: 0.62rem;
-  font-weight: 800;
-  line-height: 1;
-}
+.coin-mark { font-size: 15px; color: var(--value); }
 /* Coins are rare enough now to be worth a proper spin rather than a bob. */
 @keyframes coinFlip {
   0%, 72%, 100% { transform: rotateY(0deg); }
@@ -949,15 +1004,22 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .badge-card.maxed { border-color: var(--line-value); }
 
 .badge-head { display: flex; gap: 12px; align-items: center; }
+/* The medal used to be a coloured dot in a ring, which read as a status light
+   rather than a badge. It holds the line's icon now; the ring and the metal
+   colour are what still say which line it is. */
 .badge-medal {
   width: 46px; height: 46px;
   flex: none;
+  display: grid;
+  place-items: center;
   border: 1px solid var(--badge-color);
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 50%, var(--badge-color) 0 34%, transparent 34%),
-    var(--well);
+  background: var(--well);
+  color: var(--badge-color);
+  font-size: 17px;
 }
+.badge-card.locked .badge-medal { opacity: 0.6; }
+.badge-card.maxed .badge-medal { background: color-mix(in srgb, var(--badge-color) 18%, var(--well)); }
 .badge-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.05em; }
 .badge-level { color: var(--badge-color); }
 .badge-pips { display: flex; gap: 4px; margin-top: 5px; }
@@ -974,8 +1036,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 .lvl-roman { display: inline-block; min-width: 20px; color: var(--badge-color); font-weight: 700; }
 .badge-req { font-size: 0.76rem; color: var(--text-dim); border-top: 1px dashed var(--line); padding-top: 9px; }
 
-/* The status pair above the badge tree: what a pack holds, and what it
-   promises. Two facts, so they read as a caption rather than a table. */
+/* The four numbers the shop moves, above both halves of it. */
 .shop-status {
   display: flex;
   flex-wrap: wrap;
@@ -986,7 +1047,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   border: 1px solid var(--line);
   border-radius: 4px;
 }
-.shop-status > div { min-width: 0; }
+.shop-status > div { min-width: 0; flex: 1 1 190px; }
 .shop-status dt {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
@@ -994,6 +1055,45 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   color: var(--text-dim);
 }
 .shop-status dd { margin: 3px 0 0; font-size: 0.88rem; }
+
+.upgrade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.upgrade-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.upgrade-card.maxed { border-color: var(--line-value); }
+.upgrade-head { display: flex; align-items: center; gap: 12px; }
+.upgrade-head .icon { color: var(--accent); font-size: 17px; }
+.upgrade-title { display: flex; flex-direction: column; min-width: 0; }
+.upgrade-name { font-family: var(--serif); font-weight: 700; font-size: 1.02rem; letter-spacing: 0.03em; }
+.upgrade-level {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.upgrade-blurb { margin: 0; color: var(--text-dim); font-size: 0.8rem; line-height: 1.5; }
+.upgrade-effect {
+  margin: 0 0 auto;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 10px;
+}
+.upgrade-effect .now,
+.upgrade-effect .next {
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+.upgrade-effect .next { color: var(--value-soft); }
 
 /* ------------------------------------------------ settings */
 .settings-view { max-width: 640px; }

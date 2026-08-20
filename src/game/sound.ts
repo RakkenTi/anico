@@ -130,11 +130,29 @@ if (typeof window !== 'undefined') {
     and the flip sounds so they stay in lockstep. 70ms up to 20 cards;
     a ×100 riffles through in ~1.2s; monster spreads compress further,
     capping around ~2.8s total for a sandbox ×1000. */
+/**
+ * How much of its base time a deal takes.
+ *
+ * The Swift Hands upgrade buys this down. It lives here because every timer
+ * that has to agree with the animation -- the flip cascade, the per-card
+ * sounds, the scroll that follows the deal, the pack's throws -- already reads
+ * its cadence from this module, so one multiplier moves all of them together.
+ */
+let hasteMult = 1
+
+export function setDealSpeed(mult: number): void {
+  hasteMult = Math.min(1, Math.max(0.2, mult))
+}
+
+export function dealSpeed(): number {
+  return hasteMult
+}
+
 export function dealStepMs(count: number): number {
   if (count <= 1) return 0
-  if (count <= 20) return 70
-  if (count <= 100) return Math.max(12, Math.round(1200 / count))
-  return Math.min(12, Math.max(2.8, Math.round((2800 / count) * 10) / 10))
+  const base =
+    count <= 20 ? 70 : count <= 100 ? Math.max(12, Math.round(1200 / count)) : Math.min(12, Math.max(2.8, Math.round((2800 / count) * 10) / 10))
+  return base * hasteMult
 }
 
 /* The deal eases in and out: the first cards land unhurried, the middle
