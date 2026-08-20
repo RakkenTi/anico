@@ -27,3 +27,6 @@ data/
 # Deployment state: the bind-mounted database.
 anico-data/
 .env
+
+# Screenshots from `npm run shots`.
+shots/

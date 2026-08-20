@@ -1477,11 +1477,25 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   cursor: grab;
 }
 .pack-area:active { cursor: grabbing; }
-/* A pack has to fit between the header and the controls without scrolling,
-   and the stack fans past its right edge, so leave room for that too. */
+/* A pack has to fit between the header and the floating tab dock without
+   scrolling, and the stack fans past its right edge, so leave room for that
+   too. The width is derived from what is actually left over rather than from a
+   fraction of the viewport: a card is about 1.5 times its width plus its
+   footer, and everything else in the column is a known quantity.
+
+     header 136 + fan headroom 34 + hint 22 + button 36 + dock 84 + gaps ~28
+     = ~340, rounded up to 440 for the card's footer and room to breathe.
+
+   The safe-area inset is subtracted as well, because the dock is anchored to
+   it: on a phone with a home indicator the dock sits that much higher, which
+   would quietly eat the clearance on exactly the devices that have least of
+   it. Guessing at 46dvh instead put the button under the dock on a 360x640. */
 @media (max-width: 860px) {
   .pack-area {
-    width: min(calc(100% - 44px), clamp(150px, calc(46dvh - 120px), 240px));
+    width: min(
+      calc(100% - 44px),
+      clamp(140px, calc((100dvh - 440px - env(safe-area-inset-bottom, 0px)) / 1.5), 240px)
+    );
   }
   .pack-hint { font-size: 0.78rem; max-width: 30ch; }
   .pack-opener { gap: 12px; }
