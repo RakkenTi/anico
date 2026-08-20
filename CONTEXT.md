@@ -82,7 +82,9 @@ cards are face up throughout — a pack is a thing you unwrap, not a guess.
 takes *one* gesture however many packs it holds: a single drag tears every wrapper, and
 each swipe afterwards takes the top card off every stack. Aiming at one of five stacks on
 a phone, and then at each in turn, got worse the more packs you bought, which is backwards
-for an upgrade. There are two presses
+for an upgrade. Opened hands-off -- Space, the button, Auto Summon -- it is the opposite:
+one pack at a time, each starting a beat after the last, because nobody is aiming at
+anything and five wrappers tearing in unison read as one animation rather than five. There are two presses
 once **Both Hands** is bought: one pack, or all of them, torn side by side with their own
 wrappers and their own piles. The word exists because "pack" stopped being the unit of a
 press. The free single card is neither: it costs nothing and is always there.
