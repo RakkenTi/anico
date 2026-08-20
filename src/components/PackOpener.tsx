@@ -27,8 +27,10 @@ const AUTOTEAR_MS = 420
  * six. Only when the pack has outgrown the hands entirely does this cap bind.
  */
 const MAX_OPEN_S = 8
-/** Below this the browser cannot draw a frame per swipe, so they leave in twos. */
+/** Below this the browser cannot draw a frame per throw, so they leave in twos. */
 const MIN_STEP_MS = 28
+/** Delay between one wrapper starting to tear itself open and the next. */
+const STAGGER_MS = 130
 
 interface Props {
   pack: NonNullable<ReturnType<typeof useGame.getState>['pack']>
@@ -49,12 +51,16 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /**
  * The packs, opened by hand.
  *
- * One gesture for the whole pull, not one per pack. Every wrapper tears
- * together under a single drag, and every swipe afterwards takes the top card
- * off all of them at once. Five packs on a phone are five stacks about a
- * thumb-and-a-half wide: aiming at one of them to tear it, and then aiming at
- * each in turn to empty it, is a chore that gets worse the more packs you buy,
- * which is precisely backwards for an upgrade you paid for.
+ * By hand, one gesture does the whole pull: every wrapper tears together under
+ * a single drag, and every swipe afterwards takes the top card off all of them
+ * at once. Five packs on a phone are five stacks about a thumb-and-a-half
+ * wide, and aiming at each in turn is a chore that gets worse the more packs
+ * you buy, which is backwards for an upgrade you paid for.
+ *
+ * Hands off, it is the opposite: Space, the button and Auto Summon open the
+ * packs one at a time, each tearing a beat after the last and emptying at its
+ * own pace. Nobody is aiming at anything, and a machine that unwraps five
+ * packs in lockstep looks like one animation rather than five.
  *
  * Nothing here decides anything: every card in every pack was granted the
  * moment the pull was made. This is the unwrapping.
@@ -94,58 +100,119 @@ export default function PackOpener({ pack, cards }: Props) {
 
   /* ------------------------------------------------------------- tearing */
 
-  // How far the rip has travelled across the seam, 0 to 1. Shared: one rip
-  // runs across every wrapper in the pull.
-  const [tear, setTear] = useState(0)
-  const tearRef = useRef(0)
-  const raf = useRef(0)
+  /*
+   * How far each rip has travelled across its seam, 0 to 1.
+   *
+   * One number per wrapper rather than one for the pull: a hand tears all of
+   * them at once and writes the same value to every entry, and the machine
+   * tears them one at a time and writes to one.
+   */
+  const [tears, setTears] = useState<number[]>(() => Array(stacks).fill(0))
+  const tearsRef = useRef<number[]>(tears)
+  const rafs = useRef<Map<number, number>>(new Map())
 
-  const animateTear = useCallback((to: number, ms: number, done?: () => void) => {
-    cancelAnimationFrame(raf.current)
-    const from = tearRef.current
-    const start = performance.now()
-    const step = (now: number) => {
-      const t = clamp((now - start) / ms, 0, 1)
-      const v = from + (to - from) * (1 - Math.pow(1 - t, 3))
-      tearRef.current = v
-      setTear(v)
-      if (t < 1) raf.current = requestAnimationFrame(step)
-      else done?.()
-    }
-    raf.current = requestAnimationFrame(step)
+  const setTearAt = useCallback((which: number[], v: number) => {
+    const next = [...tearsRef.current]
+    for (const i of which) next[i] = v
+    tearsRef.current = next
+    setTears(next)
   }, [])
-  useEffect(() => () => cancelAnimationFrame(raf.current), [])
+
+  const animateTear = useCallback(
+    (which: number[], to: number, ms: number, done?: () => void) => {
+      for (const i of which) {
+        const running = rafs.current.get(i)
+        if (running) cancelAnimationFrame(running)
+      }
+      const from = which.map((i) => tearsRef.current[i] ?? 0)
+      const start = performance.now()
+      const step = (now: number) => {
+        const t = clamp((now - start) / ms, 0, 1)
+        const next = [...tearsRef.current]
+        which.forEach((i, n) => {
+          next[i] = from[n] + (to - from[n]) * (1 - Math.pow(1 - t, 3))
+        })
+        tearsRef.current = next
+        setTears(next)
+        if (t < 1) {
+          const id = requestAnimationFrame(step)
+          for (const i of which) rafs.current.set(i, id)
+        } else {
+          for (const i of which) rafs.current.delete(i)
+          done?.()
+        }
+      }
+      const id = requestAnimationFrame(step)
+      for (const i of which) rafs.current.set(i, id)
+    },
+    [],
+  )
+  useEffect(() => {
+    const map = rafs.current
+    return () => map.forEach((id) => cancelAnimationFrame(id))
+  }, [])
+
+  /** Every wrapper still on, for the gestures that mean "all of them". */
+  const sealedNow = () =>
+    (useGame.getState().pack?.stacks ?? []).flatMap((s, i) => (s.state === 'sealed' ? [i] : []))
 
   const sliceAll = useCallback(() => {
-    const st = useGame.getState()
-    st.pack?.stacks.forEach((s, i) => {
-      if (s.state === 'sealed') slicePack(i)
-    })
+    for (const i of sealedNow()) slicePack(i)
   }, [slicePack])
 
   /* ------------------------------------------------- throwing cards away */
 
   const [departing, setDeparting] = useState<Departing[]>([])
 
-  /** Take the top card off every stack that still has one. */
-  const throwLayer = useCallback((dir: number, from = { x: 0, y: 0, rot: 0 }) => {
-    const st = useGame.getState()
-    if (!st.pack) return 0
-    const going: Departing[] = []
-    st.pack.stacks.forEach((s, i) => {
-      if (s.state !== 'sliced') return
-      if (s.revealed >= stackCards(st, i).length) return
-      going.push({ stack: i, key: s.revealed, dir, fromX: from.x, fromY: from.y, fromRot: from.rot })
-      st.revealNext(i)
-    })
+  /** Send some cards on their way, and clear them up once they have landed. */
+  const depart = useCallback((going: Departing[]) => {
     if (going.length === 0) return 0
     setDeparting((d) => [...d, ...going])
     window.setTimeout(
-      () => setDeparting((d) => d.filter((x) => !going.some((g) => g.stack === x.stack && g.key === x.key))),
+      () =>
+        setDeparting((d) =>
+          d.filter((x) => !going.some((g) => g.stack === x.stack && g.key === x.key)),
+        ),
       THROW_MS,
     )
     return going.length
   }, [])
+
+  /** Take the top card off one stack. */
+  const throwFrom = useCallback(
+    (i: number, dir: number, count = 1) => {
+      const st = useGame.getState()
+      const stack = st.pack?.stacks[i]
+      if (!stack || stack.state !== 'sliced') return 0
+      const held = stackCards(st, i).length
+      const going: Departing[] = []
+      for (let n = 0; n < count; n++) {
+        const at = stack.revealed + n
+        if (at >= held) break
+        going.push({ stack: i, key: at, dir: n % 2 === 0 ? dir : -dir, fromX: 0, fromY: 0, fromRot: 0 })
+        st.revealNext(i)
+      }
+      return depart(going)
+    },
+    [depart],
+  )
+
+  /** Take the top card off every stack that still has one: a hand's swipe. */
+  const throwLayer = useCallback(
+    (dir: number, from = { x: 0, y: 0, rot: 0 }) => {
+      const st = useGame.getState()
+      if (!st.pack) return 0
+      const going: Departing[] = []
+      st.pack.stacks.forEach((s, i) => {
+        if (s.state !== 'sliced') return
+        if (s.revealed >= stackCards(st, i).length) return
+        going.push({ stack: i, key: s.revealed, dir, fromX: from.x, fromY: from.y, fromRot: from.rot })
+        st.revealNext(i)
+      })
+      return depart(going)
+    },
+    [depart],
+  )
 
   /* ------------------------------------------- hands off: Space, and the machine */
 
@@ -153,29 +220,36 @@ export default function PackOpener({ pack, cards }: Props) {
   const running = auto || autoSpin
   const openAll = useCallback(() => setAuto(true), [])
 
-  const timer = useRef(0)
+  const timers = useRef<number[]>([])
   useEffect(() => {
     if (!running) return
-    let i = 0
-    const loop = () => {
-      let moved = 0
-      for (let n = 0; n < batch; n++) {
-        moved += throwLayer(i % 2 === 0 ? 1 : -1)
-        i++
+    const hold = timers.current
+    const startStack = (i: number) => {
+      let n = 0
+      const loop = () => {
+        if (throwFrom(i, n % 2 === 0 ? 1 : -1, batch) === 0) return
+        n++
+        hold.push(window.setTimeout(loop, stepMs))
       }
-      if (moved === 0) return
-      timer.current = window.setTimeout(loop, stepMs)
-    }
-    if (useGame.getState().pack?.stacks.some((s) => s.state === 'sealed')) {
-      animateTear(1, AUTOTEAR_MS, () => {
-        sliceAll()
+      if (useGame.getState().pack?.stacks[i]?.state === 'sealed') {
+        animateTear([i], 1, AUTOTEAR_MS, () => {
+          slicePack(i)
+          loop()
+        })
+      } else {
         loop()
-      })
-    } else {
-      loop()
+      }
     }
-    return () => clearTimeout(timer.current)
-  }, [running, batch, stepMs, animateTear, sliceAll, throwLayer])
+    // One wrapper after another rather than all in the same frame: five packs
+    // tearing in perfect unison reads as one animation, not five.
+    ;(useGame.getState().pack?.stacks ?? []).forEach((_, i) => {
+      hold.push(window.setTimeout(() => startStack(i), i * STAGGER_MS))
+    })
+    return () => {
+      hold.forEach(clearTimeout)
+      hold.length = 0
+    }
+  }, [running, batch, stepMs, animateTear, slicePack, throwFrom])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -225,9 +299,9 @@ export default function PackOpener({ pack, cards }: Props) {
       const prev = last.current ?? origin.current
       const travel = Math.hypot(e.clientX - prev.x, e.clientY - prev.y)
       last.current = { x: e.clientX, y: e.clientY }
-      const v = clamp(tearRef.current + travel / TEAR_PX, 0, 1)
-      tearRef.current = v
-      setTear(v)
+      const sealedIdx = sealedNow()
+      const v = clamp((tearsRef.current[sealedIdx[0]] ?? 0) + travel / TEAR_PX, 0, 1)
+      setTearAt(sealedIdx, v)
       return
     }
     setDrag({ x: e.clientX - origin.current.x, y: e.clientY - origin.current.y })
@@ -245,8 +319,10 @@ export default function PackOpener({ pack, cards }: Props) {
     // that the wrappers close back up.
     if (anySealed) {
       last.current = null
-      if (tearRef.current >= TEAR_COMMIT) animateTear(1, 190, sliceAll)
-      else animateTear(0, 260)
+      const sealedIdx = sealedNow()
+      const at = tearsRef.current[sealedIdx[0]] ?? 0
+      if (at >= TEAR_COMMIT) animateTear(sealedIdx, 1, 190, sliceAll)
+      else animateTear(sealedIdx, 0, 260)
       return
     }
     setDrag(null)
@@ -272,7 +348,6 @@ export default function PackOpener({ pack, cards }: Props) {
           last.current = null
           setDrag(null)
         }}
-        style={{ ['--tear' as string]: tear }}
         role="button"
         tabIndex={0}
         aria-label={anySealed ? 'Sealed packs: drag to tear them open' : `${left} cards left`}
@@ -283,7 +358,7 @@ export default function PackOpener({ pack, cards }: Props) {
             state={st.state}
             thrown={st.revealed}
             cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
-            tear={tear}
+            tear={tears[i] ?? 0}
             drag={drag}
             departing={departing.filter((d) => d.stack === i)}
           />
@@ -291,7 +366,9 @@ export default function PackOpener({ pack, cards }: Props) {
       </div>
 
       <p className="pack-hint">
-        {anySealed ? (
+        {running ? (
+          <>Opening {stacks > 1 ? `${stacks} packs` : 'the pack'}…</>
+        ) : anySealed ? (
           stacks > 1 ? (
             <>Drag anywhere to tear all {stacks} open.</>
           ) : (

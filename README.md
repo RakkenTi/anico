@@ -19,10 +19,11 @@ A summon is free and unlimited. Packs cost credits and hold more cards: 10 at th
 Sapphire badge, 60 by the last, and thousands once Pack Size has a few levels on it. Buy
 Extra Packs and you open several at once, side by side.
 
-Packs are sealed. One drag tears every wrapper in the pull at once, and each swipe after
-that takes the top card off every stack, so five packs are the same gesture as one.
-<kbd>Space</kbd> empties the lot at your current open speed. It is only ceremony: every
-card is yours the moment the pack is bought, so closing the tab mid-tear costs nothing.
+Packs are sealed. By hand, one drag tears every wrapper in the pull and each swipe after
+that takes the top card off every stack, so five packs are the same gesture as one. Hands
+off, <kbd>Space</kbd> and the button open them one at a time at your current open speed.
+It is only ceremony: every card is yours the moment the pack is bought, so closing the tab
+mid-tear costs nothing.
 
 ![Three sealed packs](./docs/img/packs.jpg)
 
