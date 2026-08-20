@@ -287,6 +287,29 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ALTER TABLE player_state ADD COLUMN collection_rev INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    name: '013_instance_pool',
+    sql: `
+    -- How wide a net a roll casts stops being a per-player setting. The top
+    -- two thousand characters are worth several times what the long tail is,
+    -- so a narrower pool is a richer game: a player who can pick their own is
+    -- playing a different one from the person beside them.
+    --
+    -- The instance takes the admin's value, so an owner who had deliberately
+    -- narrowed theirs keeps the game they were playing.
+    INSERT OR IGNORE INTO meta (key, value)
+    SELECT 'pool_size',
+           CAST(COALESCE(json_extract(ps.settings_json, '$.poolSize'), 1000000) AS TEXT)
+      FROM player_state ps
+      JOIN players p ON p.id = ps.player_id
+     WHERE p.is_admin = 1 AND p.sandbox_of IS NULL
+     ORDER BY p.id LIMIT 1;
+
+    INSERT OR IGNORE INTO meta (key, value) VALUES ('pool_size', '1000000');
+
+    UPDATE player_state SET settings_json = json_remove(settings_json, '$.poolSize');
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

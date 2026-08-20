@@ -7,7 +7,7 @@ import CharacterModal from './CharacterModal'
 import { useVirtualGrid } from './useVirtualGrid'
 import { fmt, fmtCount } from '../game/format'
 
-type SortKey = 'value' | 'newest' | 'name'
+type SortKey = 'value' | 'newest' | 'name' | 'wished'
 type GenderFilter = 'all' | 'Female' | 'Male' | 'Other'
 type RarityFilter = 'all' | 'common' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
@@ -84,8 +84,15 @@ export default function CollectionView() {
         return [...list].sort((a, b) => b.claimedAt - a.claimedAt)
       case 'name':
         return [...list].sort((a, b) => a.name.localeCompare(b.name))
+      case 'wished': {
+        const pinned = new Set(wishes.map((w) => w.id))
+        return [...list].sort(
+          (a, b) =>
+            Number(pinned.has(b.id)) - Number(pinned.has(a.id)) || worth(b) - worth(a),
+        )
+      }
     }
-  }, [collection, search, sort, gender, rarity, seriesFilter, starsOnly, worth])
+  }, [collection, search, sort, gender, rarity, seriesFilter, starsOnly, worth, wishes])
 
   /**
    * Only the rows on screen are mounted. A collection is the one list here
@@ -152,6 +159,7 @@ export default function CollectionView() {
             <option value="value">Highest value</option>
             <option value="newest">Newest first</option>
             <option value="name">Name A–Z</option>
+            <option value="wished">Wishlist first</option>
           </select>
           {collection.length > 0 && (
             <button

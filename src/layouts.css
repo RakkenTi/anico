@@ -325,17 +325,3 @@
   [data-layout='stage'] .header-stats { padding: 5px 6px; }
   [data-layout='stage'] .main { margin-top: 10px; }
 }
-
-/* ------------------------------------------------------------
-   Layout picker in Settings (shared by all layouts)
-   ------------------------------------------------------------ */
-.layout-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-.layout-swatch { background: var(--surface-2); color: var(--text); }
-.layout-swatch .theme-kanji { color: var(--accent); }
-@media (max-width: 620px) {
-  .layout-grid { grid-template-columns: 1fr 1fr; }
-}

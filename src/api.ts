@@ -14,7 +14,6 @@ export interface ServerSettings {
   rollGender: 'female' | 'male' | 'everyone'
   /** Sell every pull below this rarity as it lands. */
   autoSell: AutoSell
-  poolSize: number
   skipOwned: boolean
 }
 
@@ -24,6 +23,8 @@ export interface Snapshot {
   sandbox: boolean
   sandboxAllowed: boolean
   credits: number
+  /** How wide a net every roll on this instance casts. The admin sets it. */
+  poolSize: number
   /** Moves whenever the collection changes, including on another device. */
   collectionRev: number
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
@@ -210,4 +211,9 @@ export const api = {
   deleteInvite: (code: string) =>
     request<{ ok: true }>(`/admin/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   recrawl: () => post<{ ok: true }>('/admin/crawl'),
+  setPool: (poolSize: number) =>
+    request<{ poolSize: number }>('/admin/instance', {
+      method: 'PATCH',
+      body: JSON.stringify({ poolSize }),
+    }),
 }

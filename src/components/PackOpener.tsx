@@ -283,8 +283,17 @@ export default function PackOpener({ pack, cards }: Props) {
   const last = useRef<{ x: number; y: number } | null>(null)
   const surface = useRef<HTMLDivElement>(null)
 
+  /**
+   * A hand is welcome while the machine is working.
+   *
+   * Swiping alongside Auto Summon throws extra layers off, so being at the
+   * screen is worth something: the machine sets the floor on how fast a pull
+   * empties, not the ceiling. Only the tear is left alone while it runs, since
+   * that is an animation already in flight.
+   */
+  const canTear = anySealed && !running
+
   const onPointerDown = (e: React.PointerEvent) => {
-    if (running) return
     origin.current = { x: e.clientX, y: e.clientY }
     last.current = { x: e.clientX, y: e.clientY }
     surface.current?.setPointerCapture(e.pointerId)
@@ -292,7 +301,7 @@ export default function PackOpener({ pack, cards }: Props) {
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!origin.current) return
-    if (anySealed) {
+    if (canTear) {
       // Every millimetre the pointer travels feeds the rip, in any direction.
       // Torn foil does not knit itself back together when the hand comes back,
       // so pulling, sawing and scrubbing all make progress.
@@ -317,7 +326,7 @@ export default function PackOpener({ pack, cards }: Props) {
 
     // Past halfway the rip has committed and finishes on its own; short of
     // that the wrappers close back up.
-    if (anySealed) {
+    if (canTear) {
       last.current = null
       const sealedIdx = sealedNow()
       const at = tearsRef.current[sealedIdx[0]] ?? 0
@@ -367,7 +376,9 @@ export default function PackOpener({ pack, cards }: Props) {
 
       <p className="pack-hint">
         {running ? (
-          <>Opening {stacks > 1 ? `${stacks} packs` : 'the pack'}…</>
+          <>
+            Opening {stacks > 1 ? `${stacks} packs` : 'the pack'}… swipe along to help.
+          </>
         ) : anySealed ? (
           stacks > 1 ? (
             <>Drag anywhere to tear all {stacks} open.</>

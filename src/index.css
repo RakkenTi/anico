@@ -1344,30 +1344,38 @@ ol.badge-levels { list-style: none; counter-reset: none; display: flex; flex-dir
 
 /* Theme swatches keep their own theme's colors regardless of the active one. */
 .theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+/* The theme and layout pickers. These had CSS and no markup for a while: the
+   app shipped three themes and four layouts nobody could reach. */
+.swatch-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .theme-swatch {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  text-align: left;
+  align-items: center;
+  gap: 9px;
   border: 1px solid var(--line);
-  border-radius: 2px;
-  padding: 14px 14px 12px;
+  border-radius: 3px;
+  background: var(--well);
+  color: var(--text);
+  padding: 8px 12px 8px 9px;
   cursor: pointer;
   font-family: var(--sans);
+  font-size: 0.84rem;
+  font-weight: 700;
   transition: border-color 0.15s, transform 0.08s;
 }
 .theme-swatch:active { transform: translateY(1px); }
 .theme-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.theme-kanji { font-family: var(--serif); font-size: 1.5rem; margin-bottom: 4px; }
-.theme-name { font-weight: 700; font-size: 0.88rem; }
-.theme-blurb { font-size: 0.72rem; line-height: 1.45; opacity: 0.75; }
+/* Three colours out of the theme itself: the ground, the accent and the money. */
+.swatch-chips { display: flex; }
+.swatch-chips span {
+  width: 13px;
+  height: 22px;
+  border: 1px solid var(--line-strong);
+}
+.swatch-chips span:first-child { border-radius: 3px 0 0 3px; }
+.swatch-chips span:last-child { border-radius: 0 3px 3px 0; }
+.swatch-chips span + span { border-left: 0; }
 
-.theme-swatch-festival { background: #0b0d17; color: #ede8dc; }
-.theme-swatch-festival .theme-kanji { color: #d4af37; }
-.theme-swatch-daybreak { background: #f1e9d7; color: #2b2620; }
-.theme-swatch-daybreak .theme-kanji { color: #c2402e; }
-.theme-swatch-arcade { background: #0c1014; color: #dfe8ec; }
-.theme-swatch-arcade .theme-kanji { color: #2ac2a8; }
+.segmented.wrap { flex-wrap: wrap; }
 
 .toggle-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .toggle-row input { width: 17px; height: 17px; accent-color: var(--accent); }

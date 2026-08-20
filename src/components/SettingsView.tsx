@@ -1,21 +1,39 @@
 import { useState } from 'react'
 import { useGame, useUi } from '../game/store'
-import { RARITY_NAMES } from '../game/economy'
-import { fmt, fmtCount } from '../game/format'
 import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
-import type { RollGender } from '../game/types'
+import type { RollGender, LayoutKey, ThemeKey } from '../game/types'
 import type { ServerSettings } from '../api'
 
+const THEMES: { key: ThemeKey; name: string; swatch: string[] }[] = [
+  { key: 'arcade', name: 'Arcade', swatch: ['#0a0e12', '#2ac2a8', '#ffb454'] },
+  { key: 'festival', name: 'Festival', swatch: ['#0b0d17', '#e04a35', '#d4af37'] },
+  { key: 'daybreak', name: 'Daybreak', swatch: ['#f4ecda', '#c2402e', '#8a6d1a'] },
+]
+
+const LAYOUTS: { key: LayoutKey; name: string; note: string }[] = [
+  { key: 'stage', name: 'Stage', note: 'Cards front and centre' },
+  { key: 'classic', name: 'Classic', note: 'Plain and roomy' },
+  { key: 'scroll', name: 'Scroll', note: 'Taller cards, softer edges' },
+  { key: 'ledger', name: 'Ledger', note: 'Square corners, more per screen' },
+]
+
+/**
+ * Settings.
+ *
+ * Three groups, in the order anybody looks for them: how the game plays, how it
+ * looks, and the two things you would only do on purpose. What used to sit here
+ * as well was a table of numbers the shop already shows, and the character pool,
+ * which is not a preference (see `instancePool` on the server): a narrow pool is
+ * a richer game, so it belongs to the instance and is set below by its admin.
+ */
 export default function SettingsView() {
   const settings = useGame((s) => s.settings)
-  const packSize = useGame((s) => s.packSize)
-  const packPrice = useGame((s) => s.packPrice)
+  const poolSize = useGame((s) => s.poolSize)
   const sandbox = useGame((s) => s.sandbox)
   const isAdmin = useGame((s) => s.isAdmin)
   const ui = useUi()
-  const effects = useGame((s) => s.effects)
   const update = useGame((s) => s.updateSettings)
   const resetSave = useGame((s) => s.resetSave)
   const grantCredits = useGame((s) => s.grantCredits)
@@ -35,44 +53,13 @@ export default function SettingsView() {
     setResetError(null)
   }
 
-  const fx = effects()
+  const pool = POOL_OPTIONS.find((o) => o.value === poolSize)
 
   return (
     <div className="settings-view">
       <div className="panel">
-        <h2 className="section-title">Sound</h2>
-        <div className="setting-row">
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={ui.soundEnabled}
-              onChange={(e) => {
-                ui.set({ soundEnabled: e.target.checked })
-                if (e.target.checked) sfx.daily()
-              }}
-            />
-            <span>Sound effects</span>
-          </label>
-          <p className="setting-hint">
-            Card deals, coin handles and chimes. A pack deals every card in
-            sequence. No music, nothing loops.
-          </p>
-        </div>
-        <div className="setting-row">
-          <label>Volume: <b>{Math.round(ui.soundVolume * 100)}%</b></label>
-          <input
-            type="range" min={0} max={100} step={5}
-            value={Math.round(ui.soundVolume * 100)}
-            disabled={!ui.soundEnabled}
-            onChange={(e) => ui.set({ soundVolume: Number(e.target.value) / 100 })}
-            onPointerUp={() => sfx.payout()}
-            onKeyUp={() => sfx.payout()}
-          />
-        </div>
-      </div>
+        <h2 className="section-title">Play</h2>
 
-      <div className="panel">
-        <h2 className="section-title">Rolling</h2>
         <div className="setting-row">
           <label>Roll for</label>
           <div className="segmented">
@@ -95,24 +82,9 @@ export default function SettingsView() {
               </button>
             ))}
           </div>
-          <p className="setting-hint">Who shows up when you roll. "Everyone" includes characters with unknown or non-binary gender.</p>
-        </div>
-
-        <div className="setting-row">
-          <label>Character pool</label>
-          <select
-            className="input"
-            value={settings.poolSize}
-            onChange={(e) => update({ poolSize: Number(e.target.value) })}
-          >
-            {POOL_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
           <p className="setting-hint">
-            Rolls draw from the instance's catalog, ranked by AniList favourites. The
-            whole catalog is the default; a smaller pool keeps rolls to characters you
-            are more likely to recognise.
+            Who shows up when you summon. "Everyone" includes characters with unknown or
+            non-binary gender.
           </p>
         </div>
 
@@ -124,15 +96,15 @@ export default function SettingsView() {
             onChange={(e) => update({ autoSell: e.target.value as ServerSettings['autoSell'] })}
           >
             <option value="off">Keep everything</option>
-            <option value="rare">Sell anything below Rare</option>
-            <option value="epic">Sell anything below Epic</option>
-            <option value="legendary">Sell anything below Legendary</option>
-            <option value="mythic">Sell anything below Mythic</option>
+            <option value="rare">Sell below Rare</option>
+            <option value="epic">Sell below Epic</option>
+            <option value="legendary">Sell below Legendary</option>
+            <option value="mythic">Sell below Mythic</option>
           </select>
           <p className="setting-hint">
-            Sells pulls as they land, so a pack of a hundred does not become a hundred
-            things to tidy up. It never sells a wish come true, and never a stack that has
-            started to merge — those are the two things worth keeping.
+            Cards below this rarity are marked for sale and sold when you next summon, so
+            you have until then to lock anything you want to keep. Wishes and merged stacks
+            are never sold.
           </p>
         </div>
 
@@ -146,111 +118,137 @@ export default function SettingsView() {
             <span>Skip characters I already own</span>
           </label>
           <p className="setting-hint">
-            Leave this off if you want to merge. A duplicate joins that character's stack,
-            and every doubling of a stack merges it a star higher — worth far more sold
-            whole than the copies ever were apart.
+            Leave this off if you want to merge. Duplicates stack, and every doubling merges
+            a stack a star higher, which is worth far more than the copies were apart.
+          </p>
+        </div>
+
+        <div className="setting-row">
+          <label>Character pool</label>
+          <p className="setting-hint">
+            <b>{pool?.label ?? `Top ${poolSize.toLocaleString()}`}</b>. Set for the whole
+            instance by its admin, because a smaller pool means better cards for everyone
+            drawing from it.
           </p>
         </div>
       </div>
 
-      {/* What used to be two panels of timers: a mode switch and a pacing
-          table. Neither has anything to say now that summoning and claiming
-          cost nothing, so what is left is the one number the shop moves. */}
       <div className="panel">
-        <h2 className="section-title">Summoning</h2>
-        <p className="section-sub">
-          Nothing is on a cooldown and nothing is rationed. Credits are the pacing: a
-          single summon is free, and a pack costs what its cards are nearly worth.
-        </p>
-        <dl className="pacing-list">
-          <div>
-            <dt>Single summon</dt>
-            <dd>free, always available, one card, yours to claim or leave</dd>
+        <h2 className="section-title">Look and sound</h2>
+
+        <div className="setting-row">
+          <label>Theme</label>
+          <div className="swatch-row">
+            {THEMES.map((t) => (
+              <button
+                key={t.key}
+                className={`theme-swatch ${ui.theme === t.key ? 'active' : ''}`}
+                onClick={() => {
+                  ui.set({ theme: t.key })
+                  sfx.tap()
+                }}
+                title={t.name}
+              >
+                <span className="swatch-chips">
+                  {t.swatch.map((c) => (
+                    <span key={c} style={{ background: c }} />
+                  ))}
+                </span>
+                {t.name}
+              </button>
+            ))}
           </div>
-          <div>
-            <dt>Packs</dt>
-            <dd>
-              {packSize > 0
-                ? `sealed, ×${fmtCount(packSize)} cards for ${fmt(packPrice)} credits, and every card in one is granted`
-                : 'locked until the Sapphire badge in the shop opens them'}
-            </dd>
+        </div>
+
+        <div className="setting-row">
+          <label>Layout</label>
+          <div className="segmented wrap">
+            {LAYOUTS.map((l) => (
+              <button
+                key={l.key}
+                className={`seg ${ui.layout === l.key ? 'active' : ''}`}
+                onClick={() => {
+                  ui.set({ layout: l.key })
+                  sfx.tap()
+                }}
+                title={l.note}
+              >
+                {l.name}
+              </button>
+            ))}
           </div>
-          <div>
-            <dt>Pack guarantee</dt>
-            <dd>
-              {fx.guaranteeRarity
-                ? `every pack holds a ${RARITY_NAMES[fx.guaranteeRarity]} or better (Emerald)`
-                : 'none yet — the Emerald badge promises a rarity floor'}
-            </dd>
-          </div>
-          <div>
-            <dt>The Automaton</dt>
-            <dd>
-              {fx.autoSpinMs > 0
-                ? `tears, swipes and presses again every ${(fx.autoSpinMs / 1000).toFixed(2)}s while it is switched on`
-                : 'not bought — the shop sells a machine that presses the button for you'}
-            </dd>
-          </div>
-          <div>
-            <dt>Opening speed</dt>
-            <dd>{fx.cardRate} cards a second (Swift Hands)</dd>
-          </div>
-          <div>
-            <dt>Night shift</dt>
-            <dd>
-              {fx.offlineRate > 0
-                ? `the Automaton keeps ${Math.round(fx.offlineRate * 100)}% of its speed with the tab closed, for up to ${fx.offlineHours} hours`
-                : 'the machine stops when you close the tab — Night Shift in the shop changes that'}
-            </dd>
-          </div>
-        </dl>
+          <p className="setting-hint">
+            {LAYOUTS.find((l) => l.key === ui.layout)?.note}. Themes only recolour; layouts
+            change spacing, corners and how much fits on a screen.
+          </p>
+        </div>
+
+        <div className="setting-row">
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={ui.soundEnabled}
+              onChange={(e) => {
+                ui.set({ soundEnabled: e.target.checked })
+                if (e.target.checked) sfx.daily()
+              }}
+            />
+            <span>Sound effects</span>
+          </label>
+          <p className="setting-hint">
+            Card deals, coins and chimes. No music, nothing loops.
+          </p>
+        </div>
+
+        <div className="setting-row">
+          <label>Volume: <b>{Math.round(ui.soundVolume * 100)}%</b></label>
+          <input
+            type="range" min={0} max={100} step={5}
+            value={Math.round(ui.soundVolume * 100)}
+            disabled={!ui.soundEnabled}
+            onChange={(e) => ui.set({ soundVolume: Number(e.target.value) / 100 })}
+            onPointerUp={() => sfx.payout()}
+            onKeyUp={() => sfx.payout()}
+          />
+        </div>
       </div>
 
-      <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>
-        <h2 className="section-title">Sandbox</h2>
-        {!sandboxAllowed ? (
+      {sandboxAllowed && (
+        <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>
+          <h2 className="section-title">Sandbox</h2>
+          <p className="section-sub">
+            A scratch profile with its own credits and its own empty collection. Nothing you
+            do in it touches the collection you care about, and none of it is kept: switching
+            back deletes it, and so does restarting the instance.
+          </p>
           <div className="setting-row">
+            <button
+              className={`btn ${sandbox ? 'btn-danger' : 'btn-primary'}`}
+              onClick={() => void setSandbox(!sandbox)}
+            >
+              {sandbox ? 'Leave the sandbox' : 'Enter the sandbox'}
+            </button>
             <p className="setting-hint">
-              Sandbox is off for your account. It is a privilege the instance admin grants,
-              because the server enforces every limit it lifts.
+              {sandbox
+                ? 'You are in the sandbox now. Your own collection is untouched and waiting.'
+                : 'Your collection stays exactly as it is while you are in there.'}
             </p>
           </div>
-        ) : (
-          <>
-            <p className="section-sub">
-              A scratch profile with its own credits and its own empty collection. Nothing you
-              do in it touches the collection you actually care about, and none of it is kept:
-              switching back deletes it, and so does restarting the instance.
-            </p>
+          {sandbox && (
             <div className="setting-row">
               <button
-                className={`btn ${sandbox ? 'btn-danger' : 'btn-primary'}`}
-                onClick={() => void setSandbox(!sandbox)}
+                className="btn btn-ghost"
+                onClick={() => {
+                  grantCredits(1000)
+                  pushToast('+1000 credits (sandbox)', 'credits')
+                }}
               >
-                {sandbox ? 'Leave the sandbox' : 'Enter the sandbox'}
+                +1000 credits (debug)
               </button>
-              <p className="setting-hint">
-                {sandbox
-                  ? 'You are in the sandbox now. Your own collection is untouched and waiting.'
-                  : 'Your collection stays exactly as it is while you are in there.'}
-              </p>
             </div>
-            {sandbox && (
-              <div className="setting-row">
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    grantCredits(1000)
-                    pushToast('+1000 credits (sandbox)', 'credits')
-                  }}
-                >
-                  +1000 credits (debug)
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <h2 className="section-title">Danger zone</h2>
@@ -272,8 +270,9 @@ export default function SettingsView() {
               }}
             >
               <p className="reset-warn">
-                This erases your collection, credits, wishes and badges. There is no undo.
-                Confirm with the username and password for this account.
+                This erases your collection, credits, wishes and everything the shop sold
+                you. There is no undo. Confirm with the username and password for this
+                account.
               </p>
               <input
                 type="text"
@@ -308,8 +307,8 @@ export default function SettingsView() {
                 Reset save data
               </button>
               <p className="setting-hint">
-                Erases your collection, credits, wishes and badges. There is no undo, so it asks
-                for your password.
+                Erases your collection, credits, wishes, badges and upgrades. There is no
+                undo, so it asks for your password.
               </p>
             </>
           )}

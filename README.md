@@ -57,7 +57,8 @@ to need names: past ten thousand everything is quoted as 4.18B or 12.4Qa.
 
 **Auto Summon** presses the button for you: it tears the wrappers, swipes the cards away
 and presses again, faster with every level. It works on any screen, so you can browse your
-collection while it grinds. Add **Offline Earnings** and it keeps paying while the game is
+collection while it grinds, and you can swipe along with it to open packs faster than it
+manages alone. Add **Offline Earnings** and it keeps paying while the game is
 closed, at a fraction of its speed, for as many hours as you have bought. Closed means the
 whole account: an idle tab on another device still counts as playing.
 
@@ -73,7 +74,8 @@ a time, so two devices selling the same card end with one sale and one polite re
 ### The rest
 
 - **Wishes**: pin characters by name. They turn up rarely on purpose, at most one a
-  summon, more often with Silver, Ruby and Wish Odds
+  summon, more often with Silver, Ruby and Wish Odds. Both the spread and the
+  collection can sort wishlist first
 - **Coins**: drop on about one summon in fifty, worth a band of credits, collected
   automatically
 - **Series sets**: 3, 5 and 10 characters from one show pay a bonus
@@ -81,7 +83,10 @@ a time, so two devices selling the same card end with one sale and one polite re
 - **Stats**: charts of your collection by rarity, gender and series
 - **Sandbox**: an admin-granted scratch profile with free packs and its own empty
   collection. Nothing in it is kept
-- **Themes and layouts**: three colour themes, four structural layouts, and a PWA install
+- **Themes and layouts**: three colour themes and four layouts in Settings, plus a PWA
+  install
+- **Admin settings**: the character pool (how deep into AniList's rankings rolls go),
+  the catalog crawl, invites and player accounts, all in Settings for the admin only
 
 ## Running an instance
 
