@@ -306,6 +306,10 @@ export default function SettingsView() {
 
       {isAdmin && <AdminPanel />}
 
+      <p className="version-line">
+        Anico <b>v{__APP_VERSION__}</b>
+      </p>
+
       <p className="attribution">
         Character data & images from <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a>.
         Sound effects (CC0) from <a href="https://kenney.nl/assets" target="_blank" rel="noreferrer">Kenney</a>.
