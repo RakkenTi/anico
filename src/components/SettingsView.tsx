@@ -26,6 +26,7 @@ export default function SettingsView() {
   const pushToast = useGame((s) => s.pushToast)
   const [confirmReset, setConfirmReset] = useState(false)
 
+
   const fx = effects()
 
   return (
@@ -113,6 +114,40 @@ export default function SettingsView() {
             <span>Skip characters I already own</span>
           </label>
           <p className="setting-hint">When off, duplicates pay 10% of the character's value{badges.silver >= 4 ? ' (20% with Silver IV)' : ''}.</p>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2 className="section-title">Mode</h2>
+        <p className="section-sub">How strictly the instance keeps time. Yours alone to pick.</p>
+        <div className="mode-choice">
+          {([
+            {
+              key: 'fun' as const,
+              name: 'Fun',
+              blurb: 'No cooldowns at all: summon and claim as much as you like. The ×10 deals face down and you turn one card over.',
+            },
+            {
+              key: 'normal' as const,
+              name: 'Normal',
+              blurb: 'The paced game: an hourly summon budget, one ×10 a day, one claim an hour. Every card of a ×10 is face up.',
+            },
+          ]).map((m) => (
+            <button
+              key={m.key}
+              className={`mode-card ${settings.mode === m.key ? 'selected' : ''}`}
+              onClick={() => {
+                if (settings.mode !== m.key) {
+                  sfx.tap()
+                  update({ mode: m.key })
+                }
+              }}
+              aria-pressed={settings.mode === m.key}
+            >
+              <span className="mode-name">{m.name}</span>
+              <span className="mode-blurb">{m.blurb}</span>
+            </button>
+          ))}
         </div>
       </div>
 

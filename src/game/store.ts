@@ -28,6 +28,7 @@ export type ConsumableKey = keyof typeof CONSUMABLES
 const HOUR = 3_600_000
 const EMPTY_BADGES: Badges = { bronze: 0, silver: 0, gold: 0, sapphire: 0, ruby: 0, emerald: 0 }
 const EMPTY_SETTINGS: ServerSettings = {
+  mode: 'fun',
   rollGender: 'everyone',
   poolSize: 10000,
   skipOwned: false,
@@ -62,6 +63,8 @@ interface GameState {
   totalRolls: number
   totalClaims: number
   pendingGem: { tier: string; amount: number } | null
+  /** A face-down spread: how many cards, and which one has been turned over. */
+  covered: { count: number; revealed: number | null } | null
 
   /* browser only */
   rolled: RollResult[]
@@ -92,6 +95,7 @@ interface GameState {
   claim: () => Promise<void>
   claimAll: () => Promise<void>
   collectGem: () => Promise<void>
+  flip: (index: number) => Promise<void>
   claimDaily: () => Promise<void>
   claimRitual: () => Promise<void>
   sell: (id: number) => Promise<void>
@@ -133,6 +137,7 @@ export const useGame = create<GameState>()((set, get) => {
       totalRolls: s.totalRolls,
       totalClaims: s.totalClaims,
       pendingGem: s.pendingGem,
+      covered: s.covered,
       clockOffset: s.serverNow - Date.now(),
       now: s.serverNow,
     }))
@@ -179,6 +184,7 @@ export const useGame = create<GameState>()((set, get) => {
     totalRolls: 0,
     totalClaims: 0,
     pendingGem: null,
+    covered: null,
 
     rolled: [],
     selected: 0,
@@ -195,7 +201,10 @@ export const useGame = create<GameState>()((set, get) => {
     maxRolls: () => get().rollsMax,
     claimReady: () => {
       const s = get()
-      return s.sandbox || s.now >= s.nextClaimAt
+      // Fun mode never advances the claim cooldown server-side, but a stale
+      // one can survive a switch out of normal mode; the client must agree
+      // with the server about that rather than disabling a working button.
+      return s.sandbox || s.settings.mode === 'fun' || s.now >= s.nextClaimAt
     },
     multiReady: () => {
       const s = get()
@@ -277,6 +286,9 @@ export const useGame = create<GameState>()((set, get) => {
         dealUntil:
           Date.now() + prev.clockOffset + res.results.length * dealStepMs(res.results.length) + 700,
       }))
+      // Nothing was revealed, so there is nothing to sound out yet: the fan
+      // that played when the summon started is the whole of it.
+      if (res.state.covered && res.state.covered.revealed === null) return
       const best = res.results.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
       sfx.reveal(rarityOf(best).key, res.results.length)
       if (res.results.some((r) => r.wished && !r.owned)) {
@@ -330,6 +342,33 @@ export const useGame = create<GameState>()((set, get) => {
       const res = await guard(() => api.gem())
       if (res) apply(res.state)
     },
+
+    /** Turn one card of a face-down spread over. The server decides what it is. */
+    flip: async (index) => {
+      const s = get()
+      if (s.rolling || !s.covered || s.covered.revealed !== null) return
+      sfx.rollStart(1)
+      set({ rolling: true, error: null })
+      const res = await guard(() => api.flip(index))
+      if (!res) {
+        set({ rolling: false })
+        return
+      }
+      apply(res.state)
+      set((prev) => ({
+        rolled: [res.result],
+        selected: 0,
+        rolling: false,
+        rollCount: prev.rollCount + 1,
+        dealUntil: Date.now() + prev.clockOffset + 700,
+      }))
+      sfx.reveal(rarityOf(res.result.char.creditValue).key, 1)
+      if (res.result.wished && !res.result.owned) {
+        sfx.wish()
+        get().pushToast('A wish appears before you.', 'wish')
+      }
+    },
+
 
     claimDaily: async () => {
       sfx.daily()
@@ -413,7 +452,7 @@ export const useGame = create<GameState>()((set, get) => {
       const res = await guard(() => api.reset())
       if (!res) return
       apply(res.state)
-      set({ rolled: [], selected: 0, rollCount: 0 })
+      set({ rolled: [], selected: 0, rollCount: 0, covered: null })
     },
 
     clearError: () => set({ error: null }),

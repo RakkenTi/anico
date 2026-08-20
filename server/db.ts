@@ -122,6 +122,15 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     UPDATE player_state SET rolls_reset_at = 0;
     `,
   },
+  {
+    name: '003_modes',
+    sql: `
+    -- Fun mode is the new default: no cooldowns, and a face-down x10.
+    UPDATE player_state
+       SET settings_json = json_set(settings_json, '$.mode', 'fun')
+     WHERE json_extract(settings_json, '$.mode') IS NULL;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {
@@ -148,6 +157,19 @@ export function openDb(file: string): DB {
     console.log(`[db] applied migration ${m.name}`)
   }
   return db
+}
+
+/**
+ * Drop every sandbox profile and its state. Sandbox data is explicitly
+ * temporary, so a restart is a clean slate rather than a resurrection: the
+ * cascade takes the profile's claims, wishes, sessions and state with it.
+ */
+export function purgeSandboxProfiles(db: DB): number {
+  return db.transaction(() => {
+    const n = db.prepare('DELETE FROM players WHERE sandbox_of IS NOT NULL').run().changes
+    db.prepare('UPDATE players SET sandbox_active = 0 WHERE sandbox_active = 1').run()
+    return n
+  })()
 }
 
 export function getMeta(db: DB, key: string): string | null {

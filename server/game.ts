@@ -13,9 +13,9 @@
 import type { DB } from './db.js'
 import {
   BASE_GEM_CHANCE,
+  GEM_TIERS,
   DAILY_INTERVAL_H,
   DAILY_STREAK_WINDOW_H,
-  GEM_TIERS,
   SERIES_MILESTONES,
   dailyAmount,
   duplicateCompensation,
@@ -32,6 +32,10 @@ import {
 } from '../src/game/badges.js'
 import { drawFromPool, getCharacter, type PoolPick } from './catalog.js'
 import { PACING, sanitizeSettings, type ServerSettings } from './rules.js'
+
+/** Fun mode and sandbox both mean "no timers apply". */
+const unpaced = (settings: ServerSettings, player: Player) =>
+  settings.mode === 'fun' || !!player.sandbox
 import type { Player } from './auth.js'
 
 const HOUR = 3_600_000
@@ -79,6 +83,13 @@ interface RollSessionEntry {
 interface RollSession {
   at: number
   results: RollSessionEntry[]
+  /**
+   * A fun-mode x10 is dealt face down. The cards exist server-side from the
+   * moment they are rolled, but only the one index the player turns over is
+   * ever sent to them, so the pick stays a pick rather than a lookup.
+   */
+  covered?: boolean
+  revealed?: number
 }
 
 function loadState(db: DB, playerId: number): StateRow {
@@ -186,9 +197,20 @@ export interface Snapshot {
   badges: Badges
   settings: ServerSettings
   pendingGem: { tier: string; amount: number } | null
+  /** The face-down spread waiting on a pick, if there is one. */
+  covered: { count: number; revealed: number | null } | null
   wishes: PoolPick[]
   collection?: OwnedCharacter[]
   serverNow: number
+}
+
+/** What the client may know about a face-down spread: how many, and which one is up. */
+function coveredOf(row: StateRow): { count: number; revealed: number | null } | null {
+  if (!row.roll_session_json) return null
+  const session: RollSession = JSON.parse(row.roll_session_json)
+  if (!session.covered) return null
+  if (Date.now() - session.at > ROLL_SESSION_MS) return null
+  return { count: session.results.length, revealed: session.revealed ?? null }
 }
 
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
@@ -215,6 +237,7 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     badges,
     settings,
     pendingGem: row.pending_gem_json ? JSON.parse(row.pending_gem_json) : null,
+    covered: coveredOf(row),
     wishes: wishesOf(db, player.id),
     collection: withCollection ? collectionOf(db, player.id) : undefined,
     serverNow: Date.now(),
@@ -248,14 +271,21 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
   const badges: Badges = JSON.parse(row.badges_json)
   row = applyRefill(db, row, badges)
   const sandbox = !!player.sandbox
+  const free = unpaced(settings, player)
   const now = Date.now()
   const wanted = Math.max(1, Math.round(count))
   const multi = wanted > 1
 
   let draws: number
   let spend = 0
+  // A fun-mode x10 is dealt face down and only one card is ever turned over,
+  // which is what it pays instead of a cooldown.
+  const covered = free && multi && !sandbox
+
   if (sandbox) {
     draws = Math.min(100, wanted)
+  } else if (free) {
+    draws = multi ? PACING.multiRollSize : 1
   } else if (multi) {
     const readyAt = row.last_multi_at + PACING.multiRollIntervalHours * HOUR
     if (now < readyAt) {
@@ -306,8 +336,11 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
     used.add(char.id)
     const owned = ownedIds.has(char.id)
     const compensation = owned ? duplicateCompensation(char.creditValue, fx.dupCompMult) : 0
-    totalComp += compensation
-    const gem = rollGemDrop(BASE_GEM_CHANCE + fx.gemChanceBonus, fx.gemUpgrade)
+    // A covered spread pays nothing until a card is turned over: crediting
+    // duplicates up front would let a player count the money and deduce what
+    // they were dealt without picking.
+    if (!covered) totalComp += compensation
+    const gem = covered ? null : rollGemDrop(BASE_GEM_CHANCE + fx.gemChanceBonus, fx.gemUpgrade)
     if (gem) {
       gemAmount += gem.amount
       const tierIdx = GEM_TIERS.findIndex((t) => t.key === gem.tier)
@@ -316,8 +349,9 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
     results.push({ char, owned, wished, compensation })
   }
 
-  const pendingGem = gemBestIdx >= 0 ? { tier: GEM_TIERS[gemBestIdx].key, amount: gemAmount } : null
-  const session: RollSession = { at: Date.now(), results }
+  const pendingGem =
+    gemBestIdx >= 0 ? { tier: GEM_TIERS[gemBestIdx].key, amount: gemAmount } : null
+  const session: RollSession = { at: Date.now(), results, ...(covered ? { covered: true } : {}) }
   db.prepare(
     `UPDATE player_state SET credits = credits + ?, rolls_left = ?, last_multi_at = ?,
             total_rolls = total_rolls + ?, roll_session_json = ?, pending_gem_json = ?
@@ -325,14 +359,15 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
   ).run(
     totalComp,
     row.rolls_left - spend,
-    multi && !sandbox ? now : row.last_multi_at,
+    multi && !sandbox && !free ? now : row.last_multi_at,
     results.length,
     JSON.stringify(session),
     pendingGem ? JSON.stringify(pendingGem) : null,
     player.id,
   )
 
-  return { results, snapshot: snapshot(db, player) }
+  // Face down means face down: the caller gets a count, not a spread.
+  return { results: covered ? [] : results, snapshot: snapshot(db, player) }
 }
 
 /* ------------------------------------------------------------------- claim */
@@ -382,13 +417,20 @@ export function claim(
   characterId: number,
 ): { snapshot: Snapshot; notes: string[] } {
   const row = loadState(db, player.id)
+  const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
-  const sandbox = !!player.sandbox
-  if (!sandbox && Date.now() < row.next_claim_at) fail('Your claim is still on cooldown.')
+  const free = unpaced(settings, player)
+  if (!free && Date.now() < row.next_claim_at) fail('Your claim is still on cooldown.')
 
   const session = readSession(row)
-  const entry = session.results.find((r) => r.char.id === characterId)
+  const idx = session.results.findIndex((r) => r.char.id === characterId)
+  const entry = session.results[idx]
   if (!entry) fail('That character was not in your last summon.')
+  // On a face-down spread only the card actually turned over can be taken;
+  // otherwise a player could name any id and claim what they never revealed.
+  if (session.covered && session.revealed !== idx) {
+    fail('Turn a card over before claiming it.')
+  }
   const already = db
     .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
     .get(player.id, characterId)
@@ -420,7 +462,7 @@ export function claim(
     ).run(
       bonus,
       JSON.stringify(seriesPaid),
-      sandbox ? row.next_claim_at : now + PACING.claimIntervalMinutes * 60_000,
+      free ? row.next_claim_at : now + PACING.claimIntervalMinutes * 60_000,
       JSON.stringify(session),
       player.id,
     )
@@ -428,6 +470,46 @@ export function claim(
   })()
 
   return { snapshot: snapshot(db, player, true), notes }
+}
+
+/**
+ * Turn one card of a face-down spread over.
+ *
+ * The spread was rolled server-side and has been sitting in the session all
+ * along; this is what releases a single card of it. One turn per spread, and
+ * the duplicate compensation and coin drop that a face-up roll would have paid
+ * are settled here instead, on the one card that was actually chosen.
+ */
+export function flip(
+  db: DB,
+  player: Player,
+  index: number,
+): { result: RollResult; snapshot: Snapshot } {
+  const row = loadState(db, player.id)
+  const badges: Badges = JSON.parse(row.badges_json)
+  const session = readSession(row)
+  if (!session.covered) fail('That summon is already face up.')
+  if (session.revealed !== undefined && session.revealed !== null) {
+    fail('You have already turned a card over. Summon again for a new spread.')
+  }
+  const i = Math.round(index)
+  if (!Number.isInteger(i) || i < 0 || i >= session.results.length) fail('No such card.')
+
+  const fx = computeEffects(badges)
+  const entry = session.results[i]
+  const gem = rollGemDrop(BASE_GEM_CHANCE + fx.gemChanceBonus, fx.gemUpgrade)
+  session.revealed = i
+
+  db.prepare(
+    `UPDATE player_state SET credits = credits + ?, roll_session_json = ?, pending_gem_json = ?
+      WHERE player_id = ?`,
+  ).run(
+    entry.compensation,
+    JSON.stringify(session),
+    gem ? JSON.stringify(gem) : null,
+    player.id,
+  )
+  return { result: entry, snapshot: snapshot(db, player) }
 }
 
 /** Sandbox only: claim every unowned card in the current spread. */
