@@ -1,5 +1,7 @@
 node_modules
 dist
 data
+anico-data
 .git
+.env
 *.log
