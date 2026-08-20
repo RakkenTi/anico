@@ -119,7 +119,10 @@ body {
 }
 
 /* ------------------------------------------------ header */
+/* Chrome sits above the views, which is only true if it is asked to. */
 .header {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -229,6 +232,8 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
 
 /* ------------------------------------------------ tabs */
 .tabs {
+  position: relative;
+  z-index: 2;
   display: flex;
   gap: 4px;
   margin: 18px 0 26px;
@@ -463,7 +468,16 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   gap: 28px;
   align-items: start;
 }
-.roll-stage { display: flex; justify-content: center; min-width: 0; }
+/* The stage owns a stacking context of its own. Cards and packs carry z-index
+   for their own layering, and without this they were competing with the page
+   chrome and winning: a spread would paint straight over the tab bar. */
+.roll-stage {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  position: relative;
+  z-index: 0;
+}
 .roll-rail {
   position: sticky;
   top: 16px;
@@ -571,8 +585,16 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
     margin-left: 0;
     padding: 0;
     grid-template-columns: 1fr;
-    /* rail (order: -1) on top, card pane gets the rest */
-    grid-template-rows: auto minmax(0, 1fr);
+    /* Same arrangement as an ordinary summon on a phone: cards take the room
+       that is left and the controls ride the bottom. */
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .roll-view.mega .roll-rail {
+    order: 1;
+    position: sticky;
+    bottom: 0;
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -1001,16 +1023,50 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 /* ------------------------------------------------ responsive */
+/* On a phone the rail used to sit above the cards, which meant scrolling down
+   to see what you had summoned and back up to summon again. The cards come
+   first now and the controls ride the bottom of the screen, so both are
+   visible at once and the loop needs no scrolling at all. */
 @media (max-width: 860px) {
-  .roll-view { grid-template-columns: 1fr; gap: 16px; }
-  .roll-rail { order: -1; position: static; }
+  .roll-view {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .roll-stage { order: 0; align-items: flex-start; }
+  .roll-rail {
+    order: 1;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    gap: 10px;
+    /* Bleed to the screen edges so it reads as a bar rather than a card. */
+    margin: 0 -18px -40px;
+    padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg);
+    border-top: 1px solid var(--line-value);
+  }
   .roll-actions { flex-direction: row; }
   .roll-meta { text-align: center; }
   .roll-meta br { display: none; }
   .roll-meta .ready::before { content: ' · '; color: var(--text-dim); }
   .roll-spread { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* The rail is a bar, so its extras stay on one line where they can. */
+  .claim-bar { margin: 0; }
+  .roll-view .btn-summon { flex: 1; }
 }
 @media (max-width: 620px) {
+  /* Reclaim vertical space: the header was wrapping to three rows of stats
+     before a single card was on screen. */
+  .app { padding: 0 14px 40px; }
+  .header { padding: 12px 2px 10px; gap: 8px; }
+  .header-stats { gap: 2px 0; }
+  .stat { font-size: 0.78rem; padding: 3px 9px; }
+  .stat-daily { margin-left: 6px; padding: 3px 10px; }
+  .brand-name { font-size: 1.15rem; }
+  .tabs { margin: 12px 0 16px; }
+  .roll-rail { margin: 0 -14px -40px; padding-left: 14px; padding-right: 14px; }
+
   .tab { padding: 10px 12px 11px; }
   .tab-label { display: none; }
   .tab-kanji { font-size: 1.3rem; }
@@ -1020,6 +1076,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
     width: min(100%, clamp(180px, calc(58vh - 180px), 260px));
     width: min(100%, clamp(180px, calc(58dvh - 180px), 260px));
   }
+  /* A pack is the one thing that must fit between the tabs and the rail. */
+  .pack-area {
+    width: min(100%, clamp(170px, calc(52dvh - 150px), 250px));
+  }
+  .pack-hint { font-size: 0.78rem; }
   .modal-body { flex-direction: column; }
   .modal-art { width: 100%; min-height: 0; max-height: 46vh; }
   .brand-jp { display: none; }
@@ -1411,9 +1472,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .pack-card.behind {
   position: absolute;
   inset: 0;
-  /* Up and to the left a few pixels each, so the pile fans towards the top
+  /* Up and to the right a few pixels each, so the pile fans towards the top
      corner and shows a sliver of every card under the top one. */
-  transform: translate(calc(var(--depth) * -4px), calc(var(--depth) * -3px));
+  transform: translate(calc(var(--depth) * 4px), calc(var(--depth) * -3px));
   filter: brightness(calc(1 - var(--depth) * 0.045));
   pointer-events: none;
 }
@@ -1445,54 +1506,37 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 /* --- the wrapper ------------------------------------------------------- */
-/* Opaque foil in two pieces. The colours are solid on purpose: the palette's
-   --accent-soft is a 10% alpha, and building the pack out of it was letting the
-   top card show straight through an unopened wrapper.
-
-   The seam is a fine irregular tear rather than a row of shark teeth, and the
-   lid always reaches past the body's highest point, so nothing can peek between
-   the two however their edges happen to line up. */
+/* One piece of opaque foil, clipped in JS to whatever the rip has left of it.
+   There is no seam in the markup, so there is none to see before the pack is
+   torn: the parting edge only exists once it has been made. */
 .pack-wrap { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
-.pack-body,
-.pack-lid {
+.pack-foil,
+.pack-flap {
   position: absolute;
-  left: 0;
-  right: 0;
-  background-color: var(--surface-2);
+  inset: 0;
+  border-radius: 7px;
+  background-color: var(--foil, var(--surface-2));
   background-image:
-    /* the sheen that travels across a real foil pack as it tilts */
-    linear-gradient(112deg, transparent 26%, rgba(255, 255, 255, 0.16) 40%, transparent 56%),
+    /* the sheen that travels across real foil as it tilts */
+    linear-gradient(112deg, transparent 26%, rgba(255, 255, 255, 0.18) 40%, transparent 56%),
     /* faint holographic banding */
-    repeating-linear-gradient(74deg, rgba(255, 255, 255, 0.05) 0 3px, transparent 3px 9px),
-    linear-gradient(168deg, rgba(255, 255, 255, 0.09) 0%, rgba(0, 0, 0, 0.34) 100%);
-  border-left: 1px solid var(--line-strong);
-  border-right: 1px solid var(--line-strong);
+    repeating-linear-gradient(74deg, rgba(255, 255, 255, 0.055) 0 3px, transparent 3px 9px),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.1) 0%, rgba(0, 0, 0, 0.36) 100%);
+  box-shadow: inset 0 0 0 1px var(--foil-edge, var(--line-strong));
 }
-.pack-body {
-  top: 18%;
-  bottom: 0;
-  border-bottom: 1px solid var(--line-strong);
-  border-radius: 0 0 7px 7px;
-  clip-path: polygon(0.0% 2.15%, 4.1% 2.73%, 7.7% 3.89%, 11.7% 3.07%, 15.7% 2.52%, 19.2% 1.79%, 23.2% 0.92%, 26.9% 0.98%, 30.9% 3.43%, 34.8% 2.82%, 38.5% 3.08%, 42.6% 3.60%, 46.1% 1.81%, 50.2% 2.22%, 54.0% 1.45%, 58.0% 1.73%, 61.5% 3.86%, 65.4% 1.72%, 69.2% 1.73%, 73.4% 1.47%, 77.1% 2.13%, 80.8% 2.06%, 84.7% 0.77%, 88.7% 3.12%, 92.3% 3.42%, 96.2% 3.40%, 100.0% 3.04%, 100% 100%, 0% 100%);
-  z-index: 1;
-}
-.pack-lid {
-  top: 0;
-  height: 26%;
-  border-top: 1px solid var(--line-strong);
-  border-radius: 7px 7px 0 0;
-  clip-path: polygon(0% 0%, 100% 0%, 100.0% 98.83%, 96.2% 92.60%, 92.3% 97.64%, 88.7% 98.12%, 84.4% 89.95%, 80.7% 91.08%, 77.1% 89.64%, 72.8% 97.59%, 69.3% 93.48%, 65.3% 96.63%, 61.8% 95.72%, 57.7% 96.65%, 54.2% 91.03%, 50.0% 90.81%, 46.4% 95.28%, 42.6% 95.84%, 38.7% 91.77%, 34.7% 94.13%, 30.9% 93.31%, 26.9% 96.68%, 22.7% 89.52%, 19.4% 92.66%, 15.5% 96.18%, 11.8% 95.98%, 7.8% 94.84%, 3.5% 89.66%, 0.0% 96.15%);
-  z-index: 2;
-}
-/* The perforation you pull from, and the nicks either side that start the tear
-   on a real pack. */
+/* The strip coming away sits above what is left of the pack. */
+.pack-flap { z-index: 2; transform-origin: 0% 100%; }
+.pack-foil { z-index: 1; }
+
+/* The perforation you pull from, and the nicks either side that start a tear
+   on a real pack. Drawn on both pieces so it survives being torn through. */
 .pack-strip {
   position: absolute;
-  top: 46%;
+  top: 17%;
   left: 7%;
   right: 7%;
   height: 0;
-  border-top: 1px dashed rgba(255, 255, 255, 0.3);
+  border-top: 1px dashed rgba(255, 255, 255, 0.28);
 }
 .pack-strip::before,
 .pack-strip::after {
@@ -1510,12 +1554,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .pack-mark {
   position: absolute;
   inset: 44% 0 auto 0;
-  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  opacity: calc(1 - var(--tear) * 1.5);
 }
 .pack-brand {
   font-family: var(--display, var(--sans));
@@ -1534,17 +1576,42 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   text-transform: uppercase;
   color: var(--text-dim);
 }
-/* The seam lights up as the pull nears the point of no return. */
-.pack-rip {
+/* A light along the working edge while a tear is in progress. */
+.pack-glint {
   position: absolute;
-  top: 23%;
-  left: 0;
-  right: 0;
-  height: 2px;
-  z-index: 4;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: calc(var(--tear) * 1.2);
-  filter: blur(1px);
+  inset: 18% -2% auto -2%;
+  height: 3px;
+  z-index: 3;
+  background: linear-gradient(90deg, transparent, var(--foil-edge, var(--accent)), transparent);
+  filter: blur(2px);
+  transition: opacity 0.15s;
+}
+
+/* Foil takes its colour from the best card inside. Nothing is given away that
+   matters, but a pack worth opening should look like one. */
+.pack-area.foil-common { --foil: #2a3040; --foil-edge: var(--line-strong); }
+.pack-area.foil-rare { --foil: #24344f; --foil-edge: #5f7fc0; }
+.pack-area.foil-epic { --foil: #322546; --foil-edge: #9a6fe8; }
+.pack-area.foil-legendary { --foil: #3d3218; --foil-edge: var(--value); }
+.pack-area.foil-mythic { --foil: #40203a; --foil-edge: #e87ac8; }
+/* The top tier gets a moving rainbow over the base tint. */
+.pack-area.foil-mythic .pack-foil,
+.pack-area.foil-mythic .pack-flap {
+  background-image:
+    linear-gradient(112deg, transparent 24%, rgba(255, 255, 255, 0.22) 40%, transparent 58%),
+    repeating-linear-gradient(
+      68deg,
+      rgba(255, 120, 200, 0.16) 0 6px,
+      rgba(120, 200, 255, 0.16) 6px 12px,
+      rgba(255, 230, 140, 0.16) 12px 18px
+    ),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.12) 0%, rgba(0, 0, 0, 0.34) 100%);
+  background-size: 240% 100%, auto, auto;
+  animation: foilShift 5s linear infinite;
+}
+@keyframes foilShift {
+  from { background-position: 0% 0, 0 0, 0 0; }
+  to { background-position: 240% 0, 0 0, 0 0; }
 }
 
 .pack-hint {
