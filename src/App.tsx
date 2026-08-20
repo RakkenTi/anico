@@ -13,6 +13,7 @@ import Icon from './components/Icon'
 import type { IconName } from './game/icons'
 import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
+import { useAutomaton } from './components/useAutomaton'
 
 type Tab = 'roll' | 'collection' | 'wishes' | 'shop' | 'stats' | 'settings'
 
@@ -62,6 +63,10 @@ export default function App() {
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [tick])
+
+  // The machine keeps pressing whatever screen you are on. It only waits for a
+  // wrapper to be torn while there is somebody watching it happen.
+  useAutomaton(tab === 'roll')
 
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt

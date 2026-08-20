@@ -19,7 +19,6 @@ export default function RollView() {
   const busy = s.packBusy()
   const pullSize = s.cardsPerPull
   const entry = s.rolled[s.selected]
-  const unclaimed = s.rolled.filter((r) => !r.owned).length
   const mega = s.rolled.length > 20
 
   /**
@@ -102,32 +101,6 @@ export default function RollView() {
     return stop
   }, [s.rollCount, mega, rolledCount])
 
-  /**
-   * The Automaton.
-   *
-   * A plain interval that presses the same button a player would, so it can
-   * never do anything a player could not: the server charges it for every pack
-   * and refuses it when the balance runs out, and the store switches it off on
-   * the first refusal. It keeps running while the tab is in the background,
-   * because grinding while you are elsewhere is the entire point of it.
-   */
-  const autoSpin = s.autoSpin
-  const autoSpinMs = s.autoSpinMs
-  useEffect(() => {
-    if (!autoSpin || autoSpinMs <= 0) return
-    const id = setInterval(() => {
-      const st = useGame.getState()
-      if (st.rolling || st.packBusy() || Date.now() + st.clockOffset < st.dealUntil) return
-      if (!st.canAffordPack()) {
-        st.setAutoSpin(false)
-        st.pushToast('The Automaton stops: not enough credits for the next pull.', 'info')
-        return
-      }
-      void st.roll(st.cardsPerPull)
-    }, autoSpinMs)
-    return () => clearInterval(id)
-  }, [autoSpin, autoSpinMs])
-
   // The spread's highest-value card gets a one-shot pulse once dealt.
   const bestIdx =
     s.rolled.length > 1
@@ -181,8 +154,10 @@ export default function RollView() {
                     compact
                     onClick={() => s.selectRolled(i)}
                     overlay={
-                      r.wished && !r.owned ? (
+                      r.wished && r.fresh ? (
                         <span className="spread-tag wished">a wish</span>
+                      ) : r.autoSold ? (
+                        <span className="spread-tag">sold</span>
                       ) : r.fresh ? (
                         <span className="spread-tag fresh">new</span>
                       ) : r.owned ? (
@@ -298,29 +273,23 @@ export default function RollView() {
 
         {/* Nothing about the contents until the wrapper is off: the bar was
             naming a card while the pack was still sealed. */}
+        {/* A summon grants what it turns up, so this says what happened to
+            the card rather than asking whether you want it. */}
         {entry && !s.rolling && !(s.pack && s.pack.stacks.every((st) => st.state === 'sealed')) && (
-          <div className={`claim-bar ${entry.owned ? 'is-note' : ''}`}>
+          <div className="claim-bar is-note">
             <div className="claim-bar-info">
               <span className="claim-bar-name">{entry.char.name}</span>
               <span className="claim-bar-value" title="Credit value">{fmt(entry.char.creditValue)}</span>
             </div>
-            {entry.owned ? (
-              <span className="claim-bar-note">
-                {entry.fresh
-                  ? 'straight from the pack, and yours'
+            <span className="claim-bar-note">
+              {entry.autoSold
+                ? 'sold on arrival, as you asked'
+                : entry.fresh
+                  ? 'yours, and in your collection'
                   : entry.compensation > 0
-                    ? `already yours, compensated ${fmt(entry.compensation)} credits`
+                    ? `another copy — compensated ${fmt(entry.compensation)} credits`
                     : 'bound to your collection'}
-              </span>
-            ) : (
-              <button
-                className="btn btn-primary"
-                onClick={s.claim}
-                title="Add this character to your collection"
-              >
-                Claim
-              </button>
-            )}
+            </span>
           </div>
         )}
 
@@ -340,16 +309,6 @@ export default function RollView() {
               Best first
             </button>
           </div>
-        )}
-
-        {testing && !s.rolling && s.rolled.length > 1 && unclaimed > 0 && (
-          <button
-            className="btn btn-primary"
-            onClick={s.claimAll}
-            title="Sandbox only: claim every unowned card in this spread"
-          >
-            Claim all ({unclaimed})
-          </button>
         )}
 
         {s.error && (

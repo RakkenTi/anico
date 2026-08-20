@@ -79,6 +79,8 @@ export interface RollSummary {
   autoSold: number
   autoSoldFor: number
   merged: number
+  /** Wishes fulfilled, series sets completed: anything worth saying out loud. */
+  notes: string[]
   /** Cards the pull held beyond what it dealt: appraised rather than shown. */
   hidden: number
   hiddenFor: number
@@ -137,8 +139,6 @@ export const api = {
 
   roll: (count: number) =>
     post<RollSummary & { results: RollResult[]; state: Snapshot }>('/roll', { count }),
-  claim: (characterId: number) => post<{ state: Snapshot; notes: string[] }>('/claim', { characterId }),
-  claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
   autoSpin: (on: boolean) => post<{ state: Snapshot }>('/auto', { on }),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),

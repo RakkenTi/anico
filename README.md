@@ -1,9 +1,9 @@
 # Anico 🎴
 
 A self-hosted, multi-player anime character collecting game: no Discord, no commands,
-just a web app you run on your own box. Summon characters, claim your favourites, build a
-collection, and spend the credits it earns on a badge tree that makes the next summon
-worth more.
+just a web app you run on your own box. Summon characters, keep the ones worth keeping,
+build a collection, and spend the credits it earns on a shop whose prices never stop
+climbing.
 
 One deployment is an **instance**. Players share the instance but their collections are
 independent: two people can each own the same character, and nothing one player does can
@@ -252,8 +252,10 @@ re-litigating are in [`docs/adr/`](./docs/adr/).
 
 **Summon.** One card at a time, free and unlimited: nothing is on a cooldown
 and there is no allowance to spend ([ADR 0004](./docs/adr/0004-nothing-is-paced.md)).
-Claim the ones you want, sell the ones you do not, and pick who shows up in
-*Settings, Roll for* (Waifus / Husbandos / Everyone).
+Every summon grants what it turns up — there is no claim button, so a free card
+cannot be lost to a closed tab and **auto-sell** sees single summons as readily
+as packs. Sell what you do not want, and pick who shows up in *Settings, Roll
+for* (Waifus / Husbandos / Everyone).
 
 **Packs are what credits are for.** A fresh account has the single summon and
 nothing else. The **Sapphire** badge unlocks a sealed ×10 and grows it to ×60;
@@ -285,7 +287,9 @@ hundred is at the top.
 
 **The shop is one shelf, ordered by price.** Every line costs a multiple of its
 own last level, and the multiple is always larger than the effect it buys: that
-difference is the difficulty curve. Numbers grow past what digits are good for,
+difference is the difficulty curve. The first five rungs of the endless lines
+are sold at a fraction of list price, fading out by the sixth — the opening
+should be a ramp rather than a wall. Numbers grow past what digits are good for,
 so anything over ten thousand is quoted with a suffix — 4.18B, 12.4Qa.
 
 *Upgrades* are the curve. Six of the nine never end:
@@ -320,7 +324,9 @@ badges raised to IV.
 **The Automaton** is the shop's machine for pressing the button. It tears the
 wrappers, swipes the cards away and presses again, on a timer that gets shorter
 with every level — an autoclicker rather than a shortcut, running in your own
-browser and charged and refused by the server exactly as you would be. With
+browser and charged and refused by the server exactly as you would be. It keeps
+going while you read your Collection or shop: away from the summon view there is
+nobody to tear a wrapper, so it settles them itself. With
 **Night Shift** it keeps going when the tab is closed, at a fraction of its
 speed and for as many hours as the upgrade bought, and hands over what it earned
 the moment you come back
@@ -343,7 +349,8 @@ the moment you come back
   selling by a wide margin
   ([ADR 0006](./docs/adr/0006-duplicates-are-copies.md))
 - **Auto-sell**: pick a rarity in the summon view and anything below it is sold
-  as it lands. It never sells a wish, and never a stack that has begun to merge
+  as it lands, from a single summon as readily as from a pack. It never sells a
+  wish, and never a stack that has begun to merge
 - **Coins**: one coin, worth a band of credits, landing on about one summon in
   fifty. Gathered where they fall
 - **Selling**: any character, at what Appraisal says it is worth. **Bulk mode**

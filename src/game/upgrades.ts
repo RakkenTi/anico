@@ -155,7 +155,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     icon: 'gear',
     blurb:
       'Hands the button to a machine: it tears, swipes and presses again, as long as you can pay.',
-    baseCost: 100_000,
+    baseCost: 200_000,
     growth: 2.8,
     maxLevel: 10,
     effect: (l) =>
@@ -267,6 +267,25 @@ export function offlineHours(level: number): number {
 }
 
 /**
+ * The opening discount.
+ *
+ * The first rungs of the endless lines cost a fraction of list price, and the
+ * fraction fades out by the sixth. An exponential ladder priced honestly from
+ * level one is correct on paper and terrible in the first ten minutes: the
+ * shop is full of things worth a minute and a half of grinding each, so the
+ * opening reads as a wall rather than a hook. This is the ramp on to the
+ * curve, and it costs the late game nothing -- by level five the price is the
+ * one the ladder always said it was.
+ *
+ * The three lines that end are left at list price. They buy a *shape* -- a
+ * machine that presses the button, a night shift, better odds on a wish --
+ * and their first level is an unlock rather than a rung. Discounting those
+ * would hand over the whole late game in the first ten minutes, which is the
+ * opposite of what a ramp is for.
+ */
+const OPENING_DISCOUNT = [0.06, 0.12, 0.25, 0.45, 0.7]
+
+/**
  * What the next level costs.
  *
  * Exponential, and always steeper than the effect it buys: that difference is
@@ -275,8 +294,9 @@ export function offlineHours(level: number): number {
  * is the number the shop prints.
  */
 export function upgradeCost(def: UpgradeDef, currentLevel: number, priceMult = 1): number {
-  const raw = def.baseCost * Math.pow(def.growth, lv(currentLevel)) * priceMult
-  return roundCost(raw)
+  const level = lv(currentLevel)
+  const opening = def.maxLevel === undefined ? (OPENING_DISCOUNT[level] ?? 1) : 1
+  return roundCost(def.baseCost * Math.pow(def.growth, level) * opening * priceMult)
 }
 
 /** Three significant figures, and never below ten. */

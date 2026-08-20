@@ -186,23 +186,11 @@ export function createApp(db: DB, config: Config) {
     return c.json({ ...roll, state: snapshot })
   })
 
-  api.post('/claim', async (c) => {
-    const b = await body(c)
-    const { snapshot, notes } = game.claim(db, c.get('player'), Number(b.characterId))
-    return c.json({ state: snapshot, notes })
-  })
-
   api.post('/auto', async (c) => {
     const b = await c.req.json<{ on?: boolean }>().catch(() => ({}) as { on?: boolean })
     return c.json({ state: game.setAutoSpin(db, c.get('player'), !!b.on) })
   })
 
-  api.post('/claim-all', (c) => {
-    const { snapshot, claimed, bonus } = game.claimAll(db, c.get('player'))
-    return c.json({ state: snapshot, claimed, bonus })
-  })
-
-  /** Enter or leave the sandbox. The real collection is untouched either way. */
   api.post('/sandbox', async (c) => {
     const owner = c.get('owner')
     if (!owner.sandbox) return c.json({ error: 'Sandbox is not enabled for this account.' }, 403)

@@ -54,11 +54,13 @@ series is a **series set**, which pays a one-time bonus at 3, 5 and 10.
 ## Playing
 
 **Roll** — one draw from the catalog, presented as a card. A single summon is free and
-unlimited: it costs nothing and waits for nothing (see ADR 0004). A pack is not free —
-see **Pack price**.
+unlimited: it costs nothing, waits for nothing (see ADR 0004) and is yours on arrival. A
+pack is not free — see **Pack price**.
 
-**Claim** — a player taking ownership of a rolled character. Also free and unlimited; a
-single summon is the only place it is asked, because a pack grants its own contents.
+**Claim** — a player taking ownership of a rolled character. Not a decision and not a
+button: every summon grants what it turns up, single card or hundredth pack. The button
+existed only for the single summon, and it meant a free card could be lost to a closed tab
+and that **auto-sell** never saw one, because auto-sell reads what a player owns.
 
 **Pack** — a sealed multi-card summon, unlocked and sized by the **Sapphire** badge and
 the **Deeper Packs** upgrade. Every card in it is granted the moment it is rolled, so
@@ -102,13 +104,15 @@ than paying out, and every doubling **merges** it one **star** higher (★1 at t
 ★2 at four, ★3 at eight, up to ★12), which multiplies what the whole stack sells for —
 further with every level of **Alchemy**. A stack sells whole or not at all (ADR 0006).
 
-**Auto-sell** — a per-player setting: sell every pull below a chosen rarity as it lands.
-Never a wish come true, and never a stack that has started to merge.
+**Auto-sell** — a per-player setting: sell everything below a chosen rarity as it lands,
+from a single summon as readily as from a pack. Never a wish come true, and never a stack
+that has started to merge.
 
 **Automaton** — the shop's machine for pressing the summon button. An autoclicker rather
 than a shortcut: it tears the wrappers, swipes the cards away and presses again. Runs in
-the player's own browser and is charged and refused by the server exactly as a player
-would be.
+the player's own browser, on whatever screen the player is looking at, and is charged and
+refused by the server exactly as a player would be. Away from the summon view there is
+nobody to tear a wrapper, so it settles them itself and carries on.
 
 **Night shift** — the upgrade that keeps the Automaton working with the tab closed, at a
 fraction of its speed and for a bounded number of hours. Paid from a smoothed average of
@@ -158,6 +162,11 @@ promises — rather than how fast it runs, which is why they end and upgrades do
 shape and finish (The Automaton, Night Shift, Divination). Every level costs a fixed
 multiple of the last, and always more than the effect it buys. Badges give the game its
 shape; upgrades give it its curve, and the curve has no end (ADR 0007).
+
+**Opening discount** — the first five rungs of the endless lines, sold at a fraction of
+list price that fades out by the sixth. The ramp on to the curve: an exponential ladder
+priced honestly from level one is correct on paper and a wall in the first ten minutes.
+The three lines that end are never discounted, because their first level is an unlock.
 
 **Suffix** — how a number is said once it outgrows its digits: three significant figures
 and a short-scale name, 4.18B or 12.4Qa, and an exponent past the table. Everything the
