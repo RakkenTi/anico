@@ -26,15 +26,16 @@ scp .env.example server:/srv/anico/.env      # already points at ghcr.io/rakkent
 ssh server 'cd /srv/anico && docker compose up -d'
 ```
 
-The package is private too, so the server needs to log in once with a personal access
-token carrying the `read:packages` scope:
+The image itself is a public package, so the server pulls it anonymously and needs no
+`docker login`. Package visibility is set separately from the repo's, which is why this
+works while `RakkenTi/anico` stays private.
+
+If you ever set the package back to private, the server needs to log in once with a
+personal access token carrying the `read:packages` scope:
 
 ```sh
 echo $GHCR_TOKEN | docker login ghcr.io -u RakkenTi --password-stdin
 ```
-
-Or make just the package public in its GitHub package settings, which the repo can
-stay private through, and skip the login entirely.
 
 Upgrading is `docker compose pull && docker compose up -d`. The database lives in a
 named volume and is untouched by an image change.
