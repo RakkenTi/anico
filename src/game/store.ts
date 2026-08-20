@@ -158,13 +158,12 @@ interface GameState {
   roll: (count?: number) => Promise<void>
   selectRolled: (index: number) => void
   setRollSort: (sort: 'dealt' | 'rarity') => void
-  claim: () => Promise<void>
-  claimAll: () => Promise<void>
   setAutoSpin: (on: boolean) => Promise<void>
   popCoins: (amount: number) => void
   dismissCoinPop: (id: number) => void
   slicePack: (index: number) => void
   tearPack: (index: number) => void
+  finishPacks: () => void
   revealNext: (index: number) => void
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
@@ -371,7 +370,7 @@ export const useGame = create<GameState>()((set, get) => {
         set({ rolling: false, autoSpin: false })
         return
       }
-      const firstFresh = res.results.findIndex((r) => !r.owned)
+      const firstFresh = res.results.findIndex((r) => r.fresh)
       warmImages(res.results)
       apply(res.state)
       set((prev) => ({
@@ -404,6 +403,8 @@ export const useGame = create<GameState>()((set, get) => {
           'credits',
         )
       }
+      for (const note of res.notes) get().pushToast(note, 'credits')
+      if (res.notes.length > 0) sfx.payout(0.3)
       if (res.autoSold > 0) {
         get().pushToast(
           `Auto-sold ${fmtCount(res.autoSold)} card${res.autoSold === 1 ? '' : 's'} for +${fmt(res.autoSoldFor)} credits`,
@@ -420,7 +421,7 @@ export const useGame = create<GameState>()((set, get) => {
       if (res.pack) return
       const best = res.results.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
       sfx.reveal(rarityOf(best).key, res.results.length)
-      if (res.results.some((r) => r.wished && !r.owned)) {
+      if (res.results.some((r) => r.wished && r.fresh)) {
         sfx.wish()
         get().pushToast('A wish appears before you.', 'wish')
       }
@@ -471,38 +472,6 @@ export const useGame = create<GameState>()((set, get) => {
       }
     },
 
-    claim: async () => {
-      const s = get()
-      const entry = s.rolled[s.selected]
-      if (!entry || entry.owned) return
-      sfx.claim()
-      const res = await guard(() => api.claim(entry.char.id))
-      if (!res) return
-      apply(res.state)
-      set((prev) => ({
-        rolled: prev.rolled.map((r, i) =>
-          i === prev.selected ? { ...r, owned: true, compensation: 0 } : r,
-        ),
-      }))
-      for (const note of res.notes) get().pushToast(note, 'credits')
-      if (res.notes.length > 0) sfx.payout(0.3)
-    },
-
-    claimAll: async () => {
-      const res = await guard(() => api.claimAll())
-      if (!res) return
-      sfx.claim()
-      if (res.bonus > 0) sfx.payout(0.3)
-      apply(res.state)
-      set((prev) => ({
-        rolled: prev.rolled.map((r) => (r.owned ? r : { ...r, owned: true, compensation: 0 })),
-      }))
-      get().pushToast(
-        `Claimed ${res.claimed} character${res.claimed === 1 ? '' : 's'}${res.bonus > 0 ? ` (+${res.bonus} credits)` : ''} (sandbox)`,
-        'info',
-      )
-    },
-
     /** The wrapper comes away from one pack, leaving its stack. */
     slicePack: (index) => {
       const s = get()
@@ -523,6 +492,27 @@ export const useGame = create<GameState>()((set, get) => {
       const best = cards.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
       sfx.reveal(rarityOf(best).key, cards.length)
       set({ pack: patchStack(s.pack, index, { state: 'open', revealed: cards.length }) })
+    },
+
+    /**
+     * Every wrapper off at once, quietly.
+     *
+     * For the Automaton running while the player is on another tab: there is
+     * no opener mounted to tear anything, and a pack nobody can reach would
+     * block the loop for good. Silent, because it is not a moment.
+     */
+    finishPacks: () => {
+      const s = get()
+      if (!s.pack) return
+      set({
+        pack: {
+          ...s.pack,
+          stacks: s.pack.stacks.map((_, i) => ({
+            state: 'open' as const,
+            revealed: stackCards(s, i).length,
+          })),
+        },
+      })
     },
 
     /**

@@ -73,8 +73,6 @@ const WISH_CHANCE_CAP = 0.006
  * player has bought without the server having to replay a million rolls.
  */
 const YIELD_SMOOTHING = 0.3
-/** How long a rolled spread stays claimable. */
-const ROLL_SESSION_MS = 30 * 60_000
 /** Sandbox bulk summons, which answer to nothing else. */
 const SANDBOX_MAX_DRAW = 100
 
@@ -94,7 +92,6 @@ interface StateRow {
   upgrades_json: string
   settings_json: string
   series_paid_json: string
-  roll_session_json: string | null
   /** The Automaton is switched on, and keeps running with the tab closed. */
   auto_spin: number
   /** When it was last settled: a real pull, or the last time it was read. */
@@ -113,6 +110,14 @@ interface RollSessionEntry {
   /** Set when the auto-sell setting sold this card the moment it arrived. */
   autoSold?: boolean
 }
+/**
+ * One summon's results, in flight.
+ *
+ * Purely a working set now: `takeAll` marks up the entries it grants and
+ * `autoSell` reads them back. It used to be written to the database and read
+ * again by a claim call that arrived later, which is what the claim button
+ * needed and nothing needs any more.
+ */
 interface RollSession {
   at: number
   results: RollSessionEntry[]
@@ -400,6 +405,8 @@ export function roll(
   autoSold: number
   autoSoldFor: number
   merged: number
+  /** Anything worth saying out loud about what was granted. */
+  notes: string[]
   /** Cards the pull held beyond what it dealt: opened by the machine, not seen. */
   hidden: number
   /** What those cards were appraised for. */
@@ -561,24 +568,28 @@ export function roll(
 
   const opened = db.transaction(() => {
     db.prepare(
-      `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?,
-              roll_session_json = ? WHERE player_id = ?`,
-    ).run(totalComp + coinFound + hiddenFor - price, results.length, JSON.stringify(session), player.id)
+      `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?
+        WHERE player_id = ?`,
+    ).run(totalComp + coinFound + hiddenFor - price, results.length, player.id)
     if (pack) {
       db.prepare(
         `UPDATE player_state SET auto_yield = auto_yield * ? + ? * ?, auto_at = ?
           WHERE player_id = ?`,
       ).run(1 - YIELD_SMOOTHING, pullYield, YIELD_SMOOTHING, now, player.id)
     }
-    if (!pack) return { claimed: 0, bonus: 0, autoSold: 0, autoSoldFor: 0, merged: 0 }
     // Remember what was already in the collection: takeAll marks everything it
     // hands over as owned, which would otherwise erase the difference between
     // a new card and a duplicate.
     const wasOwned = results.map((r) => r.owned)
-    // The pack's contents are the player's the moment it is rolled, however
-    // they choose to open it on screen. Settling it here rather than on an
-    // "opened" call means a closed tab or a dropped connection mid-animation
-    // cannot cost anyone their cards.
+    /*
+     * Everything a summon turns up is granted, single card or hundredth pack.
+     *
+     * A pack always worked this way; the single summon asked for a button
+     * press, which meant a free card could be lost to a closed tab and -- the
+     * reason this changed -- that auto-sell never saw it. Auto-sell reads what
+     * a player owns, and a card nobody had claimed was not owned yet, so the
+     * one summon that is free and unlimited was the one it ignored.
+     */
     const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
     const r = takeAll(db, player, session, fx, seriesPaid)
     results.forEach((entry, i) => {
@@ -586,8 +597,8 @@ export function roll(
     })
     db.prepare(
       `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
-              series_paid_json = ?, roll_session_json = ? WHERE player_id = ?`,
-    ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
+              series_paid_json = ? WHERE player_id = ?`,
+    ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), player.id)
     const sold = autoSell(db, player, settings, fx, session)
     return { ...r, ...sold }
   })()
@@ -603,9 +614,12 @@ export function roll(
     autoSold: opened.autoSold,
     autoSoldFor: opened.autoSoldFor,
     merged: opened.merged,
+    // Wishes fulfilled, series sets completed, the Emerald dowry. A handful at
+    // most: a pack of a hundred should not arrive with a hundred toasts.
+    notes: opened.notes.slice(0, 4),
     hidden: overflow,
     hiddenFor,
-    snapshot: snapshot(db, player, pack),
+    snapshot: snapshot(db, player, true),
   }
 }
 
@@ -671,13 +685,6 @@ function guarantee(
 
 /* ------------------------------------------------------------------- claim */
 
-function readSession(row: StateRow): RollSession {
-  if (!row.roll_session_json) fail('Nothing has been rolled yet.')
-  const session: RollSession = JSON.parse(row.roll_session_json!)
-  if (Date.now() - session.at > ROLL_SESSION_MS) fail('That summon has expired. Roll again.')
-  return session
-}
-
 function payClaimBonuses(
   char: PoolPick,
   wished: boolean,
@@ -711,56 +718,11 @@ function payClaimBonuses(
   return { bonus, notes }
 }
 
-export function claim(
-  db: DB,
-  player: Player,
-  characterId: number,
-): { snapshot: Snapshot; notes: string[] } {
-  const row = loadState(db, player.id)
-  const { fx } = loadoutOf(row)
-  const session = readSession(row)
-  const entry = session.results.find((r) => r.char.id === characterId)
-  if (!entry) fail('That character was not in your last summon.')
-  const already = db
-    .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
-    .get(player.id, characterId)
-  if (already) fail('You already own that character.')
-
-  const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
-  const now = Date.now()
-  const notes = db.transaction(() => {
-    db.prepare(
-      'INSERT INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?, ?, ?, ?)',
-    ).run(player.id, characterId, now, entry!.char.creditValue)
-    const inSeries = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM claims cl JOIN characters c ON c.id = cl.character_id
-            WHERE cl.player_id = ? AND c.series = ?`,
-        )
-        .get(player.id, entry!.char.series) as { n: number }
-    ).n
-    const { bonus, notes } = payClaimBonuses(entry!.char, entry!.wished, fx, seriesPaid, inSeries)
-    entry!.owned = true
-    entry!.compensation = 0
-    db.prepare(
-      `UPDATE player_state
-          SET credits = credits + ?, total_claims = total_claims + 1, series_paid_json = ?,
-              roll_session_json = ?
-        WHERE player_id = ?`,
-    ).run(bonus, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
-    return notes
-  })()
-
-  return { snapshot: snapshot(db, player, true), notes }
-}
-
 /**
- * Take every unowned card of a spread at once.
+ * Take every unowned card of a summon at once.
  *
- * Shared by the sandbox's claim-all and by opening a pack, which grants its
- * whole contents. Must be called inside a transaction: it writes claims,
- * series payouts and the session together.
+ * Must be called inside a transaction: it writes claims, series payouts and
+ * the session's own bookkeeping together.
  */
 function takeAll(
   db: DB,
@@ -768,11 +730,12 @@ function takeAll(
   session: RollSession,
   fx: ReturnType<typeof computeEffects>,
   seriesPaid: Record<string, number>,
-): { claimed: number; bonus: number; merged: number } {
+): { claimed: number; bonus: number; merged: number; notes: string[] } {
   const now = Date.now()
   let claimed = 0
   let bonus = 0
   let merged = 0
+  const notes: string[] = []
   for (const entry of session.results) {
     const owns = db
       .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
@@ -797,11 +760,13 @@ function takeAll(
         )
         .get(player.id, entry.char.series) as { n: number }
     ).n
-    bonus += payClaimBonuses(entry.char, entry.wished, fx, seriesPaid, inSeries).bonus
+    const paid = payClaimBonuses(entry.char, entry.wished, fx, seriesPaid, inSeries)
+    bonus += paid.bonus
+    notes.push(...paid.notes)
     entry.owned = true
     entry.compensation = 0
   }
-  return { claimed, bonus, merged }
+  return { claimed, bonus, merged, notes }
 }
 
 /**
@@ -848,25 +813,6 @@ function autoSell(
     if (sold.includes(entry.char.id)) entry.autoSold = true
   }
   return { autoSold: rows.length, autoSoldFor: total }
-}
-
-export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed: number; bonus: number } {
-  if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
-  const row = loadState(db, player.id)
-  const { fx } = loadoutOf(row)
-  const session = readSession(row)
-  const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
-
-  const result = db.transaction(() => {
-    const r = takeAll(db, player, session, fx, seriesPaid)
-    db.prepare(
-      `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
-              series_paid_json = ?, roll_session_json = ? WHERE player_id = ?`,
-    ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
-    return r
-  })()
-
-  return { snapshot: snapshot(db, player, true), ...result }
 }
 
 /* ------------------------------------------------------- economy and timers */
@@ -1017,8 +963,7 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
     db.prepare(
       `UPDATE player_state SET credits = 0, last_daily_at = 0, daily_streak = 0,
               total_rolls = 0, total_claims = 0, badges_json = ?, upgrades_json = ?,
-              series_paid_json = '{}', roll_session_json = NULL, auto_spin = 0,
-              auto_at = 0, auto_yield = 0
+              series_paid_json = '{}', auto_spin = 0, auto_at = 0, auto_yield = 0
         WHERE player_id = ?`,
     ).run(JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), player.id)
   })()

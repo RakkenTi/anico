@@ -255,6 +255,15 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     CREATE INDEX IF NOT EXISTS idx_claims_player_claimed ON claims(player_id, claimed_at DESC);
     `,
   },
+  {
+    name: '010_no_claim_button',
+    sql: `
+    -- A summon grants what it turns up, so there is nothing left to claim
+    -- later and nothing to remember between two requests. The column held the
+    -- last spread for a claim call that no longer exists.
+    ALTER TABLE player_state DROP COLUMN roll_session_json;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {
