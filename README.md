@@ -16,20 +16,25 @@ fetched by the server and cached in the instance's own database.
 Every push to `master` publishes a multi-arch image to GHCR, so a server needs
 **two files**: `docker-compose.yml` and a `.env` next to it.
 
+The repo is private, so copy the two files from your checkout rather than fetching
+them over HTTP:
+
 ```sh
-mkdir anico && cd anico
-curl -O https://raw.githubusercontent.com/RakkenTi/anico/master/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/RakkenTi/anico/master/.env.example
-# .env already points at ghcr.io/rakkenti/anico:latest
-docker compose up -d
+ssh server 'mkdir -p /srv/anico'
+scp docker-compose.yml server:/srv/anico/
+scp .env.example server:/srv/anico/.env      # already points at ghcr.io/rakkenti/anico:latest
+ssh server 'cd /srv/anico && docker compose up -d'
 ```
 
-If the GHCR package is private (the default for a new one), either make it public
-in the repo's package settings, or log the server in first:
+The package is private too, so the server needs to log in once with a personal access
+token carrying the `read:packages` scope:
 
 ```sh
 echo $GHCR_TOKEN | docker login ghcr.io -u RakkenTi --password-stdin
 ```
+
+Or make just the package public in its GitHub package settings, which the repo can
+stay private through, and skip the login entirely.
 
 Upgrading is `docker compose pull && docker compose up -d`. The database lives in a
 named volume and is untouched by an image change.
