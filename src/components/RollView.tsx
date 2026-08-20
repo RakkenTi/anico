@@ -3,10 +3,13 @@ import { useGame, formatDuration } from '../game/store'
 import { coinTier } from '../game/economy'
 import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import CharacterCard from './CharacterCard'
+import PackOpener from './PackOpener'
 
 export default function RollView() {
   const s = useGame()
   const testing = s.sandbox
+  // nextClaimAt arrives as 0 whenever nothing is paced, so this is simply
+  // "is the cooldown spent" and cannot disagree with the server.
   const claimReady = testing || s.now >= s.nextClaimAt
   const rollsResetIn = s.rollsResetAt - s.now
   const claimIn = s.nextClaimAt - s.now
@@ -14,8 +17,7 @@ export default function RollView() {
   const ritualAt = s.ritualReadyAt()
   const fun = s.settings.mode === 'fun'
   const canRoll = testing || fun || s.rollsLeft > 0
-  // A face-down spread that has not been picked from yet.
-  const facedown = s.covered && s.covered.revealed === null ? s.covered : null
+  const pack = s.pack && s.pack.state !== 'open' ? s.pack : null
   // The x10 spread is its own once-a-day allowance and spends no hourly rolls,
   // so it stays available when the hourly budget is empty, and vice versa.
   const multiReady = fun || s.multiReady()
@@ -107,23 +109,8 @@ export default function RollView() {
               <span className="card-back-word">summoning…</span>
             </div>
           </div>
-        ) : facedown ? (
-          <div className="roll-spread covered" key={`covered-${s.rollCount}`}>
-            {Array.from({ length: facedown.count }, (_, i) => (
-              <button
-                key={i}
-                className="spread-slot covered-slot"
-                style={{ ['--deal-delay' as string]: `${dealDelayMs(i, facedown.count).toFixed(1)}ms` }}
-                onClick={() => void s.flip(i)}
-                disabled={s.rolling}
-                title="Turn this one over"
-                aria-label={`Face-down card ${i + 1} of ${facedown.count}`}
-              >
-                <span className="covered-glyph" aria-hidden="true">✦</span>
-                <span className="covered-hint">turn over</span>
-              </button>
-            ))}
-          </div>
+        ) : pack ? (
+          <PackOpener pack={pack} count={s.rolled.length} cards={s.rolled} />
         ) : s.rolled.length === 1 && entry ? (
           <div className="roll-reveal" key={s.rollCount}>
             {entry.wished && !entry.owned && (
@@ -146,7 +133,7 @@ export default function RollView() {
             {s.rolled.map((r, i) => (
               <div
                 key={`${r.char.id}-${i}`}
-                className={`spread-slot ${i === s.selected ? 'selected' : ''} ${r.owned ? 'owned' : ''} ${i === bestIdx ? 'spotlight' : ''}`}
+                className={`spread-slot ${i === s.selected ? 'selected' : ''} ${r.owned && !r.fresh ? 'owned' : ''} ${i === bestIdx ? 'spotlight' : ''}`}
                 style={{ ['--deal-delay' as string]: `${dealDelayMs(i, s.rolled.length).toFixed(1)}ms` }}
               >
                 <div className="flip-inner">
@@ -158,10 +145,14 @@ export default function RollView() {
                     onClick={() => s.selectRolled(i)}
                   />
                 </div>
-                {r.owned && (
-                  <span className="spread-tag">
-                    {r.compensation > 0 ? `dupe +${r.compensation}` : 'owned'}
-                  </span>
+                {r.fresh ? (
+                  <span className="spread-tag fresh">new</span>
+                ) : (
+                  r.owned && (
+                    <span className="spread-tag">
+                      {r.compensation > 0 ? `dupe +${r.compensation}` : 'owned'}
+                    </span>
+                  )
                 )}
               </div>
             ))}
@@ -209,12 +200,6 @@ export default function RollView() {
           )}
         </div>
 
-        {facedown && !s.rolling && (
-          <p className="covered-note">
-            Ten cards, face down. Turn <b>one</b> over — the rest stay a mystery.
-          </p>
-        )}
-
         <div className="roll-meta">
           {testing ? (
             <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
@@ -245,9 +230,11 @@ export default function RollView() {
             </div>
             {entry.owned ? (
               <span className="claim-bar-note">
-                {entry.compensation > 0
-                  ? `already yours, compensated ${entry.compensation} credits`
-                  : 'bound to your collection'}
+                {entry.fresh
+                  ? 'straight from the pack, and yours'
+                  : entry.compensation > 0
+                    ? `already yours, compensated ${entry.compensation} credits`
+                    : 'bound to your collection'}
               </span>
             ) : (
               <button

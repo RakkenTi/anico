@@ -37,8 +37,6 @@ export interface Snapshot {
   badges: Badges
   settings: ServerSettings
   pendingCoins: { tier: string; amount: number } | null
-  /** A face-down spread waiting on a pick: shape only, never its contents. */
-  covered: { count: number; revealed: number | null } | null
   wishes: RolledCharacter[]
   /** Present only on calls that could have changed it. */
   collection?: OwnedCharacter[]
@@ -50,6 +48,8 @@ export interface RollResult {
   owned: boolean
   wished: boolean
   compensation: number
+  /** Granted by the pack that just produced it, rather than already owned. */
+  fresh?: boolean
 }
 
 export interface SessionInfo {
@@ -103,11 +103,14 @@ export const api = {
   state: () => request<Snapshot>('/state'),
   catalog: () => request<CatalogStatus>('/catalog'),
 
-  roll: (count: number) => post<{ results: RollResult[]; state: Snapshot }>('/roll', { count }),
+  roll: (count: number) =>
+    post<{ results: RollResult[]; pack: boolean; claimed: number; bonus: number; state: Snapshot }>(
+      '/roll',
+      { count },
+    ),
   claim: (characterId: number) => post<{ state: Snapshot; notes: string[] }>('/claim', { characterId }),
   claimAll: () => post<{ state: Snapshot; claimed: number; bonus: number }>('/claim-all'),
   coins: () => post<{ state: Snapshot }>('/coins'),
-  flip: (index: number) => post<{ result: RollResult; state: Snapshot }>('/flip', { index }),
   sandbox: (on: boolean) => post<{ state: Snapshot }>('/sandbox', { on }),
   daily: () => post<{ state: Snapshot; amount: number; streak: number }>('/daily'),
   ritual: () => post<{ state: Snapshot }>('/ritual'),

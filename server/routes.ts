@@ -182,8 +182,12 @@ export function createApp(db: DB, config: Config) {
 
   api.post('/roll', async (c) => {
     const b = await body(c)
-    const { results, snapshot } = game.roll(db, c.get('player'), Number(b.count ?? 1))
-    return c.json({ results, state: snapshot })
+    const { results, pack, claimed, bonus, snapshot } = game.roll(
+      db,
+      c.get('player'),
+      Number(b.count ?? 1),
+    )
+    return c.json({ results, pack, claimed, bonus, state: snapshot })
   })
 
   api.post('/claim', async (c) => {
@@ -198,12 +202,6 @@ export function createApp(db: DB, config: Config) {
   })
 
   api.post('/coins', (c) => c.json({ state: game.collectCoins(db, c.get('player')) }))
-
-  api.post('/flip', async (c) => {
-    const b = await body(c)
-    const { result, snapshot } = game.flip(db, c.get('player'), Number(b.index))
-    return c.json({ result, state: snapshot })
-  })
 
   /** Enter or leave the sandbox. The real collection is untouched either way. */
   api.post('/sandbox', async (c) => {

@@ -83,13 +83,6 @@ interface RollSessionEntry {
 interface RollSession {
   at: number
   results: RollSessionEntry[]
-  /**
-   * A fun-mode x10 is dealt face down. The cards exist server-side from the
-   * moment they are rolled, but only the one index the player turns over is
-   * ever sent to them, so the pick stays a pick rather than a lookup.
-   */
-  covered?: boolean
-  revealed?: number
 }
 
 function loadState(db: DB, playerId: number): StateRow {
@@ -200,20 +193,9 @@ export interface Snapshot {
   badges: Badges
   settings: ServerSettings
   pendingCoins: { tier: string; amount: number } | null
-  /** The face-down spread waiting on a pick, if there is one. */
-  covered: { count: number; revealed: number | null } | null
   wishes: PoolPick[]
   collection?: OwnedCharacter[]
   serverNow: number
-}
-
-/** What the client may know about a face-down spread: how many, and which one is up. */
-function coveredOf(row: StateRow): { count: number; revealed: number | null } | null {
-  if (!row.roll_session_json) return null
-  const session: RollSession = JSON.parse(row.roll_session_json)
-  if (!session.covered) return null
-  if (Date.now() - session.at > ROLL_SESSION_MS) return null
-  return { count: session.results.length, revealed: session.revealed ?? null }
 }
 
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
@@ -232,7 +214,11 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     rollsResetAt: row.rolls_reset_at,
     multiReadyAt: row.last_multi_at + PACING.multiRollIntervalHours * HOUR,
     multiSize: PACING.multiRollSize,
-    nextClaimAt: row.next_claim_at,
+    // Report the cooldown as spent when nothing is paced. A next_claim_at left
+    // over from Normal mode outlives the switch to Fun, and every consumer
+    // reading it would otherwise disagree with the server about whether a
+    // claim is allowed.
+    nextClaimAt: unpaced(settings, player) ? 0 : row.next_claim_at,
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
     lastRitualAt: row.last_ritual_at,
@@ -241,7 +227,6 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     badges,
     settings,
     pendingCoins: row.pending_coins_json ? JSON.parse(row.pending_coins_json) : null,
-    covered: coveredOf(row),
     wishes: wishesOf(db, player.id),
     collection: withCollection ? collectionOf(db, player.id) : undefined,
     serverNow: Date.now(),
@@ -259,6 +244,12 @@ export interface RollResult {
   owned: boolean
   wished: boolean
   compensation: number
+  /**
+   * Granted by the pack that just produced it. Distinct from `owned`, which a
+   * pack sets on everything it hands over: without this a brand new card and a
+   * duplicate would look identical once the wrapper came off.
+   */
+  fresh?: boolean
 }
 
 /**
@@ -269,7 +260,11 @@ export interface RollResult {
  * event and costs no hourly rolls, so a day's big pull never eats the rolls
  * someone was saving. Sandbox accounts spend from neither.
  */
-export function roll(db: DB, player: Player, count: number): { results: RollResult[]; snapshot: Snapshot } {
+export function roll(
+  db: DB,
+  player: Player,
+  count: number,
+): { results: RollResult[]; pack: boolean; claimed: number; bonus: number; snapshot: Snapshot } {
   let row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
   const badges: Badges = JSON.parse(row.badges_json)
@@ -282,9 +277,9 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
 
   let draws: number
   let spend = 0
-  // A fun-mode x10 is dealt face down and only one card is ever turned over,
-  // which is what it pays instead of a cooldown.
-  const covered = free && multi && !sandbox
+  // A fun-mode x10 is a sealed pack: ten cards, every one of them granted when
+  // it is opened. Sandbox keeps its own bulk behaviour.
+  const pack = free && multi && !sandbox
 
   if (sandbox) {
     draws = Math.min(100, wanted)
@@ -340,11 +335,8 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
     used.add(char.id)
     const owned = ownedIds.has(char.id)
     const compensation = owned ? duplicateCompensation(char.creditValue, fx.dupCompMult) : 0
-    // A covered spread pays nothing until a card is turned over: crediting
-    // duplicates up front would let a player count the money and deduce what
-    // they were dealt without picking.
-    if (!covered) totalComp += compensation
-    const coin = covered ? null : rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinUpgrade)
+    totalComp += compensation
+    const coin = rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinUpgrade)
     if (coin) {
       coinAmount += coin.amount
       const tierIdx = COIN_TIERS.findIndex((t) => t.key === coin.tier)
@@ -355,23 +347,50 @@ export function roll(db: DB, player: Player, count: number): { results: RollResu
 
   const pendingCoins =
     coinBestIdx >= 0 ? { tier: COIN_TIERS[coinBestIdx].key, amount: coinAmount } : null
-  const session: RollSession = { at: Date.now(), results, ...(covered ? { covered: true } : {}) }
-  db.prepare(
-    `UPDATE player_state SET credits = credits + ?, rolls_left = ?, last_multi_at = ?,
-            total_rolls = total_rolls + ?, roll_session_json = ?, pending_coins_json = ?
-      WHERE player_id = ?`,
-  ).run(
-    totalComp,
-    row.rolls_left - spend,
-    multi && !sandbox && !free ? now : row.last_multi_at,
-    results.length,
-    JSON.stringify(session),
-    pendingCoins ? JSON.stringify(pendingCoins) : null,
-    player.id,
-  )
+  const session: RollSession = { at: Date.now(), results }
 
-  // Face down means face down: the caller gets a count, not a spread.
-  return { results: covered ? [] : results, snapshot: snapshot(db, player) }
+  const opened = db.transaction(() => {
+    db.prepare(
+      `UPDATE player_state SET credits = credits + ?, rolls_left = ?, last_multi_at = ?,
+              total_rolls = total_rolls + ?, roll_session_json = ?, pending_coins_json = ?
+        WHERE player_id = ?`,
+    ).run(
+      totalComp,
+      row.rolls_left - spend,
+      multi && !sandbox && !free ? now : row.last_multi_at,
+      results.length,
+      JSON.stringify(session),
+      pendingCoins ? JSON.stringify(pendingCoins) : null,
+      player.id,
+    )
+    if (!pack) return { claimed: 0, bonus: 0 }
+    // Remember what was already in the collection: takeAll marks everything it
+    // hands over as owned, which would otherwise erase the difference between
+    // a new card and a duplicate.
+    const wasOwned = results.map((r) => r.owned)
+    // The pack's contents are the player's the moment it is rolled, however
+    // they choose to open it on screen. Settling it here rather than on an
+    // "opened" call means a closed tab or a dropped connection mid-animation
+    // cannot cost anyone their cards.
+    const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
+    const r = takeAll(db, player, session, fx, seriesPaid)
+    results.forEach((entry, i) => {
+      if (!wasOwned[i]) entry.fresh = true
+    })
+    db.prepare(
+      `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
+              series_paid_json = ?, roll_session_json = ? WHERE player_id = ?`,
+    ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
+    return r
+  })()
+
+  return {
+    results,
+    pack,
+    claimed: opened.claimed,
+    bonus: opened.bonus,
+    snapshot: snapshot(db, player, pack),
+  }
 }
 
 /* ------------------------------------------------------------------- claim */
@@ -427,14 +446,8 @@ export function claim(
   if (!free && Date.now() < row.next_claim_at) fail('Your claim is still on cooldown.')
 
   const session = readSession(row)
-  const idx = session.results.findIndex((r) => r.char.id === characterId)
-  const entry = session.results[idx]
+  const entry = session.results.find((r) => r.char.id === characterId)
   if (!entry) fail('That character was not in your last summon.')
-  // On a face-down spread only the card actually turned over can be taken;
-  // otherwise a player could name any id and claim what they never revealed.
-  if (session.covered && session.revealed !== idx) {
-    fail('Turn a card over before claiming it.')
-  }
   const already = db
     .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
     .get(player.id, characterId)
@@ -476,47 +489,48 @@ export function claim(
   return { snapshot: snapshot(db, player, true), notes }
 }
 
+/** Sandbox only: claim every unowned card in the current spread. */
 /**
- * Turn one card of a face-down spread over.
+ * Take every unowned card of a spread at once.
  *
- * The spread was rolled server-side and has been sitting in the session all
- * along; this is what releases a single card of it. One turn per spread, and
- * the duplicate compensation and coin drop that a face-up roll would have paid
- * are settled here instead, on the one card that was actually chosen.
+ * Shared by the sandbox's claim-all and by opening a pack, which grants its
+ * whole contents. Must be called inside a transaction: it writes claims,
+ * series payouts and the session together.
  */
-export function flip(
+function takeAll(
   db: DB,
   player: Player,
-  index: number,
-): { result: RollResult; snapshot: Snapshot } {
-  const row = loadState(db, player.id)
-  const badges: Badges = JSON.parse(row.badges_json)
-  const session = readSession(row)
-  if (!session.covered) fail('That summon is already face up.')
-  if (session.revealed !== undefined && session.revealed !== null) {
-    fail('You have already turned a card over. Summon again for a new spread.')
+  session: RollSession,
+  fx: ReturnType<typeof computeEffects>,
+  seriesPaid: Record<string, number>,
+): { claimed: number; bonus: number } {
+  const now = Date.now()
+  let claimed = 0
+  let bonus = 0
+  for (const entry of session.results) {
+    const owns = db
+      .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
+      .get(player.id, entry.char.id)
+    if (owns) continue
+    db.prepare(
+      'INSERT INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?, ?, ?, ?)',
+    ).run(player.id, entry.char.id, now, entry.char.creditValue)
+    claimed++
+    const inSeries = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM claims cl JOIN characters c ON c.id = cl.character_id
+            WHERE cl.player_id = ? AND c.series = ?`,
+        )
+        .get(player.id, entry.char.series) as { n: number }
+    ).n
+    bonus += payClaimBonuses(entry.char, entry.wished, fx, seriesPaid, inSeries).bonus
+    entry.owned = true
+    entry.compensation = 0
   }
-  const i = Math.round(index)
-  if (!Number.isInteger(i) || i < 0 || i >= session.results.length) fail('No such card.')
-
-  const fx = computeEffects(badges)
-  const entry = session.results[i]
-  const coin = rollCoinDrop(BASE_COIN_CHANCE + fx.coinChanceBonus, fx.coinUpgrade)
-  session.revealed = i
-
-  db.prepare(
-    `UPDATE player_state SET credits = credits + ?, roll_session_json = ?, pending_coins_json = ?
-      WHERE player_id = ?`,
-  ).run(
-    entry.compensation,
-    JSON.stringify(session),
-    coin ? JSON.stringify(coin) : null,
-    player.id,
-  )
-  return { result: entry, snapshot: snapshot(db, player) }
+  return { claimed, bonus }
 }
 
-/** Sandbox only: claim every unowned card in the current spread. */
 export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed: number; bonus: number } {
   if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
   const row = loadState(db, player.id)
@@ -524,37 +538,14 @@ export function claimAll(db: DB, player: Player): { snapshot: Snapshot; claimed:
   const fx = computeEffects(badges)
   const session = readSession(row)
   const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
-  const now = Date.now()
 
   const result = db.transaction(() => {
-    let claimed = 0
-    let bonus = 0
-    for (const entry of session.results) {
-      const owns = db
-        .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
-        .get(player.id, entry.char.id)
-      if (owns) continue
-      db.prepare(
-        'INSERT INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?, ?, ?, ?)',
-      ).run(player.id, entry.char.id, now, entry.char.creditValue)
-      claimed++
-      const inSeries = (
-        db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM claims cl JOIN characters c ON c.id = cl.character_id
-              WHERE cl.player_id = ? AND c.series = ?`,
-          )
-          .get(player.id, entry.char.series) as { n: number }
-      ).n
-      bonus += payClaimBonuses(entry.char, entry.wished, fx, seriesPaid, inSeries).bonus
-      entry.owned = true
-      entry.compensation = 0
-    }
+    const r = takeAll(db, player, session, fx, seriesPaid)
     db.prepare(
       `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
               series_paid_json = ?, roll_session_json = ? WHERE player_id = ?`,
-    ).run(bonus, claimed, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
-    return { claimed, bonus }
+    ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), JSON.stringify(session), player.id)
+    return r
   })()
 
   return { snapshot: snapshot(db, player, true), ...result }

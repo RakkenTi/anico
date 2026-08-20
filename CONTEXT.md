@@ -57,10 +57,13 @@ summon** is its own once-a-day event that spends no hourly summons.
 own cooldown, one an hour, separate from both roll budgets.
 
 **Mode** — how strictly time is kept, chosen per player. **Fun** is the default and has
-no cooldowns at all; its ×10 deals face down and the player turns one card over, which is
-what it trades for that freedom. **Normal** is the paced game. Switching is not a cheat
-vector because the permissive mode is the default: the only thing a switch can do is add
-limits.
+no cooldowns at all; its ×10 arrives as a **pack**. **Normal** is the paced game.
+Switching is not a cheat vector because the permissive mode is the default: the only
+thing a switch can do is add limits.
+
+**Pack** — a Fun-mode ×10, sealed. Every card in it is granted the moment it is rolled,
+so opening it decides nothing and cannot be lost to a closed tab: tearing it with space
+and swiping it open card by card reach the same place. Presentation, deliberately.
 
 **Pacing** — the roll and claim rates that Normal mode keeps. Fixed by the instance and
 identical for everyone on it. They were once per-player sliders, which on a shared

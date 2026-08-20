@@ -66,8 +66,11 @@ interface GameState {
   totalRolls: number
   totalClaims: number
   pendingCoins: { tier: string; amount: number } | null
-  /** A face-down spread: how many cards, and which one has been turned over. */
-  covered: { count: number; revealed: number | null } | null
+  /**
+   * The pack currently on screen, if the last summon was one. Presentation
+   * only: its cards are already claimed by the time it arrives.
+   */
+  pack: { state: 'sealed' | 'sliced' | 'open'; revealed: number; claimed: number; bonus: number } | null
 
   /* browser only */
   rolled: RollResult[]
@@ -98,7 +101,9 @@ interface GameState {
   claim: () => Promise<void>
   claimAll: () => Promise<void>
   collectCoins: () => Promise<void>
-  flip: (index: number) => Promise<void>
+  slicePack: () => void
+  tearPack: () => void
+  revealNext: () => void
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
   claimRitual: () => Promise<void>
@@ -142,7 +147,6 @@ export const useGame = create<GameState>()((set, get) => {
       totalRolls: s.totalRolls,
       totalClaims: s.totalClaims,
       pendingCoins: s.pendingCoins,
-      covered: s.covered,
       clockOffset: s.serverNow - Date.now(),
       now: s.serverNow,
     }))
@@ -190,7 +194,7 @@ export const useGame = create<GameState>()((set, get) => {
     totalRolls: 0,
     totalClaims: 0,
     pendingCoins: null,
-    covered: null,
+    pack: null,
 
     rolled: [],
     selected: 0,
@@ -289,12 +293,14 @@ export const useGame = create<GameState>()((set, get) => {
         selected: firstFresh === -1 ? 0 : firstFresh,
         rolling: false,
         rollCount: prev.rollCount + 1,
+        pack: res.pack
+          ? { state: 'sealed' as const, revealed: 0, claimed: res.claimed, bonus: res.bonus }
+          : null,
         dealUntil:
           Date.now() + prev.clockOffset + res.results.length * dealStepMs(res.results.length) + 700,
       }))
-      // Nothing was revealed, so there is nothing to sound out yet: the fan
-      // that played when the summon started is the whole of it.
-      if (res.state.covered && res.state.covered.revealed === null) return
+      // A sealed pack sounds out as it is opened, not as it arrives.
+      if (res.pack) return
       const best = res.results.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
       sfx.reveal(rarityOf(best).key, res.results.length)
       if (res.results.some((r) => r.wished && !r.owned)) {
@@ -349,37 +355,41 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    /** Turn one card of a face-down spread over. The server decides what it is. */
-    flip: async (index) => {
+    /** Cut the wrapper: the cards are there, waiting to be turned over. */
+    slicePack: () => {
       const s = get()
-      if (s.rolling || !s.covered || s.covered.revealed !== null) return
+      if (!s.pack || s.pack.state !== 'sealed') return
       sfx.rollStart(1)
-      set({ rolling: true, error: null })
-      const res = await guard(() => api.flip(index))
-      if (!res) {
-        set({ rolling: false })
-        return
-      }
-      apply(res.state)
-      set((prev) => ({
-        rolled: [res.result],
-        selected: 0,
-        rolling: false,
-        rollCount: prev.rollCount + 1,
-        dealUntil: Date.now() + prev.clockOffset + 700,
-      }))
-      sfx.reveal(rarityOf(res.result.char.creditValue).key, 1)
-      if (res.result.wished && !res.result.owned) {
-        sfx.wish()
-        get().pushToast('A wish appears before you.', 'wish')
-      }
+      set({ pack: { ...s.pack, state: 'sliced' } })
+    },
+
+    /** Tear it open and take the lot in one go. */
+    tearPack: () => {
+      const s = get()
+      if (!s.pack || s.pack.state === 'open') return
+      const best = s.rolled.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
+      sfx.reveal(rarityOf(best).key, s.rolled.length)
+      set({ pack: { ...s.pack, state: 'open', revealed: s.rolled.length } })
+    },
+
+    /** Slide the top card off a sliced pack. */
+    revealNext: () => {
+      const s = get()
+      if (!s.pack || s.pack.state !== 'sliced') return
+      const next = s.pack.revealed + 1
+      const entry = s.rolled[s.pack.revealed]
+      if (entry) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
+      set({
+        selected: s.pack.revealed,
+        pack: { ...s.pack, revealed: next, state: next >= s.rolled.length ? 'open' : 'sliced' },
+      })
     },
 
     setSandbox: async (on) => {
       const res = await guard(() => api.sandbox(on))
       if (!res) return
       apply(res.state)
-      set({ rolled: [], selected: 0, covered: res.state.covered })
+      set({ rolled: [], selected: 0, pack: null })
       get().pushToast(
         on
           ? 'Sandbox on. This is a scratch profile: nothing here is kept.'
@@ -477,7 +487,7 @@ export const useGame = create<GameState>()((set, get) => {
       )
       if (!res) return failure ?? 'Could not reach the instance.'
       apply(res.state)
-      set({ rolled: [], selected: 0, rollCount: 0, covered: null })
+      set({ rolled: [], selected: 0, rollCount: 0, pack: null })
       get().pushToast('Your collection has been erased.', 'info')
       return null
     },
