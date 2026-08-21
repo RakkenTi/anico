@@ -62,7 +62,7 @@ export const MAX_CAST = 60
 /** The fraction of a series' cast each rung of difficulty asks for. */
 const BREADTH_BY_TIER = [0.25, 0.4, 0.55, 0.7, 0.85]
 /** And the stars it wants them at. */
-const DEPTH_BY_TIER = [0, 2, 5, 8, 11]
+export const DEPTH_BY_TIER = [0, 2, 5, 8, 11]
 
 export const RAID_TIERS = BREADTH_BY_TIER.length
 
@@ -119,4 +119,46 @@ export function tierName(raid: Pick<Raid, 'depth'>): string {
 /** Whether the collection answers this raid as it stands. */
 export function answered(raid: Pick<Raid, 'breadth' | 'held'>): boolean {
   return raid.held >= raid.breadth
+}
+
+/**
+ * The rung to post next, given what the collection already answers.
+ *
+ * The board used to draw its difficulty blind -- a random series, then a
+ * random rung -- and blind is the wrong shape here. A collection of sixty-five
+ * thousand holds one or two characters from most series it touches and holds
+ * them at no stars, so a rung drawn at random wanted 55% of a cast at the
+ * fifth star and the whole board read as a list of refusals. A board of five
+ * "no"s is not a mechanic; it is a wall.
+ *
+ * So the rung is measured against the collection instead. `top` is the hardest
+ * rung the player answers today, and the board posts around it: about a third
+ * of rows are payable on sight, most of the rest are one step out, and a few
+ * are a stretch. Nothing is made easier -- the demands are the same demands --
+ * they are just aimed at where the collection actually is.
+ */
+export function fitTier(cast: number, heldAt: number[], roll: number): number {
+  let top = -1
+  for (let t = 0; t < RAID_TIERS; t++) {
+    if ((heldAt[t] ?? 0) >= demandFor(cast, t).breadth) top = t
+  }
+  const step = roll < 0.35 ? 0 : roll < 0.75 ? 1 : 2
+  return Math.max(0, Math.min(RAID_TIERS - 1, top + step))
+}
+
+/**
+ * The faces a muster shows.
+ *
+ * A raid answered by ninety characters cannot put ninety portraits on screen
+ * and does not need to: a rank of twelve reads as "a company went out", and
+ * the row already said the real number.
+ */
+export const MUSTER_FACES = 12
+
+/** One card in a muster: enough to draw a face, and nothing else. */
+export interface Musterer {
+  id: number
+  name: string
+  image: string
+  stars: number
 }

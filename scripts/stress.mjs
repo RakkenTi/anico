@@ -98,6 +98,9 @@ const SELL_MS = 8000
  */
 const GUARANTEE = 3
 const GUARANTEE_FLOOR = 450
+/** How long answering a demand may take to put a rank of portraits on screen. */
+const MUSTER_MS = 2500
+
 /** Raids the board holds at once. */
 const BOARD_SIZE = 5
 
@@ -261,8 +264,17 @@ function climb(dbPath, rung) {
   // so the Automaton switched on at the end of one rung would be pulling
   // before the next rung's first press and would open its own packs over the
   // top of whatever was being measured.
+  /*
+   * Scrip on the slab as well as credits.
+   *
+   * The Refinery mills a few hundred spares over a run and a raid costs
+   * thousands, so a rung that started at zero could never press the board's
+   * own button -- which meant the muster, the one part of the second economy a
+   * player actually looks at, was never once rendered by the harness.
+   */
   db.prepare(
-    `UPDATE player_state SET badges_json = ?, upgrades_json = ?, credits = ?, auto_spin = 0
+    `UPDATE player_state SET badges_json = ?, upgrades_json = ?, credits = ?, auto_spin = 0,
+            scrip = MAX(scrip, 50000)
       WHERE player_id = ?`,
   ).run(JSON.stringify(badges), JSON.stringify(upgrades), Number.MAX_SAFE_INTEGER, player.id)
   db.close()
@@ -503,6 +515,33 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
   await page.locator('.tab', { hasText: /raids/i }).click({ force: true })
   await page.waitForSelector('.raids-view')
   await page.screenshot({ path: join(OUT, `${rung.name}-board.png`), fullPage: true })
+
+  /*
+   * The muster.
+   *
+   * Answering a demand is the only ritual the second economy has, and a
+   * ritual that throws is a ritual nobody sees: it deals a rank of portraits
+   * straight out of the collection, which is the one place on this page that
+   * touches sixty-five thousand rows at render time. Pressed here rather than
+   * asserted from the API on purpose.
+   */
+  const send = page.locator('.raid-row.answerable:not(.pinned) .btn-primary:not([disabled])').first()
+  let muster = null
+  if (await send.count()) {
+    const began = Date.now()
+    await send.click()
+    await page.waitForSelector('.muster-pay', { timeout: 8000 })
+    const faces = await page.locator('.muster-card').count()
+    muster = { ms: Date.now() - began, faces }
+    // The stage is on screen the moment the answer lands; the rank deals in
+    // after it. Shot once it has settled, or the picture is two cards and a
+    // lot of empty room.
+    await page.waitForTimeout(faces * 70 + 1400)
+    await page.screenshot({ path: join(OUT, `${rung.name}-muster.png`) })
+    await page.locator('.muster').click({ position: { x: 5, y: 5 } })
+    await page.waitForSelector('.muster', { state: 'detached' })
+  }
+
   await page.locator('.tab', { hasText: /summon/i }).click({ force: true })
 
   const spread = (await page.evaluate(() => {
@@ -629,6 +668,8 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('board posted', second.raids === BOARD_SIZE),
       `refinery ${second.scrip} scrip + ${second.spares} spares`.padStart(35) +
         ok('refinery running', second.scrip + second.spares > 0),
+      `muster ${muster ? `${muster.faces} faces in ${muster.ms}ms` : 'nothing answerable'}`.padStart(33) +
+        ok('muster plays', !muster || (muster.faces > 0 && muster.ms < MUSTER_MS)),
       `holding ${held.after.toLocaleString()} characters`.padStart(31),
       ...(sold
         ? [

@@ -1237,6 +1237,10 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   white-space: nowrap;
 }
 .row-effect b { color: var(--text); font-weight: 600; }
+/* One plain sentence under the numbers: what buying this actually does for
+   you. Used by the Renown shelf, where "stacks merge to ★13" is true and
+   answers nothing. */
+.row-blurb { font-size: 11px; line-height: 1.45; color: var(--text-dim); }
 .row-arrow { color: var(--value-soft); font-weight: 700; }
 .row-cost {
   font-variant-numeric: tabular-nums;
@@ -2451,15 +2455,27 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 /* ------------------------------------------------------------- the board */
 
 /* The second economy (ADR 0013). The rows are the mechanic: a bar showing what
-   you hold against what a raid wants is the only thing in the game that makes
-   one particular character worth wanting. */
+   you hold against what a demand wants is the only thing in the game that
+   makes one particular character worth wanting. Everything else on this page
+   exists to get out of that bar's way -- it used to be four sibling panels of
+   prose, which is how a mechanic ends up reading as a settings screen. */
 .raids-view { display: flex; flex-direction: column; gap: 12px; }
 
-.refinery-meters {
+.raids-lede {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.raids-lede b { color: var(--text); font-weight: 600; }
+
+.refinery-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
-  margin-top: 10px;
 }
 .meter {
   display: flex;
@@ -2471,28 +2487,109 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   background: var(--well);
 }
 .meter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
-.meter-value { font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; }
-.meter-note { font-size: 11px; color: var(--text-dim); }
+.meter-value { font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
+.meter-of { font-style: normal; font-size: 13px; color: var(--text-dim); }
+.meter-note { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+.meter-note b { color: var(--text); font-weight: 600; }
+.meter-bar {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.meter-bar > span { display: block; height: 100%; background: var(--value); }
 
-.aim-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+/* Called Shot sits with the raids rather than with the meters: it is not a
+   read-out, it is the lever that turns a row you cannot answer into one you
+   can, and it belongs next to the rows it moves. */
+.aim-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  background: var(--well);
+}
+.aim-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.aim-state b { color: var(--text); }
+.aim-state svg, .aim-state img { width: 18px; height: 18px; flex: none; }
 .aim-picker { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; margin-top: 6px; }
 
 .raid-list { display: flex; flex-direction: column; gap: 6px; }
+.raid-group {
+  margin: 8px 0 2px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.raid-group:first-child { margin-top: 0; }
+
 .raid-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto minmax(120px, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: 12px;
+  padding: 9px 11px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--well);
 }
-.raid-row.answerable { border-color: var(--line-ok); }
-.raid-head { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.raid-row.answerable { border-color: var(--line-ok); background: rgba(95, 194, 126, 0.05); }
+.raid-row.pinned { border-left: 3px solid var(--value); }
+
+/* Faces, because "14 characters at ★5" is an inventory line and five portraits
+   of people you spent a week merging is a reason to press the button. */
+.raid-faces { display: flex; flex: none; }
+.raid-faces img,
+.raid-facehole {
+  width: 34px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  margin-left: -12px;
+  box-shadow: 2px 0 0 var(--well);
+}
+.raid-faces img:first-child, .raid-facehole { margin-left: 0; }
+/* Nothing held from this series yet, so the row wears the board's own mark
+   rather than five empty frames. */
+.raid-facehole { display: grid; place-items: center; opacity: 0.3; }
+.raid-facehole .icon { width: 18px; height: 18px; }
+
+.raid-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.raid-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .raid-tier { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
 .raid-series { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.raid-ask { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.raid-chip {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+}
+.raid-chip.go { color: var(--ok); }
+.raid-chip.pin { color: var(--value); }
+.raid-ask { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+.raid-ask b { color: var(--text); }
 
 /* A bar rather than a number, because "seven of ten" is a thing you feel and
    "70%" is a thing you read. */
@@ -2519,11 +2616,155 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   line-height: 18px;
   color: var(--text);
 }
-.raid-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.raid-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .raid-reward { font-size: 12px; color: var(--value); white-space: nowrap; }
 
+/* --------------------------------------------------------- the muster */
+
+/* Answering a demand, watched rather than read. The choreography is two custom
+   properties -- `--i` per card, `--step` for the rank -- so nothing re-renders
+   while it plays and the compositor owns every frame. */
+.muster {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 7, 12, 0.94);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+  cursor: pointer;
+}
+.muster-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 1120px);
+  text-align: center;
+}
+.muster-head { display: flex; flex-direction: column; gap: 2px; }
+.muster-tier {
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.muster-series { font-family: var(--serif); font-size: clamp(1.3rem, 4vw, 2rem); line-height: 1.1; }
+.muster-ask { font-size: 12px; color: var(--text-dim); }
+
+.muster-rank {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  perspective: 1000px;
+}
+.muster-card {
+  position: relative;
+  width: clamp(52px, 8vw, 78px);
+  margin: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--line-value);
+  background: var(--surface-2);
+  animation: musterIn 0.42s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  animation-delay: calc(var(--i) * var(--step));
+}
+.muster-card img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
+.muster-card.more {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2 / 3;
+  background: repeating-linear-gradient(45deg, var(--surface) 0 10px, var(--surface-2) 10px 20px);
+}
+.muster-more { font-family: var(--serif); font-size: 1.1rem; color: var(--value-soft); }
+.muster-card figcaption {
+  padding: 3px 4px;
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+  background: var(--well);
+}
+.muster-star {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  font-size: 9px;
+  padding: 0 3px;
+  border-radius: 2px;
+  color: var(--value-soft);
+  background: rgba(10, 12, 18, 0.8);
+}
+@keyframes musterIn {
+  from { opacity: 0; transform: translateY(26px) rotateY(70deg) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The stamp lands after the last card, and the payout after the stamp: the
+   whole sequence is about as long as a wrapper takes to tear. */
+.muster-stamp {
+  font-family: var(--serif);
+  font-size: clamp(1.1rem, 3vw, 1.6rem);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ok);
+  animation: musterStamp 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) backwards;
+  animation-delay: calc(var(--n) * var(--step) + 120ms);
+}
+@keyframes musterStamp {
+  from { opacity: 0; transform: scale(2.2); letter-spacing: 0.9em; }
+  to { opacity: 1; transform: none; }
+}
+.muster-pay {
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 6vw, 2.8rem);
+  color: var(--value);
+  animation: musterPay 0.46s ease-out backwards;
+  animation-delay: calc(var(--n) * var(--step) + 540ms);
+}
+.muster-pay em {
+  font-style: normal;
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--value-soft);
+}
+@keyframes musterPay {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+.muster-close {
+  animation: fadeIn 0.3s ease-out backwards;
+  animation-delay: calc(var(--n) * var(--step) + 900ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .muster,
+  .muster-card,
+  .muster-stamp,
+  .muster-pay,
+  .muster-close { animation: none; }
+}
+
 @media (max-width: 760px) {
-  /* One column a row on a phone: four columns of this is four ellipses. */
-  .raid-row { grid-template-columns: 1fr; gap: 6px; }
-  .raid-actions { justify-content: flex-start; }
+  /* Two columns and the buttons underneath: three columns of this is three
+     ellipses. Three faces rather than five, and the series title wraps rather
+     than truncating -- a raid you cannot read the name of is not a raid. */
+  .raid-row { grid-template-columns: auto minmax(0, 1fr); }
+  .raid-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .raid-faces img:nth-child(n + 4) { display: none; }
+  .raid-series { white-space: normal; }
 }

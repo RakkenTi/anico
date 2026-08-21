@@ -27,22 +27,25 @@ import { useGame } from '../game/store'
  * board keeps waiting, which is the whole of "away costs nothing, present
  * plays the board".
  */
-function clearRoutine(st: ReturnType<typeof useGame.getState>): void {
+function clearRoutine(st: ReturnType<typeof useGame.getState>, onBoard: boolean): void {
+  // One muster at a time. The machine can clear a board faster than a muster
+  // plays, and a ritual interrupted by the next ritual is not a ritual.
+  if (st.muster) return
   const done = st.board.commissions.find((c) => c.held >= c.breadth)
-  if (done) return void st.claimCommission(done.id)
+  if (done) return void st.claimCommission(done.id, !onBoard)
   const next = st.board.raids.find((r) => r.held >= r.breadth && st.scrip >= r.cost)
-  if (next) void st.raid(next.id)
+  if (next) void st.raid(next.id, !onBoard)
 }
 
-export function useAutomaton(watching: boolean) {
+export function useAutomaton(tab: string) {
   const autoSpin = useGame((s) => s.autoSpin)
   const autoSpinMs = useGame((s) => s.autoSpinMs)
   // A ref rather than a dependency: switching tabs should not tear the timer
   // down and start the interval again from zero.
-  const watchingRef = useRef(watching)
+  const tabRef = useRef(tab)
   useEffect(() => {
-    watchingRef.current = watching
-  }, [watching])
+    tabRef.current = tab
+  }, [tab])
 
   useEffect(() => {
     if (!autoSpin || autoSpinMs <= 0) return
@@ -54,7 +57,7 @@ export function useAutomaton(watching: boolean) {
         // machine waits for them. Anywhere else there is nobody to watch: the
         // cards were granted when the pull was made, so the presentation is
         // settled rather than left blocking the loop forever.
-        if (watchingRef.current) return
+        if (tabRef.current === 'roll') return
         st.finishPacks()
       }
       if (!st.canAffordPack()) {
@@ -63,7 +66,7 @@ export function useAutomaton(watching: boolean) {
         return
       }
       void st.roll(st.packsPerPull)
-      void clearRoutine(st)
+      void clearRoutine(st, tabRef.current === 'raids')
     }, autoSpinMs)
     return () => clearInterval(id)
   }, [autoSpin, autoSpinMs])

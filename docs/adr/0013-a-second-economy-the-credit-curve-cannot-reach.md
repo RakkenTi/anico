@@ -126,6 +126,54 @@ needs a choice between series, or a stack that has to be built first, waits for
 a player. Accepting a commission is always a player's decision, because
 choosing what to chase is the decision.
 
+## The board is aimed at the collection, not drawn blind
+
+Shipped, the board picked a series at random and then a rung at random, and
+the result was five demands nobody could meet. A collection of sixty-five
+thousand holds one or two characters from most of the series it touches and
+holds them at no stars, so a rung drawn from a fixed distribution asked for
+55% of a cast at the fifth star and every row read as a refusal. A board of
+five "no"s is a wall, not a mechanic. It also made the ×2.5 commission bonus
+irrelevant, because a demand you are eleven characters short of is not
+something you go and get; it is something you scroll past.
+
+So the rung is measured rather than rolled. `fitTier` reads what the player
+holds of that series at each of the five depths, finds the hardest rung they
+answer today, and posts around it: about a third of rows are payable on sight,
+most of the rest are one step out, and a few are a stretch. **The demands are
+unchanged** — the same breadths at the same depths — they are simply aimed at
+where the collection actually is.
+
+The series pick was wrong in a subtler way. It seeked to a random point in the
+claims key and took the next row, which is a uniform pick only if the claims
+are spread evenly through the catalog's ids, and they never are: a collection
+is dense where the player has been collecting and nearly empty everywhere
+else, so a key seek weights a row by the *gap in front of it* and the sparse
+end won almost every draw. Counting to a random offset instead weights every
+claim equally, which weights a series by how much of its cast the player
+holds — which is the thing a raid asks about. The offset walks the claims
+primary key, which covers the query, so nothing is read to be skipped.
+
+## A mechanic needs a ritual
+
+The first version of this page was correct and unplayable. Four sibling panels
+of prose, rows in database order, and a mechanic whose entire expression was a
+number going up in a corner. Summoning has a wrapper you tear, cards that flip
+one at a time and a stinger when something good lands; the board had a button
+and a toast.
+
+So answering a demand plays a **muster**: a rank of the player's own cards —
+the ones that satisfy it, at the stars they merged to — deals in, the demand
+stamps answered, and the Renown lands. It reads no rule and changes none. The
+payout has already settled by the time it mounts, exactly as a pull's cards
+are granted before the first wrapper tears (ADR 0010), and the Automaton skips
+it entirely unless the player is standing on the page.
+
+It matters more than presentation usually does here, because the roster is the
+only place the second economy ever shows you *what you built*. Renown is a
+number and Scrip is a number, but a ★12 stack took four thousand copies of one
+character, and the muster is the one moment the game puts that on screen.
+
 ## What this does not do
 
 It does not add a new infinite axis. The tree ends, as badges end, because what

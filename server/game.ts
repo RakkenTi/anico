@@ -68,15 +68,18 @@ import {
 import {
   COMMISSION_BONUS,
   COMMISSION_SLOTS,
+  DEPTH_BY_TIER,
   MAX_CAST,
   MIN_CAST,
+  MUSTER_FACES,
   RAID_BOARD,
-  RAID_TIERS,
   demandFor,
+  fitTier,
   raidCost,
   raidReward,
   raidWork,
   type Commission,
+  type Musterer,
   type Raid,
 } from '../src/game/raids.js'
 import { autoSellFloor, instancePool, sanitizeSettings, type ServerSettings } from './rules.js'
@@ -1384,34 +1387,27 @@ function heldIn(db: DB, playerId: number, series: string, depth: number): number
  * (ADR 0013).
  */
 function pickSeries(db: DB, playerId: number): string | null {
-  const span = db.prepare('SELECT MIN(id) AS lo, MAX(id) AS hi FROM characters').get() as {
+  const claims = (
+    db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(playerId) as { n: number }
+  ).n
+  const cat = db.prepare('SELECT MIN(id) AS lo, MAX(id) AS hi FROM characters').get() as {
     lo: number | null
     hi: number | null
   }
-  if (span.lo === null || span.hi === null) return null
+  if (cat.lo === null || cat.hi === null) return null
+
   for (let tries = 0; tries < 8; tries++) {
     /*
-     * A random claim by key rather than by `ORDER BY RANDOM()`.
-     *
-     * Shuffling a collection of sixty-five thousand to pick one row costs
-     * seven milliseconds, and the board refills after every raid the Automaton
-     * answers. Seeking to a random point in the claims key and taking the next
-     * row is the same pick at the cost of a b-tree descent.
+     * Mostly a series with a foothold: a demand on a cast you own nothing of
+     * can only be answered by pointing Called Shot at it, and Called Shot is
+     * six levels deep in a tree this pays for. A few are still worth posting,
+     * because `fitTier` puts those on the cheapest rung and they are how a new
+     * series gets started.
      */
-    const known = Math.random() < 0.7
-    const from = span.lo! + Math.floor(Math.random() * Math.max(1, span.hi! - span.lo! + 1))
+    const known = claims > 0 && Math.random() < 0.85
     const row = known
-      ? (db
-          .prepare(
-            `SELECT c.series AS series FROM claims cl
-               JOIN characters c ON c.id = cl.character_id
-              WHERE cl.player_id = @player AND cl.character_id >= @from
-              ORDER BY cl.character_id LIMIT 1`,
-          )
-          .get({ player: playerId, from }) as { series: string } | undefined)
-      : (db
-          .prepare('SELECT series FROM characters WHERE id >= ? ORDER BY id LIMIT 1')
-          .get(from) as { series: string } | undefined)
+      ? claimAt(db, playerId, Math.floor(Math.random() * claims))
+      : characterAt(db, cat.lo + Math.floor(Math.random() * (cat.hi - cat.lo + 1)))
     if (!row?.series || row.series === 'Unknown series') continue
     const cast = castOf(db, row.series)
     if (cast >= MIN_CAST && cast <= MAX_CAST) return row.series
@@ -1419,15 +1415,89 @@ function pickSeries(db: DB, playerId: number): string | null {
   return null
 }
 
+type SeriesRow = { series: string } | undefined
+
+/**
+ * The player's `nth` claim, counting rather than seeking.
+ *
+ * This used to seek to a random point in the claims key and take the next row,
+ * which is the same pick only if the claims are evenly spread through the
+ * catalog's ids -- and they never are. A collection is dense where the player
+ * has been collecting and almost empty everywhere else, and a key seek weights
+ * a row by the *gap* in front of it, so the sparse end of the catalog won
+ * nearly every draw: the board filled with series the player held one
+ * character of and `fitTier` had nothing to work with.
+ *
+ * Counting weights every claim equally, which weights a series by how much of
+ * its cast the player actually holds -- exactly the thing a raid asks about.
+ * The offset walks the claims primary key, which covers this query, so no row
+ * is read to be skipped.
+ */
+function claimAt(db: DB, playerId: number, nth: number): SeriesRow {
+  const row = db
+    .prepare(
+      'SELECT character_id AS id FROM claims WHERE player_id = ? ORDER BY character_id LIMIT 1 OFFSET ?',
+    )
+    .get(playerId, nth) as { id: number } | undefined
+  if (!row) return undefined
+  return db.prepare('SELECT series FROM characters WHERE id = ?').get(row.id) as SeriesRow
+}
+
+/** Any catalog entry at or after `from`. */
+function characterAt(db: DB, from: number): SeriesRow {
+  return db
+    .prepare('SELECT series FROM characters WHERE id >= ? ORDER BY id LIMIT 1')
+    .get(from) as SeriesRow
+}
+
+/**
+ * What the player holds in one series at every rung's depth, in one pass.
+ *
+ * Five `heldIn` calls would answer the same question and cost five b-tree
+ * walks of the same cast; the conditional sums walk it once. Driven from
+ * `characters` for the reason `heldIn` is: the series is a few dozen rows and
+ * the collection is sixty-five thousand.
+ */
+function depthProfile(db: DB, playerId: number, series: string): number[] {
+  const cols = DEPTH_BY_TIER.map(
+    (d, i) => `SUM(CASE WHEN cl.stars >= ${d} THEN 1 ELSE 0 END) AS t${i}`,
+  ).join(', ')
+  const row = db
+    .prepare(
+      `SELECT ${cols} FROM characters c
+         JOIN claims cl ON cl.character_id = c.id AND cl.player_id = @player
+        WHERE c.series = @series`,
+    )
+    .get({ player: playerId, series }) as Record<string, number | null>
+  return DEPTH_BY_TIER.map((_, i) => row[`t${i}`] ?? 0)
+}
+
+/**
+ * The faces that answer a raid: who actually went out.
+ *
+ * The muster is the whole reason this is a mechanic rather than a ledger
+ * entry, and a muster needs bodies. Deepest first, because the stack that took
+ * four thousand copies to build is the one worth showing.
+ */
+function rosterFor(db: DB, playerId: number, series: string, depth: number): Musterer[] {
+  return db
+    .prepare(
+      `SELECT c.id AS id, c.name AS name, c.image AS image, cl.stars AS stars
+         FROM characters c
+         JOIN claims cl ON cl.character_id = c.id AND cl.player_id = @player
+        WHERE c.series = @series AND cl.stars >= @depth
+        ORDER BY cl.stars DESC, cl.copies DESC
+        LIMIT @limit`,
+    )
+    .all({ player: playerId, series, depth, limit: MUSTER_FACES }) as Musterer[]
+}
+
 /** Put one new raid on the board. Returns false when the catalog cannot fill it. */
 function postRaid(db: DB, playerId: number): boolean {
   const series = pickSeries(db, playerId)
   if (!series) return false
   const cast = castOf(db, series)
-  // Middle rungs are the common ones: the easy end is not worth a row and the
-  // hard end is not worth five of them.
-  const roll = Math.random()
-  const tier = roll < 0.2 ? 0 : roll < 0.5 ? 1 : roll < 0.8 ? 2 : roll < 0.95 ? 3 : RAID_TIERS - 1
+  const tier = fitTier(cast, depthProfile(db, playerId, series), Math.random())
   const { breadth, depth } = demandFor(cast, tier)
   const work = raidWork(breadth, depth)
   db.prepare(
@@ -1500,17 +1570,29 @@ function raidRow(db: DB, playerId: number, id: number): RaidRow {
 }
 
 /**
+ * What answering a demand pays, and who went out to earn it.
+ *
+ * The roster is not used by any rule -- it is what the muster draws. A payout
+ * the player never sees happen is a number in a corner, and the point of this
+ * whole page was that summoning has a ritual and this did not.
+ */
+export interface RaidPayout {
+  snapshot: Snapshot
+  reward: number
+  series: string
+  breadth: number
+  depth: number
+  roster: Musterer[]
+}
+
+/**
  * Answer a raid.
  *
  * Nothing is gambled: the board shows what you hold against what it wants, so
  * a raid you cannot answer is refused rather than taken and lost. Scrip is a
  * price, not a stake.
  */
-export function attemptRaid(
-  db: DB,
-  player: Player,
-  id: number,
-): { snapshot: Snapshot; reward: number; series: string } {
+export function attemptRaid(db: DB, player: Player, id: number): RaidPayout {
   const row = raidRow(db, player.id, id)
   if (row.accepted_at !== null) fail('That one is a commission. Claim it instead.')
   const held = heldIn(db, player.id, row.series, row.depth)
@@ -1519,6 +1601,8 @@ export function attemptRaid(
   }
   const state = loadState(db, player.id)
   if (state.scrip < row.cost) fail(`That raid costs ${row.cost} Scrip. You have ${state.scrip}.`)
+  // Read before the delete: after it, the raid has no series to muster from.
+  const roster = rosterFor(db, player.id, row.series, row.depth)
   db.transaction(() => {
     db.prepare(
       'UPDATE player_state SET scrip = scrip - ?, renown = renown + ? WHERE player_id = ?',
@@ -1526,7 +1610,14 @@ export function attemptRaid(
     db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
     fillBoard(db, player.id)
   })()
-  return { snapshot: snapshot(db, player), reward: row.reward, series: row.series }
+  return {
+    snapshot: snapshot(db, player),
+    reward: row.reward,
+    series: row.series,
+    breadth: row.breadth,
+    depth: row.depth,
+    roster,
+  }
 }
 
 /**
@@ -1562,17 +1653,14 @@ export function acceptCommission(db: DB, player: Player, id: number): Snapshot {
 }
 
 /** Collect a commission the collection has grown into. */
-export function claimCommission(
-  db: DB,
-  player: Player,
-  id: number,
-): { snapshot: Snapshot; reward: number; series: string } {
+export function claimCommission(db: DB, player: Player, id: number): RaidPayout {
   const row = raidRow(db, player.id, id)
   if (row.accepted_at === null) fail('That one has not been taken on.')
   const held = heldIn(db, player.id, row.series, row.depth)
   if (held < row.breadth) {
     fail(`${row.series} needs ${row.breadth} at ★${row.depth}. You have ${held}.`)
   }
+  const roster = rosterFor(db, player.id, row.series, row.depth)
   db.transaction(() => {
     db.prepare('UPDATE player_state SET renown = renown + ? WHERE player_id = ?').run(
       row.reward,
@@ -1580,7 +1668,14 @@ export function claimCommission(
     )
     db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
   })()
-  return { snapshot: snapshot(db, player), reward: row.reward, series: row.series }
+  return {
+    snapshot: snapshot(db, player),
+    reward: row.reward,
+    series: row.series,
+    breadth: row.breadth,
+    depth: row.depth,
+    roster,
+  }
 }
 
 /** Give a commission back. The slot is the cost, so this is how you pay it back. */

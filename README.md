@@ -319,8 +319,11 @@ large the pull is, so copies arrive at a flat rate no upgrade can multiply: copi
 stacks that have already merged twelve times are milled into **Scrip**, Scrip is spent on
 **raids** that ask for a breadth of one series at a depth of stars, raids pay **Renown**,
 and Renown raises the ceilings the credit engine has been sitting against. Nothing in it
-reads a character's credit value, because that would only rename rarity. See
-`docs/adr/0013-a-second-economy-the-credit-curve-cannot-reach.md`.
+reads a character's credit value, because that would only rename rarity. Each demand is
+posted at the rung the collection is standing on, so the board is something you can act
+on rather than a list of refusals, and answering one plays a **muster**: the cards that
+satisfy it deal out at the stars they merged to, the demand stamps answered, and the
+Renown lands. See `docs/adr/0013-a-second-economy-the-credit-curve-cannot-reach.md`.
 
 `npm run stress` plays the end game, which is where every performance problem this
 project has had turned up. It stands up its own throwaway instance, seeds a catalog the
@@ -333,8 +336,9 @@ measures the press-to-wrappers delay, the frame gap while a pull empties, the op
 against what Open Speed promised, sound voices landing in the same tenth of a second,
 whether the spread uses its pane, whether the button that opens a pack is reachable,
 whether the shop still answers with the Automaton running, whether every wrapper's
-guarantee was kept, whether the board posts raids and the Refinery is milling, and
-whether a whole collection can be sold. It exits non-zero on anything over budget.
+guarantee was kept, whether the board posts raids and the Refinery is milling, whether
+the muster puts a rank of portraits on screen, and whether a whole collection can be
+sold. It exits non-zero on anything over budget.
 `ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
 
 ## How it fits together

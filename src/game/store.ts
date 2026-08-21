@@ -25,13 +25,14 @@ import {
   type RenownEffects,
   type RenownKey,
 } from './renown'
-import type { Commission, Raid } from './raids'
+import type { Commission, Musterer, Raid } from './raids'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { fmt, fmtCount } from './format'
 import {
   ApiError,
   api,
   listenForState,
+  type RaidPayout,
   type RollResult,
   type ServerSettings,
   type Snapshot,
@@ -88,6 +89,42 @@ const patchStack = (
   ...pack,
   stacks: pack.stacks.map((st, i) => (i === index ? { ...st, ...patch } : st)),
 })
+
+/**
+ * The muster's own fields, lifted off a payout.
+ *
+ * Portraits come from the AniList CDN like every other card image, so they get
+ * the same treatment a pull's do: asked for the moment the answer lands rather
+ * than the moment the rank deals in.
+ */
+function payout(res: RaidPayout): Omit<Muster, 'id' | 'commission'> {
+  if (typeof Image !== 'undefined') {
+    for (const m of res.roster) {
+      const img = new Image()
+      img.decoding = 'async'
+      img.src = m.image
+    }
+  }
+  return {
+    series: res.series,
+    breadth: res.breadth,
+    depth: res.depth,
+    reward: res.reward,
+    roster: res.roster,
+  }
+}
+
+/** A demand being answered on screen: what it was, and who went out. */
+export interface Muster {
+  id: number
+  series: string
+  breadth: number
+  depth: number
+  reward: number
+  roster: Musterer[]
+  /** A commission collected rather than a raid paid for. */
+  commission: boolean
+}
 
 interface GameState {
   /* session */
@@ -156,6 +193,14 @@ interface GameState {
 
   /* browser only */
   /**
+   * The demand being answered on screen right now, if one is.
+   *
+   * Browser-only and never in a snapshot: the raid is already settled by the
+   * time this is set. It is the receipt being read out loud, the way `pack` is
+   * for a pull -- the cards were granted before the first wrapper tore.
+   */
+  muster: Muster | null
+  /**
    * Coins that have just been gathered, for the little rising markers over the
    * balance. They are already in `credits` -- these are the receipt, not the
    * money.
@@ -212,10 +257,12 @@ interface GameState {
   addWish: (char: RolledCharacter) => Promise<void>
   removeWish: (id: number) => Promise<void>
   buyBadge: (key: BadgeKey) => Promise<void>
-  /* The board (ADR 0013). */
-  raid: (id: number) => Promise<void>
+  /* The board (ADR 0013). `quiet` settles without the muster: it is what the
+     Automaton uses when nobody is on the page to watch one. */
+  raid: (id: number, quiet?: boolean) => Promise<void>
   acceptCommission: (id: number) => Promise<void>
-  claimCommission: (id: number) => Promise<void>
+  claimCommission: (id: number, quiet?: boolean) => Promise<void>
+  dismissMuster: () => void
   abandonCommission: (id: number) => Promise<void>
   buyRenown: (key: RenownKey) => Promise<void>
   setAim: (series: string | null) => Promise<void>
@@ -378,6 +425,7 @@ export const useGame = create<GameState>()((set, get) => {
     coinPops: [],
     autoSpin: false,
     pack: null,
+    muster: null,
 
     rolled: [],
     rollSort: 'dealt' as const,
@@ -783,7 +831,7 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    raid: async (id) => {
+    raid: async (id, quiet) => {
       const res = await guard(
         () => api.raid(id),
         (m) => get().pushToast(m, 'info'),
@@ -791,7 +839,11 @@ export const useGame = create<GameState>()((set, get) => {
       if (!res) return
       sfx.reveal('legendary')
       apply(res.state)
-      get().pushToast(`${res.series} answered: +${fmtCount(res.reward)} Renown`, 'credits')
+      if (quiet) {
+        get().pushToast(`${res.series} answered: +${fmtCount(res.reward)} Renown`, 'credits')
+        return
+      }
+      set({ muster: { id, commission: false, ...payout(res) } })
     },
 
     acceptCommission: async (id) => {
@@ -803,7 +855,7 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    claimCommission: async (id) => {
+    claimCommission: async (id, quiet) => {
       const res = await guard(
         () => api.claimCommission(id),
         (m) => get().pushToast(m, 'info'),
@@ -811,8 +863,14 @@ export const useGame = create<GameState>()((set, get) => {
       if (!res) return
       sfx.reveal('mythic')
       apply(res.state)
-      get().pushToast(`Commission filled: +${fmtCount(res.reward)} Renown`, 'credits')
+      if (quiet) {
+        get().pushToast(`${res.series} delivered: +${fmtCount(res.reward)} Renown`, 'credits')
+        return
+      }
+      set({ muster: { id, commission: true, ...payout(res) } })
     },
+
+    dismissMuster: () => set({ muster: null }),
 
     abandonCommission: async (id) => {
       sfx.tap()
