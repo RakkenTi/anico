@@ -102,6 +102,8 @@ export default function RaidsView() {
   const scrip = useGame((s) => s.scrip)
   const renown = useGame((s) => s.renown)
   const spares = useGame((s) => s.spares)
+  const sparesPerPull = useGame((s) => s.sparesPerPull)
+  const skipOwned = useGame((s) => s.settings.skipOwned)
   const ceilings = useGame((s) => s.ceilings)
   const levels = useGame((s) => s.renownLevels)
   const aimSeries = useGame((s) => s.aimSeries)
@@ -175,7 +177,13 @@ export default function RaidsView() {
 
   const aimed = ceilings.aimShare > 0
   const slotsFree = COMMISSION_SLOTS - board.commissions.length
-  const toNext = Math.max(0, ceilings.sparesPerScrip - spares)
+  /* How long the next Scrip is, in the unit this economy is denominated in:
+     presses. "618 more spares" is a number nobody can price. */
+  const rate = sparesPerPull
+  const left = Math.max(0, ceilings.sparesPerScrip - spares)
+  const presses = rate > 0 ? Math.ceil(left / rate) : 0
+  const perScrip =
+    presses <= 1 ? 'the next press' : `about ${fmtCount(presses)} press${presses === 1 ? '' : 'es'}`
   const mergeMult = effects().mergeMult
 
   /**
@@ -273,11 +281,24 @@ export default function RaidsView() {
 
       <p className="raids-lede">
         Summoning pays credits, and credits eventually run out of things to buy. This is what
-        comes after it. Copies too deep to merge are milled into <b>Scrip</b>, Scrip sends raids,
-        raids pay <b>Renown</b>, and Renown raises the ceilings your summon has been sitting
-        against — so the pull that stopped growing starts growing again. The milling runs while
-        you are away; the board waits until you are back.
+        comes after it. Every duplicate sheds scrap and a deeper stack sheds more; the Refinery
+        mills it into <b>Scrip</b>, Scrip sends raids, raids pay <b>Renown</b>, and Renown raises
+        the ceilings your summon has been sitting against — so the pull that stopped growing
+        starts growing again. The milling runs while you are away; the board waits until you
+        are back.
       </p>
+
+      {/* Skip Owned is the one setting that switches this whole page off, and it
+          does it silently: no duplicates means no stacks growing, which means
+          no scrap and no Scrip, forever. Said here rather than left to be
+          worked out from a meter that never moves. */}
+      {skipOwned && (
+        <p className="raids-warn">
+          <b>Skip Owned is on.</b> Your pulls never deal a character you already have, so no
+          stack is growing and the Refinery has nothing to mill. Turn it off in Settings to
+          start earning Scrip.
+        </p>
+      )}
 
       <div className="refinery-strip">
         <div className="meter">
@@ -296,8 +317,20 @@ export default function RaidsView() {
             {spares.toLocaleString()}
             <em className="meter-of"> / {ceilings.sparesPerScrip.toLocaleString()}</em>
           </b>
-          <span className="meter-note" title="A stack merged twelve times holds 4,096 copies. One more can never merge, so it drops out as a spare.">
-            {toNext.toLocaleString()} more make the next Scrip
+          {/* The rate, not just the tank. A meter that only fills tells you
+              nothing about whether you are getting anywhere, which is the
+              question this economy kept failing to answer. */}
+          <span
+            className="meter-note"
+            title="A copy is worth as much scrap as the stack it lands on is deep: half a spare on a stack halfway to ★12, a whole one at the cap."
+          >
+            {rate > 0 ? (
+              <>
+                ≈{fmtCount(Math.round(rate))} a press — {perScrip} to the next Scrip
+              </>
+            ) : (
+              'press summon to start milling'
+            )}
           </span>
           <span className="meter-bar" aria-hidden="true">
             <span style={{ width: `${Math.min(100, (spares / Math.max(1, ceilings.sparesPerScrip)) * 100)}%` }} />

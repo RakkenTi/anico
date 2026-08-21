@@ -40,6 +40,8 @@ export interface Snapshot {
   collectionRev: number
   /** The second economy: see ADR 0013. Milled copies short of a whole Scrip. */
   spares: number
+  /** What a press has recently been worth in spares, smoothed. */
+  sparesPerPull: number
   scrip: number
   renown: number
   renownLevels: Renown

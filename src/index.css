@@ -2472,6 +2472,19 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .raids-lede b { color: var(--text); font-weight: 600; }
 
+/* A setting elsewhere has switched this page off. Louder than the lede on
+   purpose: nothing on the board will ever move until it is changed. */
+.raids-warn {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.raids-warn b { color: var(--accent); }
+
 .refinery-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

@@ -119,7 +119,9 @@ export default function SettingsView() {
           </label>
           <p className="setting-hint">
             Leave this off if you want to merge. Duplicates stack, and every doubling merges
-            a stack a star higher, which is worth far more than the copies were apart.
+            a stack a star higher, which is worth far more than the copies were apart. It
+            also switches the Refinery off outright: a pull with this on deals no duplicates,
+            so no stack grows, no scrap is shed and no Scrip is ever milled.
           </p>
         </div>
 

@@ -44,6 +44,7 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 function boardOpen(s: ReturnType<typeof useGame.getState>): boolean {
   return (
     s.spares > 0 ||
+    s.sparesPerPull > 0 ||
     s.scrip > 0 ||
     s.renown > 0 ||
     Object.values(s.renownLevels).some((n) => n > 0) ||

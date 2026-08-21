@@ -67,7 +67,7 @@ const CATALOG = Number(process.env.ANICO_STRESS_CATALOG ?? 80_000)
 const DESKTOP = { width: 1440, height: 900 }
 const PHONE = { width: 390, height: 844 }
 const RUNGS = [
-  { name: 'mid', packs: 12, multipack: 6, haste: 14, own: 2_000, budget: { summon: 1500, frame: 20 } },
+  { name: 'mid', packs: 12, multipack: 6, haste: 14, own: 2_000, copies: 512, budget: { summon: 1500, frame: 20 } },
   { name: 'late', packs: 20, multipack: 16, haste: 24, own: 20_000, budget: { summon: 2500, frame: 22 } },
   // The rung that sells: sixty-five thousand characters, all of them at once.
   { name: 'deep', packs: 24, multipack: 23, haste: 30, own: 65_000, sell: true, budget: { summon: 3000, frame: 24 } },
@@ -215,7 +215,7 @@ function seed(dbPath, n) {
  * one that has to build it back. Claims are spread across the catalog rather
  * than clustered, because both the pool draw and the series count read them.
  */
-function stock(dbPath, n) {
+function stock(dbPath, n, copies = 4096) {
   const db = new Database(dbPath)
   const player = db.prepare('SELECT id FROM players WHERE username = ?').get(USER)
   const have = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
@@ -225,17 +225,20 @@ function stock(dbPath, n) {
   )
   const now = Date.now()
   /*
-   * Two thirds of it merged to the cap.
+   * Two thirds of it merged deep, and how deep is the rung's business.
    *
-   * The Refinery only runs on stacks that have already merged twelve times
-   * (ADR 0013), so a collection of singles is a collection with the whole
-   * second economy switched off -- which is not what a rung this deep looks
-   * like, and would mean the harness never tested any of it.
+   * A copy sheds as much scrap as the stack it lands on (ADR 0013), so a
+   * collection of singles is a collection with the second economy nearly
+   * switched off -- which is not what a rung this deep looks like, and would
+   * mean the harness never tested any of it. The `mid` rung deliberately sits
+   * *below* the star cap, because the yield used to be all or nothing at the
+   * cap and a hundred and thirty-six hours of nothing is what that cost.
    */
+  const stars = Math.floor(Math.log2(copies))
   db.transaction(() => {
     for (let i = 0; i < n; i++) {
       const deep = i % 3 !== 2
-      stmt.run(player.id, 1000 + i, now - i * 1000, 40 + (i % 900), deep ? 4096 : 3, deep ? 12 : 1)
+      stmt.run(player.id, 1000 + i, now - i * 1000, 40 + (i % 900), deep ? copies : 3, deep ? stars : 1)
     }
   })()
   const after = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
@@ -351,7 +354,7 @@ for (const signal of ['exit', 'SIGINT', 'SIGTERM']) {
 
 for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name))) {
   climb(join(dataDir, 'anico.db'), rung)
-  const held = stock(join(dataDir, 'anico.db'), rung.own)
+  const held = stock(join(dataDir, 'anico.db'), rung.own, rung.copies)
   server = serve(dataDir)
   await up()
 
@@ -506,6 +509,7 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
       .then((d) => ({
         scrip: d.scrip,
         spares: d.spares,
+        rate: d.sparesPerPull,
         raids: d.board.raids.length,
         answerable: d.board.raids.filter((r) => r.held >= r.breadth).length,
         cast: d.board.raids.map((r) => r.breadth).join('/'),
@@ -666,8 +670,8 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('guarantee kept', promise.kept === promise.wrappers),
       `board ${second.raids} raids, ${second.answerable} answerable`.padStart(33) +
         ok('board posted', second.raids === BOARD_SIZE),
-      `refinery ${second.scrip} scrip + ${second.spares} spares`.padStart(35) +
-        ok('refinery running', second.scrip + second.spares > 0),
+      `refinery ${second.rate.toFixed(1)} spares a press`.padStart(33) +
+        ok('refinery milling', second.rate > 0),
       `muster ${muster ? `${muster.faces} faces in ${muster.ms}ms` : 'nothing answerable'}`.padStart(33) +
         ok('muster plays', !muster || (muster.faces > 0 && muster.ms < MUSTER_MS)),
       `holding ${held.after.toLocaleString()} characters`.padStart(31),
