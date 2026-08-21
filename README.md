@@ -243,16 +243,29 @@ mid-pull. Nobody is left on last week's bundle talking to this week's API.
 
 ```sh
 npm install
+npm run dev           # a whole game: instance on :8090, client on :5173
 npm run build         # client into dist/client, server into dist/server
 npm start             # the built server on :8080
-npm run dev           # Vite on :5173, proxying /api to :8080
 npm run lint          # oxlint
 npm test              # the demo's SQLite shim, and the drift guards
 ```
 
-Run `npm start` and `npm run dev` together for hot reload against a live API. Point the
-proxy elsewhere with `ANICO_API=http://127.0.0.1:8090 npm run dev`, which is how you work
-against a throwaway seeded instance without touching the one you play on.
+`npm run dev` is the only one you need to play with. It compiles the server, starts it
+watching, starts Vite watching, and points one at the other, so a change to a rule and a
+change to a component both land in the browser without a second terminal.
+
+Its database is `devdata/`, which is gitignored and disposable: **delete the directory to
+start the game over.** It is seeded from the demo's baked catalog, so the first summon
+deals a real character and the AniList crawl never runs. Deliberately port 8090 and not
+8080, because 8080 is where a real instance runs and a dev client should not be pointed at
+the save you actually play.
+
+```sh
+ANICO_DEV_PORT=9001 npm run dev              # the instance somewhere else
+ANICO_DEV_CRAWL=true npm run dev             # fill the dev catalog from AniList
+ANICO_API=http://127.0.0.1:8080 npm run dev  # no instance; client against that one
+npm run dev:client                           # Vite alone, as `dev` used to be
+```
 
 `npm run shots` drives a running instance with a real browser and writes screenshots at
 desktop and phone sizes, including the states that only exist mid-gesture, like a pack
