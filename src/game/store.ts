@@ -18,6 +18,14 @@ import { DAILY_INTERVAL_H, rarityOf } from './economy'
 import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects } from './badges'
 import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
 import { POOL_EVERYTHING } from './pool'
+import {
+  EMPTY_RENOWN,
+  renownEffects,
+  type Renown,
+  type RenownEffects,
+  type RenownKey,
+} from './renown'
+import type { Commission, Raid } from './raids'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { fmt, fmtCount } from './format'
 import {
@@ -101,6 +109,14 @@ interface GameState {
   /** The instance's collection revision, and the one our copy was fetched at. */
   collectionRev: number
   collectionAt: number
+  /* The second economy (ADR 0013). */
+  spares: number
+  scrip: number
+  renown: number
+  renownLevels: Renown
+  ceilings: RenownEffects
+  aimSeries: string | null
+  board: { raids: Raid[]; commissions: Commission[] }
   wishes: RolledCharacter[]
   badges: Badges
   upgrades: Upgrades
@@ -196,6 +212,13 @@ interface GameState {
   addWish: (char: RolledCharacter) => Promise<void>
   removeWish: (id: number) => Promise<void>
   buyBadge: (key: BadgeKey) => Promise<void>
+  /* The board (ADR 0013). */
+  raid: (id: number) => Promise<void>
+  acceptCommission: (id: number) => Promise<void>
+  claimCommission: (id: number) => Promise<void>
+  abandonCommission: (id: number) => Promise<void>
+  buyRenown: (key: RenownKey) => Promise<void>
+  setAim: (series: string | null) => Promise<void>
   buyUpgrade: (key: UpgradeKey) => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
   grantCredits: (amount: number) => Promise<void>
@@ -231,6 +254,13 @@ export const useGame = create<GameState>()((set, get) => {
       poolSize: s.poolSize,
       collection: s.collection ?? prev.collection,
       collectionRev: s.collectionRev,
+      spares: s.spares,
+      scrip: s.scrip,
+      renown: s.renown,
+      renownLevels: s.renownLevels,
+      ceilings: s.ceilings,
+      aimSeries: s.aimSeries,
+      board: s.board,
       // A pushed snapshot carries no collection, so the copy we hold keeps the
       // revision it was fetched at and the view knows to ask again.
       collectionAt: s.collection ? s.collectionRev : prev.collectionAt,
@@ -324,6 +354,13 @@ export const useGame = create<GameState>()((set, get) => {
     collection: [],
     collectionRev: 0,
     collectionAt: 0,
+    spares: 0,
+    scrip: 0,
+    renown: 0,
+    renownLevels: { ...EMPTY_RENOWN },
+    ceilings: renownEffects(EMPTY_RENOWN),
+    aimSeries: null,
+    board: { raids: [], commissions: [] },
     wishes: [],
     badges: { ...EMPTY_BADGES },
     upgrades: { ...EMPTY_UPGRADES },
@@ -741,6 +778,64 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.buy()
       const res = await guard(
         () => api.buyBadge(key),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (res) apply(res.state)
+    },
+
+    raid: async (id) => {
+      const res = await guard(
+        () => api.raid(id),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (!res) return
+      sfx.reveal('legendary')
+      apply(res.state)
+      get().pushToast(`${res.series} answered: +${fmtCount(res.reward)} Renown`, 'credits')
+    },
+
+    acceptCommission: async (id) => {
+      sfx.tap()
+      const res = await guard(
+        () => api.accept(id),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (res) apply(res.state)
+    },
+
+    claimCommission: async (id) => {
+      const res = await guard(
+        () => api.claimCommission(id),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (!res) return
+      sfx.reveal('mythic')
+      apply(res.state)
+      get().pushToast(`Commission filled: +${fmtCount(res.reward)} Renown`, 'credits')
+    },
+
+    abandonCommission: async (id) => {
+      sfx.tap()
+      const res = await guard(
+        () => api.abandon(id),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (res) apply(res.state)
+    },
+
+    buyRenown: async (key) => {
+      sfx.buy()
+      const res = await guard(
+        () => api.buyRenown(key),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (res) apply(res.state)
+    },
+
+    setAim: async (series) => {
+      sfx.tap()
+      const res = await guard(
+        () => api.setAim(series),
         (m) => get().pushToast(m, 'info'),
       )
       if (res) apply(res.state)

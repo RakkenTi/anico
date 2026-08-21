@@ -310,6 +310,60 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     UPDATE player_state SET settings_json = json_remove(settings_json, '$.poolSize');
     `,
   },
+  {
+    name: '014_renown',
+    sql: `
+    -- A second economy the credit curve cannot reach (ADR 0013).
+    --
+    -- A press deals at most a thousand cards however large the pull is, so the
+    -- stream of copies is flat where credits are exponential. Spares -- copies
+    -- above what a stack can still merge -- are milled into Scrip, Scrip is
+    -- spent on raids, raids pay Renown, and Renown raises the ceilings the
+    -- credit engine has been sitting against.
+    ALTER TABLE player_state ADD COLUMN spares INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE player_state ADD COLUMN scrip INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE player_state ADD COLUMN renown INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE player_state ADD COLUMN renown_json TEXT NOT NULL DEFAULT '{}';
+    -- The series Called Shot is pointed at, or null for none.
+    ALTER TABLE player_state ADD COLUMN aim_series TEXT;
+    -- Smoothed spares one pull is worth, so time away fills the tank at the
+    -- same rate time present does. Away costs nothing; it just does not play
+    -- the board.
+    ALTER TABLE player_state ADD COLUMN auto_spares REAL NOT NULL DEFAULT 0;
+
+    -- The board. A row with accepted_at set is a commission: a raid taken on
+    -- rather than answered, which pays when the collection reaches it. Nothing
+    -- here has an expiry, because ADR 0004 took every clock out of this game.
+    CREATE TABLE raids (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id  INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      series     TEXT NOT NULL,
+      breadth    INTEGER NOT NULL,
+      depth      INTEGER NOT NULL,
+      cost       INTEGER NOT NULL,
+      reward     INTEGER NOT NULL,
+      accepted_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_raids_player ON raids(player_id);
+
+    -- Counting a series' cast, and counting how much of it a player holds, are
+    -- both series-first queries. Without this they scan the catalog.
+    CREATE INDEX IF NOT EXISTS idx_characters_series ON characters(series);
+
+    -- The Emerald guarantee draws by credit value, and walks down the rarity
+    -- ladder doing it (ADR 0012), so what was one scan of the catalog a pull
+    -- is up to four. Indexed, the Mythic rung looks at eleven rows instead of
+    -- a hundred and twenty thousand: 41ms a draw becomes 5.6ms.
+    CREATE INDEX IF NOT EXISTS idx_characters_value ON characters(credit_value DESC);
+
+    -- Both of the above are only worth having if the planner believes them.
+    -- Without statistics it drove the raid count from a collection of
+    -- sixty-five thousand claims rather than from the twenty-five characters
+    -- of one series: 12.9ms a row against 0.1ms.
+    ANALYZE;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {
@@ -318,6 +372,16 @@ export function openDb(file: string): DB {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.pragma('busy_timeout = 5000')
+  /*
+   * Keep the planner's statistics current.
+   *
+   * The catalog grows by tens of thousands of rows during the first crawl and
+   * then barely moves, so stats gathered at migration time go stale exactly
+   * once and stay wrong. `optimize` re-analyses only what has changed, and it
+   * is the difference between a raid counting twenty-five rows and counting
+   * sixty-five thousand.
+   */
+  db.pragma('optimize')
 
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
     name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`)

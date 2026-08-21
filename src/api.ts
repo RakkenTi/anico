@@ -7,6 +7,8 @@
 import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
+import type { Renown, RenownEffects, RenownKey } from './game/renown'
+import type { Commission, Raid } from './game/raids'
 
 export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
@@ -27,6 +29,16 @@ export interface Snapshot {
   poolSize: number
   /** Moves whenever the collection changes, including on another device. */
   collectionRev: number
+  /** The second economy: see ADR 0013. Milled copies short of a whole Scrip. */
+  spares: number
+  scrip: number
+  renown: number
+  renownLevels: Renown
+  /** The ceilings the Renown tree has raised. */
+  ceilings: RenownEffects
+  /** The series Called Shot is pointed at, or null. */
+  aimSeries: string | null
+  board: { raids: Raid[]; commissions: Commission[] }
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
   /** Packs torn at a single press. */
@@ -94,6 +106,10 @@ export interface RollSummary {
   /** Cards the pull held beyond what it dealt: appraised rather than shown. */
   hidden: number
   hiddenFor: number
+  /** Copies past what a stack can still merge, milled on arrival (ADR 0013). */
+  spares: number
+  /** What the Refinery got out of them. */
+  scrip: number
 }
 
 export interface SessionInfo {
@@ -183,6 +199,16 @@ export const api = {
     request<{ state: Snapshot }>(`/wish/${characterId}`, { method: 'DELETE' }),
   search: (q: string) => request<{ results: RolledCharacter[] }>(`/search?q=${encodeURIComponent(q)}`),
   buyBadge: (key: string) => post<{ state: Snapshot }>('/badge', { key }),
+
+  /* The board (ADR 0013). */
+  raid: (id: number) =>
+    post<{ state: Snapshot; reward: number; series: string }>(`/raid/${id}`),
+  accept: (id: number) => post<{ state: Snapshot }>(`/commission/${id}`),
+  claimCommission: (id: number) =>
+    post<{ state: Snapshot; reward: number; series: string }>(`/commission/${id}/claim`),
+  abandon: (id: number) => request<{ state: Snapshot }>(`/commission/${id}`, { method: 'DELETE' }),
+  buyRenown: (key: RenownKey) => post<{ state: Snapshot }>('/renown', { key }),
+  setAim: (series: string | null) => post<{ state: Snapshot }>('/aim', { series }),
   buyUpgrade: (key: string) => post<{ state: Snapshot }>('/upgrade', { key }),
   updateSettings: (patch: Partial<ServerSettings>) =>
     request<{ state: Snapshot }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),

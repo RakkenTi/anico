@@ -14,6 +14,26 @@ import { useGame } from '../game/store'
  * unmounted and took the timer with it, which is a strange way to treat a
  * machine bought for grinding while you do something else.
  */
+/**
+ * What the machine is allowed to do on the board.
+ *
+ * Any raid the collection already answers, and any commission it has grown
+ * into: both are lookups, and withholding a lookup would be the game being coy
+ * (ADR 0013). What it never does is *choose* -- taking a commission on means
+ * picking which series to chase, and that is the decision the mechanic exists
+ * to give the player.
+ *
+ * Only ever from an open device. Away, the Refinery keeps filling and the
+ * board keeps waiting, which is the whole of "away costs nothing, present
+ * plays the board".
+ */
+function clearRoutine(st: ReturnType<typeof useGame.getState>): void {
+  const done = st.board.commissions.find((c) => c.held >= c.breadth)
+  if (done) return void st.claimCommission(done.id)
+  const next = st.board.raids.find((r) => r.held >= r.breadth && st.scrip >= r.cost)
+  if (next) void st.raid(next.id)
+}
+
 export function useAutomaton(watching: boolean) {
   const autoSpin = useGame((s) => s.autoSpin)
   const autoSpinMs = useGame((s) => s.autoSpinMs)
@@ -43,6 +63,7 @@ export function useAutomaton(watching: boolean) {
         return
       }
       void st.roll(st.packsPerPull)
+      void clearRoutine(st)
     }, autoSpinMs)
     return () => clearInterval(id)
   }, [autoSpin, autoSpinMs])

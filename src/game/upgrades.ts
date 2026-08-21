@@ -64,10 +64,16 @@ export const MIN_DEALT = 200
 /** And nobody deals more, however fast: a spread is still a thing on a screen. */
 export const MAX_DEALT = 1_000
 
-/** Cards this pull lays out, given the hands opening it. */
-export function dealtFor(total: number, rate: number): number {
+/**
+ * Cards this pull lays out, given the hands opening it.
+ *
+ * The ceiling is a floor: Wider Deal raises it, so callers that know whose
+ * pull it is pass the player's own (ADR 0013). A thousand is what it is before
+ * anybody has bought any.
+ */
+export function dealtFor(total: number, rate: number, cap: number = MAX_DEALT): number {
   const hands = Math.round(Math.max(1, rate) * DEAL_SECONDS)
-  return Math.max(1, Math.min(total, MAX_DEALT, Math.max(MIN_DEALT, hands)))
+  return Math.max(1, Math.min(total, Math.max(1, cap), Math.max(MIN_DEALT, hands)))
 }
 
 /** Packs laid side by side on screen. Past this the extra packs are appraised. */
