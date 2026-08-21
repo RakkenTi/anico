@@ -1284,6 +1284,16 @@ ol.badge-levels { list-style: none; counter-reset: none; display: flex; flex-dir
 }
 .shop-status dd { margin: 2px 0 0; font-size: 0.85rem; }
 
+/* A spread big enough to need windowing (see useVirtualGrid): the scroller is
+   as tall as the whole thing and the mounted rows are moved into place. */
+.spread-scroller { position: relative; width: 100%; }
+.spread-scroller > .roll-spread.windowed { will-change: transform; }
+/* No cascade at a thousand cards: a flourish nobody can see the end of is a
+   delay. The cards are simply there. */
+.roll-spread.windowed .spread-slot { animation: none; opacity: 1; }
+.roll-spread.windowed .flip-inner { transform: none; }
+.roll-spread.windowed .flip-back { display: none; }
+
 /* Kept on purpose. The mark sits opposite the wish star, which is the other
    thing on a card that means "this one matters". */
 .lock-mark {
@@ -1985,6 +1995,20 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .pack-grid.packs-4,
 .pack-grid.packs-5,
 .pack-grid.packs-6 { --pack-w: min(calc(24% - 20px), 178px); }
+.pack-grid.packs-7,
+.pack-grid.packs-8 { --pack-w: min(calc(24% - 20px), 150px); }
+.pack-grid.packs-9,
+.pack-grid.packs-10,
+.pack-grid.packs-11,
+.pack-grid.packs-12 { --pack-w: min(calc(19% - 16px), 116px); }
+/* Nine or more wrap onto a second row, so the pair of them has to fit between
+   the header and the dock along with the hint and the button. */
+.pack-grid.packs-7,
+.pack-grid.packs-8,
+.pack-grid.packs-9,
+.pack-grid.packs-10,
+.pack-grid.packs-11,
+.pack-grid.packs-12 { gap: 20px 14px; }
 
 .pack-area {
   position: relative;
@@ -2064,7 +2088,13 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
     gap: 16px 10px;
   }
   .pack-grid.packs-5,
-  .pack-grid.packs-6 {
+  .pack-grid.packs-6,
+  .pack-grid.packs-7,
+  .pack-grid.packs-8,
+  .pack-grid.packs-9,
+  .pack-grid.packs-10,
+  .pack-grid.packs-11,
+  .pack-grid.packs-12 {
     --pack-w: min(
       calc(33% - 26px),
       clamp(66px, calc((100dvh - 460px - env(safe-area-inset-bottom, 0px)) / 3.4), 104px)
@@ -2089,9 +2119,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 /* A crowded grid leans less: the pile is decoration once the gesture belongs
    to the whole screen, and at five across it was resting on its neighbour. */
-.pack-grid.packs-4 .pack-card.behind,
-.pack-grid.packs-5 .pack-card.behind,
-.pack-grid.packs-6 .pack-card.behind {
+.pack-grid:not(.packs-1):not(.packs-2):not(.packs-3) .pack-card.behind {
   --fan: min(var(--depth), 5);
   transform: translate(calc(var(--fan) * 3px), calc(var(--fan) * -2px));
   filter: brightness(calc(1 - min(var(--depth), 10) * 0.045));

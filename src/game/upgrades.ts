@@ -43,28 +43,48 @@ export const EMPTY_UPGRADES: Upgrades = {
 /* --------------------------------------------------------------- ceilings */
 
 /**
- * Cards one press actually deals: granted card by card, laid out on screen,
- * added to the collection.
+ * How much of a pull is actually dealt: granted card by card, laid out on
+ * screen, added to the collection. Everything else is appraised (see
+ * `server/game.ts`) -- opened by the machine and turned straight into credits.
  *
- * Pack sizes run away by design -- that is the entire point of an incremental
- * -- so at some point a pack stops being a thing you look at and becomes a
- * number. Everything past this is opened by the machine and appraised (see
- * `server/game.ts`), which keeps a pull O(200) in database writes however many
- * millions of cards it nominally holds.
+ * Pack sizes run away by design, so at some point a pack stops being a thing
+ * you look at and becomes a number. What decides where that point is, is *how
+ * fast your hands are*: Open Speed buys cards a second, and six seconds of them
+ * is how much of the pull you get to go through. That is the only reading of
+ * the cap that makes the numbers add up -- a pack of ten thousand emptied in
+ * five seconds at fifty cards a second never did.
+ *
+ * It used to be a flat two hundred cards in at most six stacks, which meant
+ * every level of Pack Size, Extra Packs and Open Speed past a certain point
+ * changed nothing you could see.
  */
-export const MAX_DEALT = 200
+export const DEAL_SECONDS = 6
+/** Nobody deals less than this, however slow their hands. */
+export const MIN_DEALT = 200
+/** And nobody deals more, however fast: a spread is still a thing on a screen. */
+export const MAX_DEALT = 1_000
 
-/** Packs laid side by side on screen. The rest of a pull is appraised. */
-export const MAX_STACKS = 6
+/** Cards this pull lays out, given the hands opening it. */
+export function dealtFor(total: number, rate: number): number {
+  const hands = Math.round(Math.max(1, rate) * DEAL_SECONDS)
+  return Math.max(1, Math.min(total, MAX_DEALT, Math.max(MIN_DEALT, hands)))
+}
+
+/** Packs laid side by side on screen. Past this the extra packs are appraised. */
+export const MAX_STACKS = 12
 
 /**
- * Cards drawn behind the top of a stack.
+ * Cards mounted behind the top of a stack, across the whole pull.
  *
- * Purely a render budget: a two-hundred-card stack used to mount two hundred
- * cards, each with an image and a foil frame, of which four are visible. On a
- * phone that is the difference between a pack opening and a slideshow.
+ * Purely a render budget, shared out: one stack shows twenty-five, twelve show
+ * six each. A two-hundred-card stack used to mount two hundred cards, each with
+ * an image and a foil frame, of which four are visible.
  */
-export const STACK_RENDER_DEPTH = 25
+export const STACK_RENDER_BUDGET = 90
+export const STACK_RENDER_MAX = 25
+export function stackDepth(stacks: number): number {
+  return Math.max(3, Math.min(STACK_RENDER_MAX, Math.floor(STACK_RENDER_BUDGET / Math.max(1, stacks))))
+}
 
 /* ------------------------------------------------------------ the ladders */
 
@@ -87,9 +107,9 @@ export interface UpgradeDef {
 export const PACK_GROWTH = 1.3
 /** Everything sells for this much more per level of Appraisal. */
 export const APPRAISAL_GROWTH = 1.18
-/** Cards a second, at rest and per level of Swift Hands. */
+/** Cards a second at rest, and what a level of Open Speed multiplies it by. */
 export const BASE_CARD_RATE = 4
-export const CARD_RATE_STEP = 4
+export const CARD_RATE_GROWTH = 1.35
 
 export const UPGRADE_DEFS: UpgradeDef[] = [
   {
@@ -105,10 +125,10 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     key: 'haste',
     name: 'Open Speed',
     icon: 'hourglass',
-    blurb: 'Cards come out of a pack faster. Big packs need this.',
+    blurb: 'Cards come out faster, and six seconds of them is how much of a pull you open.',
     baseCost: 8_000,
     growth: 1.9,
-    effect: (l) => `${cardRate(l)} cards per second`,
+    effect: (l) => `${cardRate(l)} cards/sec, ${fmtCount(dealtFor(MAX_DEALT, cardRate(l)))} dealt`,
   },
   {
     key: 'packs',
@@ -185,6 +205,11 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
 /* ------------------------------------------------------------ the numbers */
 
 /** Local, because this module is shared with the server and imports nothing. */
+function fmtCount(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}K` : String(n)
+}
+
+/** Local, because this module is shared with the server and imports nothing. */
 function fmtX(n: number): string {
   if (n < 10) return `×${Number(n.toFixed(2))}`
   if (n < 10_000) return `×${Math.round(n).toLocaleString()}`
@@ -206,9 +231,17 @@ export function packsPerPull(level: number): number {
   return 1 + lv(level)
 }
 
-/** Cards a second the hands can actually manage. */
+/**
+ * Cards a second the hands can actually manage.
+ *
+ * Multiplied, not added to. Four more cards a second is everything at level one
+ * and nothing at level twenty, and it fell further behind every line it is
+ * priced beside: Pack Size multiplies, Sell Value multiplies, and Open Speed
+ * was still handing out the same four. It decides how much of a pull you
+ * actually open now, which is the other half of why it had to compound.
+ */
 export function cardRate(level: number): number {
-  return BASE_CARD_RATE + CARD_RATE_STEP * lv(level)
+  return Math.round(BASE_CARD_RATE * Math.pow(CARD_RATE_GROWTH, lv(level)))
 }
 
 /** Everything sold pays this multiple. */

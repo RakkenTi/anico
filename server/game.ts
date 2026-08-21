@@ -38,8 +38,8 @@ import {
 } from '../src/game/badges.js'
 import {
   EMPTY_UPGRADES,
-  MAX_DEALT,
   MAX_STACKS,
+  dealtFor,
   UPGRADE_DEFS,
   upgradeCost,
   upgradeMaxed,
@@ -529,16 +529,19 @@ export function roll(
    * How much of the pull is actually dealt.
    *
    * Pack sizes compound without a ceiling, which is the point of the shop, so
-   * past a few hundred cards a pull stops being something you look at. What
-   * fits on screen is dealt card by card and granted; the rest is opened by
-   * the machine and appraised into credits at what the dealt cards averaged.
-   * Without that, a pull of a million cards would be a million rows written,
-   * a million images mounted, and the same answer.
+   * past a few hundred cards a pull stops being something you look at. How much
+   * of it you do look at is decided by Open Speed: six seconds of cards a
+   * second, floored so nobody deals less than a couple of hundred and capped so
+   * a spread is still a thing on a screen. The rest is opened by the machine
+   * and appraised into credits at what the dealt cards averaged -- otherwise a
+   * pull of a million cards would be a million rows written, a million images
+   * mounted, and the same answer.
    */
+  const budget = dealtFor(total, fx.cardRate)
   const packCount = pack ? Math.min(packs, MAX_STACKS) : 1
   const perPack = pack
-    ? Math.max(1, Math.min(packSize, Math.floor(MAX_DEALT / packCount)))
-    : Math.min(total, MAX_DEALT)
+    ? Math.max(1, Math.min(packSize, Math.floor(budget / packCount)))
+    : Math.min(total, budget)
   const dealt = pack ? packCount * perPack : perPack
   const overflow = Math.max(0, total - dealt)
 
