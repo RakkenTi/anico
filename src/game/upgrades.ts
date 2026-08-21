@@ -71,17 +71,18 @@ export function dealtFor(total: number, rate: number): number {
 }
 
 /** Packs laid side by side on screen. Past this the extra packs are appraised. */
-export const MAX_STACKS = 12
+export const MAX_STACKS = 24
 
 /**
  * Cards mounted behind the top of a stack, across the whole pull.
  *
- * Purely a render budget, shared out: one stack shows twenty-five, twelve show
- * six each. A two-hundred-card stack used to mount two hundred cards, each with
- * an image and a foil frame, of which four are visible.
+ * Ten at most, and fewer when there are many stacks. A pack of two thousand
+ * shows ten cards and a counter: the pile pops one off the front and gains one
+ * at the back, which is the whole of what anybody can see of a stack anyway.
+ * Mounting the real depth would be two thousand images to show four.
  */
-export const STACK_RENDER_BUDGET = 90
-export const STACK_RENDER_MAX = 25
+export const STACK_RENDER_BUDGET = 120
+export const STACK_RENDER_MAX = 10
 export function stackDepth(stacks: number): number {
   return Math.max(3, Math.min(STACK_RENDER_MAX, Math.floor(STACK_RENDER_BUDGET / Math.max(1, stacks))))
 }
@@ -109,7 +110,7 @@ export const PACK_GROWTH = 1.3
 export const APPRAISAL_GROWTH = 1.18
 /** Cards a second at rest, and what a level of Open Speed multiplies it by. */
 export const BASE_CARD_RATE = 4
-export const CARD_RATE_GROWTH = 1.35
+export const CARD_RATE_GROWTH = 1.45
 
 export const UPGRADE_DEFS: UpgradeDef[] = [
   {

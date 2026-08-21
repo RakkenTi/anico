@@ -76,8 +76,10 @@ export interface RollSummary {
   pack: boolean
   /** Stacks laid side by side on screen, each with its own wrapper. */
   packCount: number
-  /** Cards in each of those stacks. */
+  /** Cards in each of those stacks that arrive as real cards. */
   perPack: number
+  /** Cards each pack actually holds: the number printed on the wrapper. */
+  heldPerPack: number
   claimed: number
   bonus: number
   coins: number

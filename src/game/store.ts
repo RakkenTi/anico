@@ -131,6 +131,8 @@ interface GameState {
    */
   pack: {
     perPack: number
+    /** What each wrapper says it holds. The dealt cards stand in for the rest. */
+    held: number
     claimed: number
     bonus: number
     stacks: { state: 'sealed' | 'sliced' | 'open'; revealed: number }[]
@@ -454,6 +456,7 @@ export const useGame = create<GameState>()((set, get) => {
         pack: res.pack
           ? {
               perPack: Math.max(1, res.perPack),
+              held: Math.max(1, res.heldPerPack),
               claimed: res.claimed,
               bonus: res.bonus,
               stacks: Array.from({ length: Math.max(1, res.packCount) }, () => ({
@@ -483,7 +486,7 @@ export const useGame = create<GameState>()((set, get) => {
       }
       if (res.hidden > 0) {
         get().pushToast(
-          `${fmtCount(res.hidden)} more cards behind these, appraised for +${fmt(res.hiddenFor)} credits`,
+          `${fmtCount(res.hidden)} of those cards were appraised as they came out, +${fmt(res.hiddenFor)} credits`,
           'credits',
         )
       }

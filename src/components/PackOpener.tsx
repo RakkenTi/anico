@@ -5,6 +5,7 @@ import { stackDepth } from '../game/upgrades'
 import { flapPath, foilPath } from '../game/tear'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
+import { fmtCount } from '../game/format'
 
 /**
  * Pointer travel that finishes a tear. Accumulated rather than measured from
@@ -36,10 +37,36 @@ const MAX_OPEN_S = 8
  * ten ticks a second the cards leave in twos and threes instead, which nobody
  * can tell apart at that speed and which the clock certainly can.
  */
-const TICKS_PER_SECOND = 10
+const TICKS_PER_SECOND = 6
 const MIN_STEP_MS = 28
 /** Cards allowed to be mid-flight at once. They are decoration. */
 const MAX_IN_FLIGHT = 16
+
+/**
+ * Columns for a given number of wrappers.
+ *
+ * As square as the count allows, and preferring a full last row: thirteen
+ * packs went out as twelve and one, which reads as a mistake rather than a
+ * layout. Five columns leaves 5/5/3, four leaves 4/4/4/1, so the widest
+ * near-square arrangement with the fullest bottom row wins.
+ */
+function columnsFor(n: number): number {
+  if (n <= 3) return n
+  const root = Math.ceil(Math.sqrt(n))
+  let best = root
+  let bestScore = -1
+  for (let cols = root; cols <= Math.min(n, root + 2); cols++) {
+    const rows = Math.ceil(n / cols)
+    const lastRow = n - (rows - 1) * cols
+    // A full bottom row is worth most; after that, fewer rows.
+    const score = (lastRow / cols) * 10 - rows
+    if (score > bestScore) {
+      bestScore = score
+      best = cols
+    }
+  }
+  return best
+}
 /**
  * Delay between one wrapper starting to tear itself open and the next.
  *
@@ -111,14 +138,35 @@ export default function PackOpener({ pack, cards }: Props) {
   const batch = rawStep >= target ? 1 : Math.ceil(target / rawStep)
   const stepMs = Math.max(MIN_STEP_MS, Math.round(rawStep * batch))
 
-  // The render budget is shared out: one stack shows a deep pile, twelve show
-  // a sliver each, and the browser mounts about the same number of cards.
+  // The render budget is shared out: one stack shows ten cards deep, twenty
+  // show three, and the browser mounts about the same number either way.
   const depth = stackDepth(stacks)
+  const cols = columnsFor(stacks)
   const anySealed = pack.stacks.some((st) => st.state === 'sealed')
-  const left = pack.stacks.reduce(
-    (n, st, i) => n + Math.max(0, Math.min(pack.perPack, cards.length - i * pack.perPack) - st.revealed),
-    0,
-  )
+
+  /*
+   * What a wrapper says, and what is behind it.
+   *
+   * A pack holds what the shop sold you -- two thousand cards, or twenty
+   * thousand -- and dealing every one of them as a card is not a thing a
+   * browser or a database should be asked to do. The cards that *are* dealt
+   * stand in for the rest: throwing one takes its share of the pack with it,
+   * and those are the cards the server appraises. So the count on a stack is
+   * the real one and it drains to nothing, which is the only version of this
+   * where the arithmetic on screen adds up.
+   */
+  const heldIn = (i: number) => {
+    const dealtHere = Math.max(0, Math.min(pack.perPack, cards.length - i * pack.perPack))
+    return { dealt: dealtHere, held: Math.max(dealtHere, pack.held) }
+  }
+  const leftIn = (i: number) => {
+    const { dealt, held } = heldIn(i)
+    const thrown = pack.stacks[i]?.revealed ?? 0
+    if (dealt <= 0) return 0
+    return Math.max(0, held - Math.round((thrown * held) / dealt))
+  }
+  const left = pack.stacks.reduce((n, _, i) => n + leftIn(i), 0)
+  const heldTotal = pack.stacks.reduce((n, _, i) => n + heldIn(i).held, 0)
 
   /* ------------------------------------------------------------- tearing */
 
@@ -370,7 +418,11 @@ export default function PackOpener({ pack, cards }: Props) {
   return (
     <div className="pack-opener">
       <div
-        className={`pack-grid packs-${Math.min(stacks, 12)} ${anySealed ? 'is-sealed' : ''}`}
+        className={`pack-grid ${anySealed ? 'is-sealed' : ''}`}
+        style={{
+          ['--cols' as string]: cols,
+          ['--rows' as string]: Math.ceil(stacks / cols),
+        }}
         ref={surface}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -390,6 +442,8 @@ export default function PackOpener({ pack, cards }: Props) {
             state={st.state}
             thrown={st.revealed}
             cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
+            held={heldIn(i).held}
+            left={leftIn(i)}
             depth={depth}
             tear={tears[i] ?? 0}
             drag={drag}
@@ -411,8 +465,8 @@ export default function PackOpener({ pack, cards }: Props) {
           )
         ) : (
           <>
-            <b>{left}</b> of {cards.length} left. Swipe or tap to take one off
-            {stacks > 1 ? ' every stack' : ''}.
+            <b>{fmtCount(left)}</b> of {fmtCount(heldTotal)} left. Swipe or tap to take a
+            card off{stacks > 1 ? ' every stack' : ''}.
           </>
         )}
       </p>
@@ -431,6 +485,9 @@ interface StackProps {
   state: 'sealed' | 'sliced' | 'open'
   thrown: number
   cards: RollResult[]
+  /** What the wrapper says it holds, and how much of that is left. */
+  held: number
+  left: number
   /** Cards mounted behind the top one. A share of the pull's budget. */
   depth: number
   tear: number
@@ -439,14 +496,13 @@ interface StackProps {
 }
 
 /** One wrapper and its pile. Gestures belong to the grid, not to this. */
-function PackStack({ state, thrown, cards, depth, tear, drag, departing }: StackProps) {
+function PackStack({ state, thrown, cards, held, left, depth, tear, drag, departing }: StackProps) {
   const sealed = state === 'sealed'
   // Foil takes its colour from the best card in the pack. It gives nothing
   // away that matters -- everything inside is already claimed -- but a pack
   // with something good in it ought to look like one.
   const best = cards.reduce((m, c) => Math.max(m, c.char.creditValue), 0)
   const rarity = rarityOf(best).key
-  const remaining = cards.length - thrown
   const top = cards[thrown]
   const topStyle = drag
     ? {
@@ -501,7 +557,7 @@ function PackStack({ state, thrown, cards, depth, tear, drag, departing }: Stack
           </div>
         ))}
 
-        {!sealed && remaining > 1 && <span className="pack-left">{remaining}</span>}
+        {!sealed && left > 0 && <span className="pack-left">{fmtCount(left)}</span>}
       </div>
 
       {sealed && (
@@ -512,7 +568,7 @@ function PackStack({ state, thrown, cards, depth, tear, drag, departing }: Stack
             <span className="pack-strip" />
             <span className="pack-mark">
               <span className="pack-brand">ANICO</span>
-              <span className="pack-sub">{cards.length} cards</span>
+              <span className="pack-sub">{fmtCount(held)} cards</span>
             </span>
           </span>
           {/* The strip coming away, curling as it goes. */}

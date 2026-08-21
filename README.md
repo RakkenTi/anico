@@ -25,6 +25,12 @@ off, <kbd>Space</kbd> and the button open them one at a time at your current ope
 It is only ceremony: every card is yours the moment the pack is bought, so closing the tab
 mid-tear costs nothing.
 
+How much of a pull arrives as real cards is what **Open Speed** buys: six seconds of cards
+a second, from two hundred up to a thousand. Everything else is appraised into credits at
+what those cards averaged, as the pack drains, because each card you throw carries its
+share of the pack with it. A wrapper is labelled with everything it holds and its counter
+runs to zero ([ADR 0007](./docs/adr/0007-the-numbers-have-no-ceiling.md)).
+
 ![Three sealed packs](./docs/img/packs.jpg)
 
 ### Keep what is worth keeping
@@ -42,10 +48,12 @@ bulk sales.
 
 ### Spend it
 
-Two shelves. **Upgrades** raise your rates and mostly have no maximum level: pack size,
-sell value, open speed, coin drops, merge value, extra packs. **Badges** are six tiers
-each and change how the game works: they unlock packs, add wish slots, and guarantee
-rarities in every pack.
+Two shelves. **Upgrades** raise your rates and mostly have no maximum level: Pack Size,
+Sell Value, Open Speed, Coin Drops, Merge Value, Extra Packs, and the three that end
+(Auto Summon, Offline Earnings, Wish Odds). Every one of them multiplies, including Open
+Speed, which decides how much of a pull you actually open. **Badges** are six tiers each
+and change how the game works: they unlock packs, add wish slots, and guarantee rarities
+in every pack.
 
 Every level costs more than the last, and always more than the effect it buys, so the
 next purchase is always a little further away than the one before. Numbers get big enough
