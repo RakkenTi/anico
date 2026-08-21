@@ -239,6 +239,12 @@ Paying by value would make feeding spare Mythics the optimal play and a collecti
 be shredded to feed a machine. It runs while nobody is watching at the rate it runs while
 somebody is.
 
+**Slam** — a hand on the Press. A tap runs the Factory belt through the yard right then,
+and nothing else: it spends the backlog rather than making scrap, so the assist can never
+outrun the mill that fills it. The same shape as swiping a pack open alongside the
+Automaton, and there for the same reason, which is that a faucet nobody may touch is a
+faucet nobody believes in.
+
 **Scrap** — what the Press pays and the Factory eats. A flat stream: a press deals a
 bounded number of real cards however large the pull is, so about one scrap arrives per
 press whatever the credit curve is doing. That flatness is what stops the works becoming
@@ -286,7 +292,9 @@ a spreadsheet with buttons.
 
 **Called Shot** — the shop line that points a share of every pull at one series. The only
 way in the game to collect on purpose rather than by waiting, and it exists because a
-contract asks for a series by name.
+contract asks for a series by name. Aimed from the contract it is meant to finish: every
+row on the board carries a crosshair, and the picker searches the whole collection rather
+than offering a shortlist of it.
 
 **Opening discount** — the first five rungs of the endless lines, sold at a fraction of
 list price that fades out by the sixth. The ramp on to the curve: an exponential ladder
