@@ -265,8 +265,6 @@ export interface Works {
   belt: number
   /** Cards one scrap is worth: the Foundry's fraction of this player's press. */
   scrapWorth: number
-  /** Credits the Factory pays per press at the rate material is arriving. */
-  factoryRate: number
   /** Heat, 0 to 1: the multiple a hand on the machine is currently buying. */
   heat: number
   /** Distinct characters held: what gates a route. */
