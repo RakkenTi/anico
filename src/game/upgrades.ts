@@ -81,7 +81,7 @@ export const MAX_STACKS = 24
  * at the back, which is the whole of what anybody can see of a stack anyway.
  * Mounting the real depth would be two thousand images to show four.
  */
-export const STACK_RENDER_BUDGET = 120
+export const STACK_RENDER_BUDGET = 80
 export const STACK_RENDER_MAX = 10
 export function stackDepth(stacks: number): number {
   return Math.max(3, Math.min(STACK_RENDER_MAX, Math.floor(STACK_RENDER_BUDGET / Math.max(1, stacks))))

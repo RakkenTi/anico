@@ -184,7 +184,10 @@ interface GameState {
   slicePack: (index: number) => void
   tearPack: (index: number) => void
   finishPacks: () => void
-  revealNext: (index: number) => void
+  /** Take `n` cards off a stack in one write. */
+  revealNext: (index: number, n?: number) => void
+  /** Take cards off several stacks in one write: `counts[i]` from stack `i`. */
+  revealLayer: (counts: number[]) => number[]
   setSandbox: (on: boolean) => Promise<void>
   claimDaily: () => Promise<void>
   lock: (id: number, locked: boolean) => Promise<void>
@@ -563,8 +566,17 @@ export const useGame = create<GameState>()((set, get) => {
       const stack = s.pack?.stacks[index]
       if (!s.pack || !stack || stack.state === 'open') return
       const cards = stackCards(s, index)
-      const best = cards.reduce((m, r) => Math.max(m, r.char.creditValue), 0)
-      sfx.reveal(rarityOf(best).key, cards.length)
+      // Only the cards this actually skips are worth a sound. Every stack ends
+      // by calling this once its last card has landed, and seventeen full
+      // cascades firing for cards that were already dealt one at a time was
+      // the loudest thing in the game and the least earned.
+      const skipped = cards.length - stack.revealed
+      if (skipped > 0) {
+        const best = cards
+          .slice(stack.revealed)
+          .reduce((m, r) => Math.max(m, r.char.creditValue), 0)
+        sfx.reveal(rarityOf(best).key, skipped)
+      }
       set({ pack: patchStack(s.pack, index, { state: 'open', revealed: cards.length }) })
     },
 
@@ -597,19 +609,58 @@ export const useGame = create<GameState>()((set, get) => {
      * actually landed. Throws can therefore overlap without one cutting the
      * previous one's animation short.
      */
-    revealNext: (index) => {
+    revealNext: (index, n = 1) => {
       const s = get()
       const stack = s.pack?.stacks[index]
       if (!s.pack || !stack || stack.state !== 'sliced') return
       const cards = stackCards(s, index)
-      const next = stack.revealed + 1
-      if (next > cards.length) return
+      // One write for the whole batch. At end-game speeds a stack sheds cards
+      // in twos and threes per tick, and a store write is a render of every
+      // stack on screen: doing it per card was most of what a big pull cost.
+      const next = Math.min(cards.length, stack.revealed + Math.max(1, n))
+      if (next <= stack.revealed) return
       // Follow whatever is now on top, so the bar under the stack describes
       // the card being looked at rather than the one just discarded.
       const at = index * s.pack.perPack + Math.min(next, cards.length - 1)
       const entry = s.rolled[at]
-      if (entry) sfx.reveal(rarityOf(entry.char.creditValue).key, 1)
+      if (entry) sfx.flip(rarityOf(entry.char.creditValue).key)
       set({ selected: at, pack: patchStack(s.pack, index, { revealed: next }) })
+    },
+
+    /*
+     * A whole layer at once.
+     *
+     * Every stack sheds cards on the same clock, and a write to this store is
+     * a render of the summon screen: seventeen stacks writing separately meant
+     * seventeen renders per tick, which is where a big pull's frames went.
+     * They move together and are written together, and what scatters them on
+     * screen is when each card is animated, not when its counter changed.
+     *
+     * Returns what each stack actually gave up, since a stack that has run out
+     * gives up less than it was asked for.
+     */
+    revealLayer: (counts) => {
+      const s = get()
+      if (!s.pack) return counts.map(() => 0)
+      const moved: number[] = []
+      let last = s.selected
+      const stacks = s.pack.stacks.map((stack, i) => {
+        const want = Math.max(0, Math.floor(counts[i] ?? 0))
+        if (stack.state !== 'sliced' || want === 0) {
+          moved.push(0)
+          return stack
+        }
+        const held = stackCards(s, i).length
+        const next = Math.min(held, stack.revealed + want)
+        moved.push(next - stack.revealed)
+        if (next > stack.revealed) last = i * s.pack!.perPack + Math.min(next, held - 1)
+        return next === stack.revealed ? stack : { ...stack, revealed: next }
+      })
+      if (moved.every((n) => n === 0)) return moved
+      const entry = s.rolled[last]
+      if (entry) sfx.flip(rarityOf(entry.char.creditValue).key)
+      set({ selected: last, pack: { ...s.pack, stacks } })
+      return moved
     },
 
     setSandbox: async (on) => {

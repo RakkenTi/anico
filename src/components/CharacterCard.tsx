@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { RolledCharacter } from '../game/types'
 import { MAX_STARS, STAR_NAMES, rarityOf } from '../game/economy'
 import { fmt } from '../game/format'
@@ -30,7 +31,7 @@ interface Props {
   onClick?: () => void
 }
 
-export default function CharacterCard({
+function CharacterCard({
   character,
   copies,
   stars = 0,
@@ -105,3 +106,16 @@ export default function CharacterCard({
     </div>
   )
 }
+
+/**
+ * Memoised, because a card is the most expensive thing here and the least
+ * likely to have changed.
+ *
+ * A pull redraws its stacks up to a hundred times a second, and every one of
+ * those renders reached every mounted card: seventeen wrappers seven deep is a
+ * hundred and thirty-six cards re-rendered per throw, each an image, a foil
+ * frame and half a dozen text nodes, none of which moved. The characters
+ * themselves come straight out of the roll and never change identity, so the
+ * comparison is free and the saving is nearly all of it.
+ */
+export default memo(CharacterCard)

@@ -312,6 +312,17 @@ It uses `playwright-core`, which ships no browser of its own and borrows a Chrom
 already on the machine (`npx playwright install chromium` provides one, or point
 `PLAYWRIGHT_CHROMIUM` at an existing binary).
 
+`npm run stress` plays the end game, which is where every performance problem this
+project has had turned up. It stands up its own throwaway instance, seeds a catalog the
+size a real crawl reaches, and walks a player up four rungs of the shop — ten thousand
+cards a pull, a hundred and ninety-four thousand, seven hundred and eighty-two thousand,
+ten million — plus a phone, pulling at each one with a real browser. It measures the
+press-to-wrappers delay, the frame gap while a pull empties, the opening against what
+Open Speed promised, sound voices landing in the same tenth of a second, whether the
+spread uses its pane, whether the button that opens a pack is reachable, and whether the
+shop still answers with the Automaton running. It exits non-zero on anything over
+budget. `ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
+
 ## How it fits together
 
 - **Client**: React 19 + Zustand + Vite. Holds a mirror of the server's snapshot plus

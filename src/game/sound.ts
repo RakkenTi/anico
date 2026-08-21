@@ -60,7 +60,24 @@ function ac(): AudioContext | null {
     if (typeof AudioContext === 'undefined') return null
     ctx = new AudioContext()
     master = ctx.createGain()
-    master.connect(ctx.destination)
+    /*
+     * A limiter across everything.
+     *
+     * A pull is a hundred wrappers' worth of cards leaving at once, and even
+     * with the voice budget below there are moments -- a stack finishing while
+     * two others start -- where a handful of samples land in the same frame.
+     * Summed raw they run past full scale and the output clips, which is the
+     * crackle you hear rather than a loud sound. This ducks those moments
+     * instead of tearing them.
+     */
+    const limiter = ctx.createDynamicsCompressor()
+    limiter.threshold.value = -8
+    limiter.knee.value = 6
+    limiter.ratio.value = 12
+    limiter.attack.value = 0.003
+    limiter.release.value = 0.2
+    master.connect(limiter)
+    limiter.connect(ctx.destination)
   }
   if (ctx.state === 'suspended') void ctx.resume()
   master!.gain.value = s.soundVolume * s.soundVolume // squared ≈ perceptual taper
@@ -88,11 +105,30 @@ interface PlayOpts {
   at?: number
   rate?: number
   gain?: number
+  /** Shortest gap allowed between two plays of this same sample, in ms. */
+  gap?: number
+  /**
+   * Exempt from the crowd limit.
+   *
+   * For the sounds that are the point rather than the texture -- the stinger
+   * on a Mythic, the coins on a sale. They still respect their own sample's
+   * gap, so they cannot stack on themselves either.
+   */
+  keep?: boolean
+  /**
+   * Budget under this name instead of the sample's own.
+   *
+   * A riffle rotates through four flip samples so it does not sound like one
+   * card played four times, but it is still one riffle and has to be rationed
+   * as one.
+   */
+  key?: string
 }
 
-function play(name: SampleName, { at = 0, rate = 1, gain = 1 }: PlayOpts = {}) {
+function play(name: SampleName, { at = 0, rate = 1, gain = 1, gap, keep, key }: PlayOpts = {}) {
   const c = ac()
   if (!c) return
+  if (!budget(key ?? name, (c.currentTime + at) * 1000, gap, keep)) return
   const buf = buffers.get(name)
   if (!buf) {
     // First use: fetch, then play only if it arrives fast enough to
@@ -105,6 +141,53 @@ function play(name: SampleName, { at = 0, rate = 1, gain = 1 }: PlayOpts = {}) {
     return
   }
   startSource(c, buf, at, rate, gain)
+}
+
+/**
+ * How many voices may start close together, and how close is close.
+ *
+ * Nothing here asks for one sound at a time. A pull deals a thousand cards
+ * across seventeen stacks, each of which wants a flip as it leaves and a
+ * flourish as it empties; a spread wants a riffle; the machine wants all of it
+ * at once and does not wait. Played as asked, that is several hundred voices
+ * inside a tenth of a second, which is not a loud game -- it is a broken one,
+ * because the samples sum past full scale and what comes out is the clipping
+ * rather than the cards.
+ *
+ * So there is a budget. A few voices may share any tenth of a second, and one
+ * sample may not restart faster than an ear can separate it from itself.
+ * Anything over the budget is dropped rather than queued: a card sound that
+ * arrives after its card has gone is worse than no sound at all.
+ */
+const VOICE_WINDOW_MS = 100
+const VOICES_PER_WINDOW = 5
+const SAME_SAMPLE_GAP_MS = 45
+/** Flips are their own class: fast enough to read as a riffle, no faster. */
+const FLIP_GAP_MS = 55
+
+/** Voices already promised, in context time, newest last. */
+let booked: number[] = []
+/** Which flip sample is next, so a riffle rotates rather than repeats. */
+let flipTurn = 0
+const lastPlayed = new Map<string, number>()
+
+/** True if this voice fits in the budget, and books it if so. */
+function budget(name: string, whenMs: number, gapMs = SAME_SAMPLE_GAP_MS, keep = false): boolean {
+  const last = lastPlayed.get(name)
+  if (last !== undefined && whenMs - last < gapMs) return false
+  if (!keep) {
+    let near = 0
+    for (const t of booked) if (Math.abs(t - whenMs) < VOICE_WINDOW_MS) near++
+    if (near >= VOICES_PER_WINDOW) return false
+  }
+  lastPlayed.set(name, whenMs)
+  booked.push(whenMs)
+  // Anything already played is no longer competing for room.
+  if (booked.length > 64) {
+    const cutoff = whenMs - VOICE_WINDOW_MS * 4
+    booked = booked.filter((t) => t > cutoff)
+  }
+  return true
 }
 
 function startSource(c: AudioContext, buf: AudioBuffer, at: number, rate: number, gain: number) {
@@ -197,6 +280,8 @@ export const sfx = {
     const spreadGain = count > 100 ? 0.45 : count > 10 ? 0.5 : 0.8
     for (let i = 0; i < count; i += stride) {
       play(FLIPS[(i / stride) % FLIPS.length], {
+        key: 'flip',
+        gap: FLIP_GAP_MS,
         // eased like the flip animation, so sound and card stay welded
         at: dealDelayMs(i, count) / 1000,
         // rise ~a minor third across the whole deal, whatever its length
@@ -209,20 +294,36 @@ export const sfx = {
       case 'common':
         break // the deal speaks for itself
       case 'rare':
-        play('confirm-1', { at: after, gain: 0.5 })
+        play('confirm-1', { at: after, gain: 0.5, keep: true })
         break
       case 'epic':
-        play('confirm-2', { at: after, gain: 0.6 })
+        play('confirm-2', { at: after, gain: 0.6, keep: true })
         break
       case 'legendary':
-        play('powerup-short', { at: after, gain: 0.6 })
-        play('confirm-2', { at: after + 0.16, gain: 0.5 })
+        play('powerup-short', { at: after, gain: 0.6, keep: true })
+        play('confirm-2', { at: after + 0.16, gain: 0.5, keep: true })
         break
       case 'mythic':
-        play('glass', { at: after, gain: 0.6 })
-        play('jingle-win', { at: after + 0.05, gain: 0.8 })
+        play('glass', { at: after, gain: 0.6, keep: true })
+        play('jingle-win', { at: after + 0.05, gain: 0.8, keep: true })
         break
     }
+  },
+
+  /**
+   * One card off the top of a pack.
+   *
+   * Its own throttle rather than the general one: seventeen stacks throwing
+   * six times a second each is a hundred cards a second asking for a sound,
+   * and a riffle is what a stack of cards sounds like at that speed -- not a
+   * hundred separate flips, which is what a hundred separate flips sound like.
+   */
+  flip(rarity: RarityKey = 'common') {
+    const i = flipTurn++ % FLIPS.length
+    play(FLIPS[i], { rate: 0.96 + Math.random() * 0.16, gain: 0.4, gap: FLIP_GAP_MS, key: 'flip' })
+    // Something worth stopping for still gets its moment, budget permitting.
+    if (rarity === 'legendary') play('confirm-2', { at: 0.02, gain: 0.45 })
+    if (rarity === 'mythic') play('glass', { at: 0.02, gain: 0.5, keep: true })
   },
 
   /** Claim: a firm card-shove thunk with a confirming chime. */

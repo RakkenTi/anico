@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGame, stackCards } from '../game/store'
 import { rarityOf } from '../game/economy'
 import { stackDepth } from '../game/upgrades'
@@ -18,6 +18,16 @@ const TEAR_COMMIT = 0.5
 const THROW_PX = 80
 /** How long a card takes to leave, once thrown. */
 const THROW_MS = 320
+/**
+ * How long each stack waits its turn before its card leaves, and the longest
+ * any of them waits.
+ *
+ * A layer is written in one go -- one store write for every wrapper -- so
+ * without this all seventeen cards would leave in the same frame and read as
+ * one animation rather than seventeen stacks.
+ */
+const THROW_STEP_MS = 26
+const THROW_STAGGER_MS = 4 * THROW_STEP_MS
 const AUTOTEAR_MS = 420
 
 /**
@@ -28,6 +38,14 @@ const AUTOTEAR_MS = 420
  * six. Only when the pack has outgrown the hands entirely does this cap bind.
  */
 const MAX_OPEN_S = 8
+/**
+ * The shortest, so a pull is still something that happens.
+ *
+ * Open Speed eventually buys more cards a second than a pull even holds, at
+ * which point the honest answer is "instantly" and the honest answer is not
+ * worth watching. Barely longer than the tear it follows.
+ */
+const MIN_OPEN_S = 0.6
 /**
  * How often a stack may update, at most.
  *
@@ -40,17 +58,24 @@ const MAX_OPEN_S = 8
 const TICKS_PER_SECOND = 6
 const MIN_STEP_MS = 28
 /**
- * Cards each stack may have in the air, and how many of a batch actually fly.
+ * Cards that may be in the air at once, and how many of a batch actually fly.
  *
- * The budget used to be sixteen for the whole pull, which with thirteen stacks
- * meant the last three threw cards and the other ten simply went quiet: the
- * count dropped and nothing moved. It is per stack now, so every pile visibly
- * throws, and a batch of five sends two of them on their way rather than five,
- * because nobody can tell two apart from five at six ticks a second and the
- * browser certainly can.
+ * A card leaving is an animation the browser cannot hand to the compositor --
+ * it travels a distance measured from the pack's own width, which is a custom
+ * property, and a keyframe that reads one is recalculated on the main thread
+ * every frame along with the whole card underneath it. Sixty-eight of those at
+ * once was two thirds of the frame budget of a seventeen-pack pull.
+ *
+ * So the budget belongs to the pull and is shared out: one pack throws four
+ * cards at a time as it always did, seventeen throw one each, and either way
+ * about twenty cards are in the air. Every stack still visibly throws, which
+ * is the thing that must not regress -- a stack whose counter drops while
+ * nothing moves reads as broken.
  */
-const IN_FLIGHT_PER_STACK = 4
-const FLY_PER_TICK = 2
+const IN_FLIGHT_BUDGET = 20
+const IN_FLIGHT_MAX = 4
+const inFlightPerStack = (stacks: number) =>
+  Math.max(1, Math.min(IN_FLIGHT_MAX, Math.floor(IN_FLIGHT_BUDGET / Math.max(1, stacks))))
 
 /**
  * Columns for a given number of wrappers.
@@ -99,9 +124,33 @@ interface Departing {
   fromX: number
   fromY: number
   fromRot: number
+  /** How long this card waits before it leaves, in ms. */
+  delay: number
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
+
+/** A rip in progress: one wrapper's tear, as the shared driver sees it. */
+interface Rip {
+  from: number
+  to: number
+  start: number
+  ms: number
+  done?: () => void
+}
+
+/** Shared, so a stack with nothing in the air keeps the same empty array. */
+const NOTHING: Departing[] = []
+
+/**
+ * How thick a pile still looks, 0.12 to 1, in forty-eighths.
+ *
+ * Never quite nothing: an empty-looking stack that still has cards in it reads
+ * as a bug rather than as nearly done.
+ */
+const PILE_STEPS = 48
+const pileOf = (left: number, held: number) =>
+  Math.max(0.12, Math.round((left / Math.max(1, held)) * PILE_STEPS) / PILE_STEPS)
 
 /**
  * The packs, opened by hand.
@@ -135,18 +184,6 @@ export default function PackOpener({ pack, cards }: Props) {
   const gen = useGame((s) => s.rollCount)
 
   const stacks = Math.max(1, pack.stacks.length)
-  /*
-   * The cadence, for the pull as a whole.
-   *
-   * One swipe takes a card off every stack, so a swipe is `stacks` cards and
-   * the gap between swipes is what makes the pull empty at the promised rate.
-   * The cap only ever raises the rate, never lowers it.
-   */
-  const rate = Math.max(1, cardRate, cards.length / MAX_OPEN_S)
-  const rawStep = (1000 * stacks) / rate
-  const target = Math.max(MIN_STEP_MS, 1000 / TICKS_PER_SECOND)
-  const batch = rawStep >= target ? 1 : Math.ceil(target / rawStep)
-  const stepMs = Math.max(MIN_STEP_MS, Math.round(rawStep * batch))
 
   // The render budget is shared out: one stack shows ten cards deep, twenty
   // show three, and the browser mounts about the same number either way.
@@ -178,6 +215,32 @@ export default function PackOpener({ pack, cards }: Props) {
   const left = pack.stacks.reduce((n, _, i) => n + leftIn(i), 0)
   const heldTotal = pack.stacks.reduce((n, _, i) => n + heldIn(i).held, 0)
 
+  /*
+   * The cadence, for the pull as a whole, counted in the cards it actually
+   * holds.
+   *
+   * Open Speed is quoted in cards a second and a pull holds what the wrappers
+   * say -- a hundred and ninety thousand of them, at the far end. What is
+   * *dealt* is a thousand at most, and each of those stands in for the two
+   * hundred behind it, so pacing the throws by the dealt count made every
+   * thrown card worth two hundred and emptied a two-hundred-thousand-card pull
+   * in the time nine hundred should take. It reads as instant, and no amount of
+   * Open Speed changes it, which is exactly the complaint.
+   *
+   * So the clock is set on the real total: `rate` is real cards a second for
+   * the whole pull (never per pack, which would make every Extra Pack a free
+   * doubling of the rate), and the throws are paced at whatever share of that
+   * the dealt cards represent.
+   */
+  const dealtTotal = Math.max(1, cards.length)
+  const carries = Math.max(1, heldTotal / dealtTotal)
+  const realRate = Math.max(1, cardRate, heldTotal / MAX_OPEN_S)
+  const dealtRate = Math.min(Math.max(1, realRate / carries), dealtTotal / MIN_OPEN_S)
+  const rawStep = (1000 * stacks) / dealtRate
+  const target = Math.max(MIN_STEP_MS, 1000 / TICKS_PER_SECOND)
+  const batch = rawStep >= target ? 1 : Math.ceil(target / rawStep)
+  const stepMs = Math.max(MIN_STEP_MS, Math.round(rawStep * batch))
+
   /* ------------------------------------------------------------- tearing */
 
   /*
@@ -189,7 +252,6 @@ export default function PackOpener({ pack, cards }: Props) {
    */
   const [tears, setTears] = useState<number[]>(() => Array(stacks).fill(0))
   const tearsRef = useRef<number[]>(tears)
-  const rafs = useRef<Map<number, number>>(new Map())
 
   const setTearAt = useCallback((which: number[], v: number) => {
     const next = [...tearsRef.current]
@@ -198,38 +260,56 @@ export default function PackOpener({ pack, cards }: Props) {
     setTears(next)
   }, [])
 
-  const animateTear = useCallback(
-    (which: number[], to: number, ms: number, done?: () => void) => {
-      for (const i of which) {
-        const running = rafs.current.get(i)
-        if (running) cancelAnimationFrame(running)
-      }
-      const from = which.map((i) => tearsRef.current[i] ?? 0)
-      const start = performance.now()
-      const step = (now: number) => {
-        const t = clamp((now - start) / ms, 0, 1)
-        const next = [...tearsRef.current]
-        which.forEach((i, n) => {
-          next[i] = from[n] + (to - from[n]) * (1 - Math.pow(1 - t, 3))
-        })
-        tearsRef.current = next
-        setTears(next)
-        if (t < 1) {
-          const id = requestAnimationFrame(step)
-          for (const i of which) rafs.current.set(i, id)
-        } else {
-          for (const i of which) rafs.current.delete(i)
-          done?.()
+  /*
+   * One clock for every rip.
+   *
+   * The wrappers tear a beat apart, so seventeen of them used to mean
+   * seventeen animation loops, each waking on its own frame and each writing
+   * the whole array of rips back into React. One driver steps all of them and
+   * writes once a frame however many are moving, which is the difference
+   * between a stutter and a stagger.
+   */
+  const rips = useRef<Map<number, Rip>>(new Map())
+  const driver = useRef(0)
+
+  const animateTear = useCallback((which: number[], to: number, ms: number, done?: () => void) => {
+    const start = performance.now()
+    which.forEach((i, n) => {
+      rips.current.set(i, {
+        from: tearsRef.current[i] ?? 0,
+        to,
+        start,
+        ms,
+        // Whatever follows the rip belongs to the wrapper that asked, not to
+        // every wrapper moving with it.
+        done: n === 0 ? done : undefined,
+      })
+    })
+    if (driver.current) return
+    const step = (now: number) => {
+      const next = [...tearsRef.current]
+      const finished: (() => void)[] = []
+      for (const [i, rip] of rips.current) {
+        const t = clamp((now - rip.start) / rip.ms, 0, 1)
+        next[i] = rip.from + (rip.to - rip.from) * (1 - Math.pow(1 - t, 3))
+        if (t >= 1) {
+          rips.current.delete(i)
+          if (rip.done) finished.push(rip.done)
         }
       }
-      const id = requestAnimationFrame(step)
-      for (const i of which) rafs.current.set(i, id)
-    },
-    [],
-  )
+      tearsRef.current = next
+      setTears(next)
+      driver.current = rips.current.size > 0 ? requestAnimationFrame(step) : 0
+      for (const fn of finished) fn()
+    }
+    driver.current = requestAnimationFrame(step)
+  }, [])
   useEffect(() => {
-    const map = rafs.current
-    return () => map.forEach((id) => cancelAnimationFrame(id))
+    const running = driver
+    return () => {
+      if (running.current) cancelAnimationFrame(running.current)
+      running.current = 0
+    }
   }, [])
 
   /** Every wrapper still on, for the gestures that mean "all of them". */
@@ -245,6 +325,7 @@ export default function PackOpener({ pack, cards }: Props) {
   const [departing, setDeparting] = useState<Departing[]>([])
 
   /** Send some cards on their way, and clear them up once they have landed. */
+  const perStackInFlight = inFlightPerStack(stacks)
   const depart = useCallback((going: Departing[]) => {
     if (going.length === 0) return 0
     setDeparting((d) => {
@@ -255,7 +336,7 @@ export default function PackOpener({ pack, cards }: Props) {
       const perStack = new Map<number, number>()
       for (let i = next.length - 1; i >= 0; i--) {
         const n = perStack.get(next[i].stack) ?? 0
-        if (n >= IN_FLIGHT_PER_STACK) continue
+        if (n >= perStackInFlight) continue
         perStack.set(next[i].stack, n + 1)
         kept.push(next[i])
       }
@@ -266,54 +347,54 @@ export default function PackOpener({ pack, cards }: Props) {
         setDeparting((d) =>
           d.filter((x) => !going.some((g) => g.stack === x.stack && g.key === x.key)),
         ),
-      THROW_MS,
+      THROW_MS + THROW_STAGGER_MS,
     )
     return going.length
-  }, [])
+  }, [perStackInFlight])
 
-  /** Take the top card off one stack. */
-  const throwFrom = useCallback(
-    (i: number, dir: number, count = 1) => {
-      const st = useGame.getState()
-      const stack = st.pack?.stacks[i]
-      if (!stack || stack.state !== 'sliced') return 0
-      const held = stackCards(st, i).length
-      const going: Departing[] = []
-      let moved = 0
-      for (let n = 0; n < count; n++) {
-        const at = stack.revealed + n
-        if (at >= held) break
-        // Only the first couple of a batch are given an animation; the rest
-        // leave with them. At this speed it reads the same and costs a tenth.
-        if (n < FLY_PER_TICK) {
-          // The second of a pair drifts rather than reversing, so a batch
-          // leaves as a small fan going the same way.
-          going.push({ stack: i, key: at, dir, fromX: 0, fromY: n * -10, fromRot: n * 4 })
-        }
-        st.revealNext(i)
-        moved++
-      }
-      depart(going)
-      return moved
-    },
-    [depart],
-  )
-
-  /** Take the top card off every stack that still has one: a hand's swipe. */
+  /**
+   * Take `count` cards off every stack that still has some.
+   *
+   * One store write for the whole layer, whether it came from a hand or from
+   * the machine. `dirFor` decides which way each stack's cards go; `from` is
+   * where they start, which is where the finger left off for a swipe and the
+   * top of the pile for everything else.
+   *
+   * Only the first couple of a batch are given an animation and the rest leave
+   * with them: at six ticks a second nobody can tell two cards from five, and
+   * the browser very much can. The second of a pair drifts rather than
+   * reversing, so a batch leaves as a small fan going the same way.
+   */
   const throwLayer = useCallback(
-    (dir: number, from = { x: 0, y: 0, rot: 0 }) => {
+    (
+      dirFor: (i: number) => number,
+      count = 1,
+      from = { x: 0, y: 0, rot: 0 },
+    ) => {
       const st = useGame.getState()
       if (!st.pack) return 0
+      const before = st.pack.stacks.map((s) => s.revealed)
+      const moved = st.revealLayer(st.pack.stacks.map(() => count))
       const going: Departing[] = []
-      st.pack.stacks.forEach((s, i) => {
-        if (s.state !== 'sliced') return
-        if (s.revealed >= stackCards(st, i).length) return
-        going.push({ stack: i, key: s.revealed, dir, fromX: from.x, fromY: from.y, fromRot: from.rot })
-        st.revealNext(i)
+      moved.forEach((n, i) => {
+        for (let k = 0; k < Math.min(n, perStackInFlight); k++) {
+          going.push({
+            stack: i,
+            key: before[i] + k,
+            dir: dirFor(i),
+            fromX: from.x,
+            fromY: from.y + k * -10,
+            fromRot: from.rot + k * 4,
+            // Written together, thrown a beat apart: what makes seventeen
+            // stacks look like seventeen stacks rather than one animation.
+            delay: (i % 5) * THROW_STEP_MS,
+          })
+        }
       })
-      return depart(going)
+      depart(going)
+      return moved.reduce((a, b) => a + b, 0)
     },
-    [depart],
+    [depart, perStackInFlight],
   )
 
   /* ------------------------------------------- hands off: Space, and the machine */
@@ -342,33 +423,41 @@ export default function PackOpener({ pack, cards }: Props) {
       if (Math.abs(col - middle) < 0.4) return n % 2 === 0 ? 1 : -1
       return col < middle ? -1 : 1
     }
-    const startStack = (i: number) => {
-      let n = 0
-      const loop = () => {
-        if (throwFrom(i, outward(i, n), batch) === 0) return
-        n++
-        hold.push(window.setTimeout(loop, stepMs))
-      }
-      if (useGame.getState().pack?.stacks[i]?.state === 'sealed') {
-        animateTear([i], 1, AUTOTEAR_MS, () => {
-          slicePack(i)
-          loop()
-        })
-      } else {
-        loop()
-      }
-    }
     // One wrapper after another rather than all in the same frame: five packs
     // tearing in perfect unison reads as one animation, not five.
+    const step = Math.min(STAGGER_MAX_MS, STAGGER_TOTAL_MS / stacks)
     ;(useGame.getState().pack?.stacks ?? []).forEach((_, i) => {
-      const step = Math.min(STAGGER_MAX_MS, STAGGER_TOTAL_MS / stacks)
-      hold.push(window.setTimeout(() => startStack(i), i * step))
+      hold.push(
+        window.setTimeout(() => {
+          if (useGame.getState().pack?.stacks[i]?.state !== 'sealed') return
+          animateTear([i], 1, AUTOTEAR_MS, () => slicePack(i))
+        }, i * step),
+      )
     })
+    /*
+     * One clock for the throwing, not one per stack.
+     *
+     * Every stack empties at the same cadence, so seventeen timers were
+     * seventeen store writes and seventeen renders per tick for a layer that
+     * could be written once. The wrappers still come off one after another,
+     * and the cards still leave a beat apart -- that is `delay` on the card,
+     * not a timer of its own.
+     */
+    let tick = 0
+    const loop = () => {
+      const moved = throwLayer((i) => outward(i, tick), batch)
+      tick++
+      const st = useGame.getState()
+      const sealedLeft = (st.pack?.stacks ?? []).some((x) => x.state === 'sealed')
+      if (moved === 0 && !sealedLeft) return
+      hold.push(window.setTimeout(loop, stepMs))
+    }
+    hold.push(window.setTimeout(loop, Math.min(step, AUTOTEAR_MS)))
     return () => {
       hold.forEach(clearTimeout)
       hold.length = 0
     }
-  }, [running, batch, stepMs, stacks, cols, animateTear, slicePack, throwFrom])
+  }, [running, batch, stepMs, stacks, cols, animateTear, slicePack, throwLayer])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -394,6 +483,33 @@ export default function PackOpener({ pack, cards }: Props) {
       tearPack(i)
     })
   }, [pack, departing, tearPack])
+
+  /* ------------------------------------------------------ what each stack gets */
+
+  /*
+   * Props a stack can be compared on.
+   *
+   * `PackStack` is memoised, which is worth nothing if its props are rebuilt
+   * every render: slicing the cards and filtering the cards in flight both
+   * hand back a fresh array every time, and a fresh array is a changed prop.
+   * Cut once per pull and grouped once per throw instead, so a stack that did
+   * not move does not re-render -- and at seventeen stacks seven deep, the
+   * stacks that did not move are sixteen of them.
+   */
+  const perPack = pack.perPack
+  const slices = useMemo(
+    () => Array.from({ length: stacks }, (_, i) => cards.slice(i * perPack, (i + 1) * perPack)),
+    [cards, stacks, perPack],
+  )
+  const inFlight = useMemo(() => {
+    const by = new Map<number, Departing[]>()
+    for (const d of departing) {
+      const list = by.get(d.stack)
+      if (list) list.push(d)
+      else by.set(d.stack, [d])
+    }
+    return by
+  }, [departing])
 
   /* -------------------------------------------------------------- input */
 
@@ -454,12 +570,13 @@ export default function PackOpener({ pack, cards }: Props) {
       return
     }
     setDrag(null)
+    const way = Math.sign(dx) || 1
     if (Math.abs(dx) > THROW_PX) {
-      throwLayer(Math.sign(dx), { x: dx, y: dy * 0.35, rot: dx * 0.045 })
+      throwLayer(() => way, 1, { x: dx, y: dy * 0.35, rot: dx * 0.045 })
     } else if (Math.hypot(dx, dy) < 8) {
       // A tap counts. Swiping is the flourish, not a toll, and it is awkward
       // with a mouse and impossible from a keyboard.
-      throwLayer(1)
+      throwLayer(() => 1)
     }
   }
 
@@ -489,14 +606,17 @@ export default function PackOpener({ pack, cards }: Props) {
             key={`${gen}-${i}`}
             state={st.state}
             thrown={st.revealed}
-            cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
+            cards={slices[i]}
             held={heldIn(i).held}
             left={leftIn(i)}
-            pile={Math.max(0.12, leftIn(i) / Math.max(1, heldIn(i).held))}
+            // Rounded, so a pile that has barely moved is the same value and
+            // costs nothing: a custom property on a stack invalidates every
+            // card under it, and a pull is forty of those.
+            pile={pileOf(leftIn(i), heldIn(i).held)}
             depth={depth}
             tear={tears[i] ?? 0}
             drag={drag}
-            departing={departing.filter((d) => d.stack === i)}
+            departing={inFlight.get(i) ?? NOTHING}
           />
         ))}
       </div>
@@ -546,8 +666,12 @@ interface StackProps {
   departing: Departing[]
 }
 
-/** One wrapper and its pile. Gestures belong to the grid, not to this. */
-function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, departing }: StackProps) {
+/**
+ * One wrapper and its pile. Gestures belong to the grid, not to this.
+ *
+ * Memoised: see the props built for it above.
+ */
+const PackStack = memo(function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, departing }: StackProps) {
   const sealed = state === 'sealed'
   // Foil takes its colour from the best card in the pack. It gives nothing
   // away that matters -- everything inside is already claimed -- but a pack
@@ -585,10 +709,13 @@ function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, 
 
         {top && (
           <div
-            /* Keyed by position, so every throw remounts the card underneath
-               and it settles into place rather than blinking. */
-            key={thrown}
-            className="pack-card top"
+            /* Two settle animations, alternating.
+               The card used to be keyed by position so every throw remounted
+               it and replayed the drop. A remount at seventeen stacks is
+               seventeen images torn out of the document and seventeen more put
+               back, several times a second; swapping which animation is named
+               restarts it just as well and keeps the element. */
+            className={`pack-card top ${thrown % 2 === 0 ? 'settle-a' : 'settle-b'}`}
             style={{ ['--depth' as string]: 0, zIndex: behind.length + 1, ...topStyle }}
           >
             <CharacterCard character={top.char} wished={top.wished} />
@@ -601,7 +728,6 @@ function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, 
             key={d.key}
             className="pack-card departing"
             style={{
-              ['--dir' as string]: d.dir,
               ['--from-x' as string]: `${d.fromX}px`,
               ['--from-y' as string]: `${d.fromY}px`,
               ['--from-rot' as string]: `${d.fromRot}deg`,
@@ -609,7 +735,14 @@ function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, 
             }}
             aria-hidden="true"
           >
-            <CharacterCard character={cards[d.key].char} wished={cards[d.key].wished} />
+            {/* The travel lives on its own element so the card keeps a plain
+                static transform and the flight stays on the compositor. */}
+            <div
+              className={`pack-fly ${d.dir < 0 ? 'to-left' : ''}`}
+              style={{ animationDelay: `${d.delay}ms` }}
+            >
+              <CharacterCard character={cards[d.key].char} wished={cards[d.key].wished} />
+            </div>
           </div>
         ))}
 
@@ -645,4 +778,4 @@ function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, 
       )}
     </div>
   )
-}
+})

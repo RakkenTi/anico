@@ -205,10 +205,10 @@ what the loop *is* — whether packs exist, how many wishes may be pinned, what 
 promises — rather than how fast it runs, which is why they end and upgrades do not.
 
 **Upgrade** — the other half of the shop: nine lines, six of them with no last level
-(Appraisal, Swift Hands, Deeper Packs, Fortune, Both Hands, Alchemy) and three that buy a
-shape and finish (The Automaton, Night Shift, Divination). Every level costs a fixed
-multiple of the last, and always more than the effect it buys. Badges give the game its
-shape; upgrades give it its curve, and the curve has no end (ADR 0007).
+(Sell Value, Open Speed, Pack Size, Coin Drops, Extra Packs, Merge Value) and three that
+buy a shape and finish (Auto Summon, Offline Earnings, Wish Odds). Every level costs a
+fixed multiple of the last, and always more than the effect it buys. Badges give the game
+its shape; upgrades give it its curve, and the curve has no end (ADR 0007).
 
 **Opening discount** — the first five rungs of the endless lines, sold at a fraction of
 list price that fades out by the sixth. The ramp on to the curve: an exponential ladder
@@ -222,3 +222,22 @@ player is quoted a price or a payout in goes through it.
 **Icon** — the game art, all of it Kenney's CC0 packs, vendored in `src/assets/icons` and
 painted as CSS masks so one file serves every theme. Never drawn by hand here: the
 typographic glyphs it replaced (✦ ▦ ★ ⚙) rendered differently on every platform.
+
+**Open Speed** — the rate a pull empties at, in cards a second, for the pull as a whole.
+Not per pack: a rate per wrapper would make every level of Extra Packs a free doubling of
+this one. It is counted in the cards the pull *holds* rather than the ones it deals, so a
+pull that says a hundred and ninety-three thousand takes as long as a hundred and
+ninety-three thousand at that rate (ADR 0010). Floored so a pull is still a moment,
+capped so a pack that has outgrown the hands still ends.
+
+**Voice** — one sound actually playing. A pull asks for far more of them than can be
+heard, so they are rationed: a few may share any tenth of a second, one sample may not
+restart faster than an ear can separate it from itself, and a limiter across the master
+bus catches whatever still lands together. What was heard before was mostly clipping.
+
+**Stress run** — `npm run stress`, which plays the end game on a throwaway instance at
+four rungs and a phone and fails on anything over budget: the press-to-wrappers delay,
+the frame gap while a pull empties, the opening against the promised rate, voices in the
+same tenth of a second, whether the spread fills its pane, whether the button that opens
+a pack is reachable, and whether the shop answers with the Automaton running. Every
+problem it checks for is one that shipped.
