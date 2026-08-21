@@ -13,6 +13,12 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(version) },
   build: { outDir: 'dist/client', emptyOutDir: true },
   server: {
-    proxy: { '/api': { target: 'http://localhost:8080', changeOrigin: true } },
+    proxy: {
+      '/api': {
+        // ANICO_API lets a dev client point at an instance on another port.
+        target: process.env.ANICO_API ?? 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
   },
 })

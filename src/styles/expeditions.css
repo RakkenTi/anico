@@ -1,72 +1,47 @@
 /* ============================================================
    Expeditions: the route map.
 
-   The page's one job is to make "this moves when you press" a
-   thing you can see. So the road is a road -- rail, waypoints,
-   a cart standing where the presses left it -- and the cart's
-   position is a single custom property, `--pos`, written once
-   per render from walked/distance. Every repeating motion here
-   is a transform or an opacity on a composited layer, timed off
-   `--beat` (the Automaton's own interval) rather than a React
-   tick, so a route map costs nothing to leave on screen.
+   Each run is a scene: tier-tinted sky, three ridge silhouettes,
+   a road whose walked half fills in, flag waypoints, a gate at
+   the end. The caravan's position is one custom property
+   (--pos) written per render; every repeating motion is a
+   transform/opacity keyframe timed off --beat (the Automaton's
+   interval), so a map costs nothing to leave on screen.
 
-   Colour comes only from the shared token set: three themes
-   swap these underneath and a hardcoded hex would survive the
-   swap and look wrong in two of them.
+   Tier hues echo the rarity ladder (rare blue, epic purple,
+   legendary gold, mythic pink) and are mixed into theme tokens
+   with color-mix, so all three themes keep their own ground.
    ============================================================ */
 
 .expeditions-view { display: flex; flex-direction: column; gap: 12px; }
 
-/* The one sentence that has to land: caravans move when you summon. Same
-   treatment as the board's lede so the two pages read as siblings. */
+/* Tier hues, one per route, longest = rarest. */
+.tier-errand   { --tier: #7d97a8; }
+.tier-circuit  { --tier: #5f7fc0; }
+.tier-passage  { --tier: #9a6fe8; }
+.tier-crossing { --tier: var(--value); }
+.tier-odyssey  { --tier: #e87ac8; }
+
 .exp-lede {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-left: 2px solid var(--accent);
   background: var(--surface);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--text-dim);
 }
 .exp-lede b { color: var(--text); font-weight: 600; }
 
 .exp-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
-/* ------------------------------------------------------- runs on the road */
+/* ----------------------------------------------------------- shared bits */
 
-.exp-runs { display: flex; flex-direction: column; gap: 10px; }
-
-.exp-run {
-  --pos: 0;
-  --beat: 2600ms;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px 12px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--well);
-}
-/* Arrival is the payoff, so the whole card takes the accent rather than
-   hanging a small green chip off a row that looks like every other row. */
-.exp-run.arrived {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.exp-run-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.exp-run-name { font-family: var(--serif); font-size: 15px; }
-.exp-run-chip {
+.exp-chip {
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -76,60 +51,169 @@
   color: var(--text-dim);
   white-space: nowrap;
 }
-.exp-run-chip.go { border-color: var(--accent); color: var(--accent); }
-.exp-run-bounty {
-  margin-left: auto;
+.exp-chip.go { border-color: var(--accent); color: var(--accent); }
+
+/* The bounty as a sealed writ: parchment chip, wax dot. */
+.exp-writ {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 7px;
   font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--value);
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--value) 12%, var(--surface)),
+    var(--surface) 70%
+  );
+  border: 1px solid var(--line-value);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
   white-space: nowrap;
 }
-
-/* -------------------------------------------------------------- the map */
-
-/* Padding on the sides is what keeps the end waypoint's label inside the card
-   at 390px, where the road is only about three hundred pixels long. */
-.exp-map { padding: 22px 30px 26px; }
-
-.exp-track {
-  position: relative;
-  height: 4px;
-  border-radius: 2px;
+.exp-seal {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 32%,
+    color-mix(in oklab, var(--tier, var(--accent)) 55%, #fff) 0 18%,
+    var(--tier, var(--accent)) 55%,
+    color-mix(in oklab, var(--tier, var(--accent)) 70%, #000)
+  );
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--tier, var(--accent)) 28%, transparent);
 }
 
-/* The rail clips the road texture; the markers sit outside it so they can
-   overhang the road. */
+/* ------------------------------------------------------- runs on the road */
+
+.exp-runs { display: flex; flex-direction: column; gap: 12px; }
+
+.exp-run {
+  --pos: 0;
+  --beat: 2600ms;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid color-mix(in oklab, var(--tier) 22%, var(--line));
+  border-radius: 6px;
+  background: var(--well);
+}
+.exp-run.arrived { border-color: color-mix(in oklab, var(--accent) 60%, var(--line)); }
+
+.exp-run-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.exp-run-name { font-family: var(--serif); font-size: 15px; }
+.exp-run-head .exp-writ { margin-left: auto; }
+
+/* ---------------------------------------------------------------- scene */
+
+.exp-scene {
+  position: relative;
+  height: 104px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--tier) 18%, var(--line));
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--tier) 27%, var(--well)),
+    color-mix(in oklab, var(--tier) 12%, var(--well)) 52%,
+    color-mix(in oklab, var(--tier) 6%, var(--well))
+  );
+}
+/* Low sun over the far ridge. */
+.exp-scene::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: 13%;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--tier) 24%, #ffe3a3) 0 26%,
+    color-mix(in oklab, var(--tier) 30%, rgba(255, 214, 140, 0.5)) 40%,
+    transparent 68%
+  );
+  opacity: 0.9;
+}
+/* Ground haze so the road reads as standing on something. */
+.exp-scene::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 30px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.22), transparent);
+  pointer-events: none;
+}
+.exp-run.arrived .exp-scene {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--tier) 32%, var(--well)),
+    color-mix(in oklab, var(--tier) 14%, var(--well)) 52%,
+    color-mix(in oklab, var(--tier) 7%, var(--well))
+  );
+}
+
+.exp-terrain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.exp-terrain .t-far  { fill: color-mix(in oklab, var(--tier) 32%, var(--well)); }
+.exp-terrain .t-mid  { fill: color-mix(in oklab, var(--tier) 19%, var(--well)); }
+.exp-terrain .t-near { fill: color-mix(in oklab, var(--tier) 10%, var(--well)); }
+
+/* ----------------------------------------------------------------- road */
+
+.exp-road {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 24px;
+  height: 4px;
+}
 .exp-rail {
   position: absolute;
   inset: 0;
   border-radius: 2px;
-  background: var(--surface-2);
   overflow: hidden;
 }
-/* Deliberately still. A road that flows on its own says the caravan travels on
-   its own, which is the one thing this page must not say. */
+/* Deliberately still: a road that flows says the caravan travels on its
+   own, the one thing this page must not say. */
 .exp-dashes {
   position: absolute;
-  inset: 0;
+  inset: 1px 0;
   background: repeating-linear-gradient(
     90deg,
-    var(--line-strong) 0 6px,
+    color-mix(in oklab, var(--text) 42%, transparent) 0 6px,
     transparent 6px 14px
   );
-  opacity: 0.55;
+  opacity: 0.5;
 }
-
-/* Road already walked. Scaled rather than sized, so the one number that changes
-   every press changes a transform and nothing else. */
+/* Walked road: scaled, not sized, so a press touches one transform. */
 .exp-walked {
   position: absolute;
   inset: 0;
   border-radius: 2px;
-  background: var(--accent);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, var(--tier)), var(--accent));
+  box-shadow: 0 0 8px color-mix(in oklab, var(--accent) 45%, transparent);
   transform: scaleX(var(--pos));
   transform-origin: left center;
 }
 
-/* ---------------------------------------------------------- waypoints */
+/* ------------------------------------------------------------ waypoints */
 
 .exp-mark {
   --at: 0;
@@ -139,82 +223,91 @@
   width: 0;
   height: 0;
 }
-.exp-mark-dot {
+
+/* A flag: pole planted on the road, pennant flying left. */
+.exp-flag {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 11px;
-  height: 11px;
-  margin: -6px 0 0 -6px;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  background: var(--surface);
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+  background: color-mix(in oklab, var(--text) 55%, transparent);
 }
-/* Collected: stamped shut with the accent, the way a paid stage should read. */
-.exp-mark.passed .exp-mark-dot {
-  border-color: var(--accent);
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--well);
-}
-/* The one you are walking toward. A ring that breathes, on opacity and scale
-   only, so it costs a compositor frame and no layout. */
-.exp-mark.next .exp-mark-dot {
-  border-color: var(--value);
-  background: var(--surface);
-}
-.exp-mark.next .exp-mark-dot::after {
+.exp-flag::after {
   content: '';
   position: absolute;
-  inset: -5px;
+  top: 0;
+  left: 2px;
+  width: 9px;
+  height: 6px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  background: color-mix(in oklab, var(--text) 38%, transparent);
+}
+.exp-mark.passed .exp-flag { background: var(--tier); }
+.exp-mark.passed .exp-flag::after {
+  background: var(--tier);
+  filter: drop-shadow(0 0 3px color-mix(in oklab, var(--tier) 60%, transparent));
+}
+/* The one being walked toward: a breathing ring at its base. */
+.exp-mark.next .exp-flag::before {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
   border: 1px solid var(--value);
   border-radius: 50%;
   animation: exp-target calc(var(--beat) * 2) ease-out infinite;
 }
-/* The end of the road is a bigger mark than the ones on the way to it. */
-.exp-mark.end .exp-mark-dot {
-  width: 15px;
-  height: 15px;
-  margin: -8px 0 0 -8px;
-  border-width: 2px;
-  border-color: var(--value);
-}
-.exp-mark.end.passed .exp-mark-dot { background: var(--value); border-color: var(--value); }
+.exp-mark.next .exp-flag::after { background: var(--value); }
 
-.exp-mark-pay {
+/* The end of the road is a gate. */
+.exp-gate {
   position: absolute;
-  top: 12px;
-  left: 0;
-  transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--text-dim);
-  opacity: 0;
+  bottom: -1px;
+  left: -9px;
+  width: 18px;
+  height: 17px;
+  color: color-mix(in oklab, var(--text) 62%, transparent);
 }
-/* Five identical amounts is noise. Only the stage you are walking toward and
-   the payoff at the end are worth naming. */
-.exp-mark.next .exp-mark-pay { opacity: 1; color: var(--value-soft); }
-.exp-mark.end .exp-mark-pay { opacity: 1; color: var(--value); transform: translateX(-80%); }
-
-/* Arrival, made large: a ring thrown off the end marker. */
+.exp-gate svg { width: 100%; height: 100%; display: block; }
+.exp-mark.end.passed .exp-gate,
+.exp-run.arrived .exp-gate {
+  color: var(--accent);
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--accent) 55%, transparent));
+}
 .exp-burst {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 15px;
-  height: 15px;
-  margin: -8px 0 0 -8px;
+  bottom: 0;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
   border: 2px solid var(--accent);
   border-radius: 50%;
   animation: exp-arrive calc(var(--beat) * 1.4) ease-out infinite;
 }
 
-/* ------------------------------------------------------------- the cart */
+/* Amounts: only the next stage and the gate are worth naming. */
+.exp-mark-pay {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--value-soft);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+}
+.exp-mark.next .exp-mark-pay { opacity: 1; }
+.exp-mark.end .exp-mark-pay { opacity: 1; color: var(--value); transform: translateX(-85%); }
 
-/* Positioning trick: the shell spans the whole road, so translating it by
-   `--pos * 100%` walks its left edge from the start of the road to the end.
-   The token hangs off that edge, pulled back half its own width. Transform
-   only -- no left/width is touched when a press moves the caravan. */
+/* -------------------------------------------------------------- caravan */
+
 .exp-caravan {
   position: absolute;
   top: 50%;
@@ -227,66 +320,123 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 26px;
-  height: 22px;
-  margin: -15px 0 0 -13px;
+  width: 28px;
+  height: 24px;
+  margin: -24px 0 0 -14px;
   display: grid;
   place-items: center;
   color: var(--text);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
   animation: exp-plod var(--beat) ease-in-out infinite;
   will-change: transform;
 }
-.exp-caravan-token svg { width: 22px; height: 18px; display: block; }
+.exp-caravan-token svg { width: 26px; height: 21px; display: block; }
 .exp-run.arrived .exp-caravan-token { color: var(--accent); animation: none; }
 
-/* ------------------------------------------------------------ under it */
+/* ------------------------------------------------------------- under it */
 
-.exp-run-foot { display: flex; flex-direction: column; gap: 2px; }
-.exp-run-note { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
-.exp-run-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
-.exp-collect { min-width: 180px; }
+.exp-run-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.exp-run-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.exp-collect { min-width: 170px; }
 
-/* ------------------------------------------------------------- routes */
+/* --------------------------------------------------------------- routes */
 
-.exp-routes { display: flex; flex-direction: column; gap: 6px; }
+.exp-routes { display: flex; flex-direction: column; gap: 8px; }
 
-.exp-route-row {
+.exp-route {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in oklab, var(--tier) 24%, var(--line));
+  border-left: 3px solid color-mix(in oklab, var(--tier) 70%, var(--line));
+  border-radius: 6px;
+  background: linear-gradient(
+    120deg,
+    color-mix(in oklab, var(--tier) 8%, var(--well)),
+    var(--well) 60%
+  );
+  overflow: hidden;
+}
+/* A faint ridge line off the card's right edge. */
+.exp-route::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 42%;
+  clip-path: polygon(0 100%, 14% 58%, 30% 82%, 48% 40%, 66% 74%, 82% 52%, 100% 78%, 100% 100%);
+  background: color-mix(in oklab, var(--tier) 14%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 70%);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 70%);
+  pointer-events: none;
+}
+.exp-route.locked {
+  border-left-color: color-mix(in oklab, var(--tier) 28%, var(--line));
   background: var(--well);
 }
-.exp-route-row.sendable { border-color: var(--line-ok); }
-.exp-route-row.locked { opacity: 0.82; }
+.exp-route.locked .exp-route-name,
+.exp-route.locked .exp-crest { opacity: 0.6; }
+.exp-route.locked::after { opacity: 0.4; }
+
+/* Crest medallion: the tier's ridge in a sealed ring. */
+.exp-crest {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: color-mix(in oklab, var(--tier) 80%, var(--text));
+  background: radial-gradient(
+    circle at 50% 32%,
+    color-mix(in oklab, var(--tier) 24%, var(--well)),
+    color-mix(in oklab, var(--tier) 7%, var(--well)) 75%
+  );
+  border: 1px solid color-mix(in oklab, var(--tier) 50%, var(--line));
+  box-shadow:
+    inset 0 0 0 2.5px var(--well),
+    inset 0 0 0 3.5px color-mix(in oklab, var(--tier) 30%, transparent);
+}
+.exp-crest svg { width: 22px; height: 15px; display: block; }
 
 .exp-route-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.exp-route-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.exp-route-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .exp-route-name { font-family: var(--serif); font-size: 15px; }
 
-.exp-route-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.exp-route-facts { display: flex; flex-wrap: wrap; gap: 3px 12px; }
 .exp-route-fact { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-.exp-route-fact em { font-style: normal; font-weight: 600; color: var(--text); }
+.exp-route-fact em { font-style: normal; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 
-/* What is missing, and by how much. Two lines when two things are missing:
-   the button can only name one of them. */
-.exp-route-need { display: flex; flex-direction: column; gap: 2px; }
-.exp-route-need span { font-size: 11px; line-height: 1.45; color: var(--red); }
+.exp-route-need { font-size: 11px; color: var(--red); }
 
-.exp-route-actions {
+.exp-route-side {
+  position: relative;
   display: flex;
   flex: none;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 6px;
 }
-.exp-route-pay { font-size: 13px; font-weight: 700; color: var(--value); white-space: nowrap; }
-.exp-route-actions .btn { min-height: 34px; padding: 6px 14px; font-size: 0.8rem; }
+.exp-route-btns { display: flex; gap: 6px; }
+.exp-route-btns .btn { min-height: 34px; padding: 6px 14px; font-size: 0.8rem; white-space: nowrap; }
 
-/* --------------------------------------------------------- keyframes */
+.exp-repeat.on { color: var(--ok); border-color: var(--line-ok); }
+
+/* ------------------------------------------------------------ keyframes */
 
 @keyframes exp-plod {
   0%, 100% { transform: translateY(0) rotate(0deg); }
@@ -295,45 +445,39 @@
 }
 @keyframes exp-target {
   0% { transform: scale(0.7); opacity: 0.9; }
-  70% { transform: scale(1.6); opacity: 0; }
-  100% { transform: scale(1.6); opacity: 0; }
+  70% { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
 }
 @keyframes exp-arrive {
   0% { transform: scale(1); opacity: 0.85; }
-  100% { transform: scale(3.2); opacity: 0; }
+  100% { transform: scale(3.4); opacity: 0; }
 }
 
-/* ------------------------------------------------------------ phones */
+/* --------------------------------------------------------------- phones */
 
 @media (max-width: 620px) {
-  .exp-map { padding: 20px 26px 24px; }
-  .exp-route-row { grid-template-columns: minmax(0, 1fr); }
-  .exp-route-actions {
+  .exp-scene { height: 92px; }
+  .exp-road { left: 22px; right: 22px; bottom: 22px; }
+  .exp-route { grid-template-columns: auto minmax(0, 1fr); }
+  .exp-route-side {
+    grid-column: 1 / -1;
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     width: 100%;
   }
-  .exp-route-actions .btn { flex: 1; }
-  .exp-collect { width: 100%; }
-  .exp-run-bounty { margin-left: 0; }
+  .exp-route-btns { flex: 1 1 100%; min-width: 0; }
+  .exp-route-btns .btn:first-child { flex: 1; }
+  .exp-collect { flex: 1; }
 }
 
-/* Nothing here carries information in its motion: the cart's position, the
-   stamped waypoints and the accent on an arrived card say all of it. */
+/* Nothing carries information in its motion: position, lit flags and the
+   accent on an arrived card say all of it. */
 @media (prefers-reduced-motion: reduce) {
   .exp-caravan-token,
-  .exp-mark.next .exp-mark-dot::after {
+  .exp-mark.next .exp-flag::before {
     animation: none;
   }
-  .exp-burst { animation: none; opacity: 0.4; transform: scale(1.9); }
-}
-
-/* A standing order, not a second decision: the Automaton re-outfits this same
-   road when a caravan comes home. Quiet until it is on, because a button that
-   shouts is a button that reads as the primary action. */
-.exp-repeat { white-space: nowrap; }
-.exp-repeat.on {
-  color: var(--ok);
-  border-color: var(--line-ok);
+  .exp-burst { animation: none; opacity: 0.4; transform: scale(2); }
 }

@@ -2,74 +2,149 @@
    The contract board.
 
    The rows are the mechanic: a bar showing what you hold against
-   what a contract wants is the only thing in the game that makes
-   one particular character worth wanting. Everything else on the
-   page exists to get out of that bar's way.
-
-   The board is optional now, which changes what the styling has
-   to do. A page you must visit can afford to be inert; a page you
-   may skip has to look like somewhere worth standing. So the
-   ready rows breathe and the closest unfinished row pulses its
-   leading edge -- entirely in keyframes on transform and opacity,
-   so the compositor owns every frame and React never ticks for
-   it, and entirely off under reduced motion.
-
-   Colour comes only from the theme tokens: three themes swap them
-   and a hex written here would survive all three.
+   what a contract wants. Everything else on the page exists to
+   get out of that bar's way. Ready rows breathe and the closest
+   unfinished row pulses its leading edge, entirely in keyframes
+   on transform and opacity, and entirely off under reduced
+   motion. Colour comes only from the theme tokens.
    ============================================================ */
 
 .contracts-view { display: flex; flex-direction: column; gap: 12px; }
 
 .contract-lede {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-left: 2px solid var(--accent);
   background: var(--surface);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--text-dim);
 }
-.contract-lede b { color: var(--text); font-weight: 600; }
 
-/* Called Shot sits with the contracts rather than in the Shop it is bought
-   from: it is not a read-out, it is the lever that turns a row you cannot
-   fulfil into one you can, and it belongs next to the rows it moves. */
+/* ------------------------------------------------------------ Called Shot */
+
+/* The target plate. Sits above the rows it moves: the aim is the lever that
+   turns a row you cannot fulfil into one you can. */
 .contract-aim {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px 12px;
   align-items: center;
   margin: 0 0 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px dashed var(--line-strong);
   border-radius: 4px;
   background: var(--well);
 }
-/* Deliberately not a flex container. A flex box makes an anonymous flex item
-   out of every run of text between the <b>s, so this one sentence was being
-   laid out as three side-by-side columns -- invisible on a wide screen where
-   the columns happened to fit on one line, and unreadable on a phone. It is a
-   sentence, so it is laid out as one: a block, with the icon inline in it. */
-.contract-aim-state {
-  display: block;
-  flex: 1 1 260px;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.5;
+.contract-aim.live { border-style: solid; border-color: var(--accent); }
+
+/* Not a flex container: a flex box would mint anonymous items out of the text
+   runs and lay one line out as columns. This bit this file before. */
+.contract-aim-main { flex: 1 1 240px; min-width: 0; }
+.contract-aim-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--text-dim);
 }
-.contract-aim-state b { color: var(--text); }
-/* `Icon` paints a masked span, not an <svg>, and its default 1.15em would come
-   out at this row's 12px rather than at the size the line was drawn for. */
-.contract-aim-state .icon {
-  width: 18px;
-  height: 18px;
-  margin-right: 5px;
-  vertical-align: -4px;
+.contract-aim-label svg { flex: none; }
+.contract-aim.live .contract-aim-label { color: var(--accent); }
+.contract-aim-target {
+  display: block;
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
-.contract-aim-picker { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; margin-top: 6px; }
+.contract-aim-target.idle { font-weight: 500; color: var(--text-dim); }
+.contract-aim-share {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--value-soft);
+}
+.contract-aim-controls { display: flex; flex: none; gap: 6px; align-items: center; }
+
+.contract-aim-picker { width: 100%; }
+.contract-aim-search {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.contract-aim-search:focus { outline: none; border-color: var(--accent); }
+.contract-aim-search::placeholder { color: var(--text-dim); }
+.contract-aim-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 216px;
+  overflow-y: auto;
+}
+.contract-aim-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.contract-aim-option:hover { border-color: var(--accent); color: var(--text); }
+.contract-aim-option.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.contract-aim-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contract-aim-option b { flex: none; font-weight: 600; }
 
 .contract-note { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+.contract-aim-locked { margin: 0 0 10px; }
+
+/* The per-row Aim control: a crosshair, filled while this series is the aim. */
+.contract-aim-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.contract-aim-btn:hover { border-color: var(--accent); color: var(--text); }
+.contract-aim-btn.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ the rows */
 
 .contract-list { display: flex; flex-direction: column; gap: 6px; }
 .contract-group {
@@ -94,12 +169,13 @@
   border-radius: 4px;
   background: var(--well);
 }
+/* Declared before ready/pinned so those states keep their own edges. */
+.contract-row.aimed { border-color: var(--accent); }
 /* A wash of the ready colour over the whole row. Painted as an overlay rather
-   than a background so the one tint follows `--ok` through every theme instead
-   of needing a hardcoded rgba per theme. */
+   than a background so the one tint follows `--ok` through every theme. */
 .contract-row.ready { border-color: var(--ok); }
-/* Declared after the ready rule on purpose: a pinned row that is also ready
-   keeps its gold edge, which is the state that pays ×2.5. */
+/* After the ready rule on purpose: a pinned row that is also ready keeps its
+   gold edge, which is the state that pays the bonus. */
 .contract-row.pinned { border-left: 3px solid var(--value); }
 .contract-row.ready::before {
   content: '';
@@ -117,8 +193,8 @@
 .contract-body,
 .contract-actions { position: relative; z-index: 1; }
 
-/* Faces, because "14 characters at ★5" is an inventory line and five portraits
-   of people you spent a week merging is a reason to press the button. */
+/* Faces: five portraits of people you spent a week merging is a reason to
+   press the button; an inventory line is not. */
 .contract-faces { display: flex; flex: none; }
 .contract-faces img,
 .contract-facehole {
@@ -139,33 +215,27 @@
 .contract-facehole .icon { width: 18px; height: 18px; }
 
 /* The rank of a ready row drifts, one portrait behind the next. Two pixels
-   over five seconds: enough that the page is alive out of the corner of the
-   eye, not enough to read as an animation you have to watch. */
+   over five seconds: alive in the corner of the eye, not a show. */
 .contract-row.ready .contract-faces img {
   animation: contractDrift 5.4s ease-in-out infinite;
   animation-delay: calc(var(--i, 0) * 280ms);
 }
 
 .contract-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.contract-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.contract-tier {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-}
-/* `overflow: hidden` is what lets the ellipsis work, and it is also what sets
-   this item's automatic minimum size to zero -- so in a head too narrow to
-   hold tier and title side by side, the title shrank to nothing instead of
-   wrapping onto its own line, and rows rendered with no series name at all.
-   A floor in characters is the fix: below it the title takes its own line. */
+.contract-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+/* `overflow: hidden` enables the ellipsis and also zeroes the item's automatic
+   minimum size, which once let the title shrink to nothing. The ch floor keeps
+   a readable stub; narrow screens let it wrap instead (below). */
 .contract-series {
   min-width: 7ch;
+  font-size: 14px;
+  font-weight: 650;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .contract-chip {
+  flex: none;
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -173,9 +243,11 @@
   border-radius: 2px;
   border: 1px solid currentColor;
 }
+.contract-chip.tier { color: var(--text-dim); border-color: var(--line-strong); }
 .contract-chip.go { color: var(--ok); }
 .contract-chip.pin { color: var(--value); }
 .contract-chip.near { color: var(--accent); }
+.contract-chip.aim { color: var(--accent); }
 .contract-ask { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
 .contract-ask b { color: var(--text); }
 
@@ -206,8 +278,8 @@
   opacity: 0.18;
   animation: contractSweep 5s ease-in-out infinite;
 }
-/* The closest unfinished row, marked at the only place worth looking: where
-   the fill stops. The solid edge steps aside so the pulse is not drawn twice. */
+/* The closest unfinished row, marked where the fill stops. The solid edge
+   steps aside so the pulse is not drawn twice. */
 .contract-row.next .contract-bar > span { border-right-color: transparent; }
 .contract-row.next .contract-bar > span::after {
   content: '';
@@ -240,29 +312,13 @@
 }
 .contract-reward { font-size: 12px; color: var(--value-soft); white-space: nowrap; }
 
-/* Where the shelf that used to close this page went. */
-.contract-shop-note {
-  margin: 14px 0 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--text-dim);
-}
-.contract-shop-note b { color: var(--text); font-weight: 600; }
-
 /* ------------------------------------------------------------ narrow rows */
 
 /*
- * Three columns need a screen. Faces, body and actions side by side want about
- * 330px of chrome before the ask has a single character to itself, so on a
- * 390px phone the text column was collapsing to roughly sixty pixels: the ask
- * ran one word per line for fifteen lines, the bar clipped its caption to a
- * digit, and a single contract filled the screen.
- *
- * So the row folds rather than squeezes. Faces and body keep the top line and
- * the actions drop to a full-width row of their own underneath, which is the
- * one part of the row that reads just as well left-to-right on its own.
+ * Three columns need a screen. Side by side they want about 330px of chrome
+ * before the ask has a character to itself, so on a 390px phone the text
+ * column collapsed to sixty pixels. The row folds instead: faces and body
+ * keep the top line, actions drop to a full-width row underneath.
  */
 @media (max-width: 760px) {
   .contract-row {
@@ -274,14 +330,14 @@
     justify-content: space-between;
     width: 100%;
   }
-  /* The payout on the left and the button on the right, whichever order the
-     row happened to write them in, so every row's button lands in one place. */
+  /* Aim on the left, payout in the middle, the button on the right, whatever
+     order the row wrote them in, so every row's button lands in one place. */
+  .contract-aim-btn { order: -1; }
   .contract-reward { order: 0; }
   .contract-actions .btn { order: 1; }
 
-  /* The title takes the whole line under its tier. Wrapping beats an ellipsis
-     once there is a line to wrap onto -- "Frieren: Beyond Journey's End" is
-     the name of the thing the contract wants, and half of it is not. */
+  /* The title takes the whole line. Wrapping beats an ellipsis once there is
+     a line to wrap onto. */
   .contract-series {
     flex: 1 1 100%;
     min-width: 0;
@@ -291,15 +347,17 @@
 }
 
 /*
- * Phone proper. The panel's desktop padding is 22px a side, which is another
- * 44px the ask does not get, and five overlapping portraits are 122px of a
- * 390px screen. Three faces still say "you already have these".
+ * Phone proper. The panel's desktop padding is 22px a side and five
+ * overlapping portraits are 122px of a 390px screen. Three faces still say
+ * "you already have these".
  */
 @media (max-width: 620px) {
   .contracts-view .panel { padding: 14px 12px; }
-  .contract-row { padding: 9px 9px; }
+  .contract-row { padding: 7px 9px; }
   .contract-faces img:nth-child(n + 4) { display: none; }
-  .contract-lede { padding: 9px 10px; }
+  .contract-lede { padding: 8px 10px; }
+  .contract-aim { padding: 9px 10px; }
+  .contract-aim-target { font-size: 15px; }
 }
 
 @keyframes contractDrift {
@@ -316,8 +374,8 @@
 }
 
 /* Every one of these is decoration, so every one of them is optional. The
-   states they carry are all said in words as well -- "ready", "closest" -- and
-   the rows lose nothing by holding still. */
+   states they carry are all said in words as well, and the rows lose nothing
+   by holding still. */
 @media (prefers-reduced-motion: reduce) {
   .contract-row.ready .contract-faces img { animation: none; }
   /* The sweep is a moving highlight and nothing else, so it goes rather than

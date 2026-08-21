@@ -215,6 +215,7 @@ export const api = {
   claimCommission: (id: number) =>
     post<{ state: Snapshot } & RaidPayout>(`/commission/${id}/claim`),
   abandon: (id: number) => request<{ state: Snapshot }>(`/commission/${id}`, { method: 'DELETE' }),
+  slam: () => post<{ state: Snapshot; melted: number; paid: number }>('/works/slam'),
   sendExpedition: (route: string) => post<{ state: Snapshot }>('/expedition', { route }),
   collectExpedition: (id: number) =>
     post<{ state: Snapshot; paid: number; route: string }>(`/expedition/${id}/collect`),

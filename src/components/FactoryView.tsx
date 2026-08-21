@@ -6,35 +6,37 @@
  * away -- so there is nothing here to click, and a page with nothing to click
  * has exactly one job: make what is already happening legible.
  *
- * The complaint that produced this view is that every mechanic in this game
- * outside the pack tear is a paragraph and three numbers. So the belt is an
- * actual belt: scrap rides it, two stations fire as it passes, credits come
- * off the right end, and the whole thing runs at the speed the player's real
- * throughput says it runs at. Buying Belt Speed makes the belt visibly faster,
- * which is the only honest way to sell an upgrade to a machine you watch.
+ * So the belt is an actual belt: scrap rides it, melts into an ingot under
+ * the furnace, gets struck into a coin under the stamper, and credits come
+ * off the right end at the speed the player's real throughput says they do.
+ * Buying Belt Speed makes the belt visibly faster, which is the only honest
+ * way to sell an upgrade to a machine you watch.
  *
  * Every repeating motion is a CSS keyframe reading its duration off a custom
- * property. Nothing here ticks in React: this view is the one a player leaves
- * open while they do something else, and a setInterval that re-renders a tree
- * for hours to move a stripe is how a phone gets warm.
+ * property. Nothing here ticks in React except one rationed sound timer: this
+ * view is the one a player leaves open while they do something else, and a
+ * setInterval that re-renders a tree for hours to move a stripe is how a
+ * phone gets warm.
  */
 
 import '../styles/factory.css'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useGame } from '../game/store'
 import { fmt, fmtCount } from '../game/format'
+import { sfx } from '../game/sound'
 
 /**
  * Pieces of scrap on the belt at once.
  *
- * Four riders plus a tread, two stations and two coins is nine elements the
- * compositor has to keep moving, which is the budget. The count is also the
- * belt's spacing: one item enters every cadence, so four of them means an item
- * spends four cadences crossing, and the belt reads as full rather than as one
- * lonely block making a trip.
+ * Four riders plus a tread, two stations and two coins is the compositor
+ * budget. The count is also the belt's spacing: one item enters every
+ * cadence, so four of them means an item spends four cadences crossing, and
+ * the belt reads as full rather than as one lonely block making a trip.
  */
 const ITEMS = 4
-/** Where the melter and the stamper stand, as a fraction of the run. */
+/** Where the furnace and the stamper stand, as a fraction of the run.
+    The rider morph keyframes in factory.css are cut from these numbers:
+    a station at `at` fires at (at * 100 + 4) / 108 percent of the ride. */
 const MELTER_AT = 0.38
 const STAMPER_AT = 0.72
 /** A press, when Auto Summon is not running and presses come by hand. */
@@ -119,6 +121,26 @@ export default function FactoryView() {
   const coinPhase = (i: number) => `${Math.round((travel + i * period) % coinCycle)}ms`
 
   /*
+   * The payout tick.
+   *
+   * Floored well above the coin cadence rather than at it. A late-game belt
+   * pays several times a second, and a sound on every payout is not a factory
+   * but a metronome you cannot switch off -- and this is the one view a player
+   * deliberately leaves open while doing something else. Every few seconds
+   * reads as a machine working somewhere nearby, which is all it is for.
+   *
+   * It runs only while the line runs and the tab is actually in front of
+   * someone; a hidden tab making foundry noises is a bug report.
+   */
+  useEffect(() => {
+    if (starved || period <= 0) return
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') sfx.melt()
+    }, Math.max(2600, coinCycle))
+    return () => clearInterval(id)
+  }, [starved, period, coinCycle])
+
+  /*
    * How full the yard looks.
    *
    * Logarithmic against the backlog threshold: a yard holds anything from two
@@ -137,34 +159,28 @@ export default function FactoryView() {
 
   return (
     <div className="factory-view">
-      <p className="fx-lede">
-        The Press mills your duplicate cards into <b>scrap</b>. The belt pulls scrap out of the
-        yard and melts it into <b>credits</b> — every press, and every hour you are away. There
-        is nothing to press here; this is the machine running.
-      </p>
-
       <div className="fx-strip">
         <div className="meter">
           <span className="meter-label">Yard</span>
           <b className="meter-value">{fmtCount(works.scrap)}</b>
-          <span className="meter-note">scrap waiting for the belt</span>
+          <span className="meter-note">scrap waiting</span>
         </div>
         <div className="meter">
           <span className="meter-label">Belt</span>
           <b className="meter-value">{rate(draw)}</b>
           <span className="meter-note">
-            scrap a press out, <b>{rate(supply)}</b> a press in
+            a press out, <b>{rate(supply)}</b> in
           </span>
         </div>
         <div className="meter">
           <span className="meter-label">Per scrap</span>
           <b className="meter-value fx-gold">{fmt(perScrap)}</b>
-          <span className="meter-note">credits one scrap melts down to</span>
+          <span className="meter-note">credits at melt</span>
         </div>
         <div className="meter">
           <span className="meter-label">An hour</span>
           <b className="meter-value fx-gold">{fmt(perHour)}</b>
-          <span className="meter-note">credits at this throughput, awake or away</span>
+          <span className="meter-note">credits, awake or away</span>
         </div>
       </div>
 
@@ -172,13 +188,6 @@ export default function FactoryView() {
         <h2 className="section-title">
           The line <span className="fx-title-rate">{fmt(works.factoryRate)} last press</span>
         </h2>
-        <p className="section-sub">
-          Scrap leaves the yard, passes the melter and the stamper, and comes off the end as
-          credits. The belt runs at the speed it really runs at:{' '}
-          {starved
-            ? 'nothing is on it right now.'
-            : `a piece every ${(period / 1000).toFixed(2)} seconds.`}
-        </p>
 
         {/* The machine. Everything inside is decoration for one sentence, so
             the sentence is what a screen reader gets. */}
@@ -217,16 +226,24 @@ export default function FactoryView() {
                       animationDelay: `${-i * period}ms`,
                     }}
                   >
-                    <span className="fx-scrap" />
+                    {/* One piece of scrap, three costumes: a grey chunk to the
+                        furnace, a molten ingot to the stamper, a coin off the
+                        end. Each costume is an opacity keyframe cut at the
+                        stations' offsets, riding the rider's own delay. */}
+                    <span className="fx-chunk" />
+                    <span className="fx-ingot" />
+                    <span className="fx-coin" />
                   </div>
                 ))}
             </div>
 
             {/* The tag rides above its station: the bottom of a station is the
-                lip that hangs over the belt, and a caption there would sit on
+                mouth that straddles the belt, and a caption there would sit on
                 the track the scrap is travelling down. */}
             <div className="fx-station fx-melter">
               <span className="fx-tag">melter</span>
+              <span className="fx-heat" />
+              <span className="fx-stack" />
               <span className="fx-hood" />
               {!starved && <span className="fx-flash" style={{ animationDelay: phase(MELTER_AT) }} />}
             </div>
@@ -235,7 +252,10 @@ export default function FactoryView() {
               <span className="fx-tag">stamper</span>
               <span className="fx-frame" />
               {!starved && (
-                <span className="fx-piston" style={{ animationDelay: phase(STAMPER_AT) }} />
+                <>
+                  <span className="fx-piston" style={{ animationDelay: phase(STAMPER_AT) }} />
+                  <span className="fx-spark" style={{ animationDelay: phase(STAMPER_AT) }} />
+                </>
               )}
             </div>
 
@@ -255,31 +275,26 @@ export default function FactoryView() {
 
         {/* The two states a player will sit in for a long time without being
             told why, if nobody says it here: a belt with nothing on it, and a
-            yard the belt cannot get through. */}
+            yard the belt cannot get through. One line each. */}
         {starved && (
           <p className="fx-state starved">
-            <b>The yard is empty.</b> The belt is turning with nothing on it. The Press makes{' '}
-            {rate(supply)} scrap a press and the belt can take {rate(works.belt)} — deeper stacks
-            and Finer Mill are what feed it faster.
+            <b>Yard empty.</b> The belt waits.
           </p>
         )}
         {backlog && (
           <p className="fx-state backlog">
-            <b>Scrap is piling up.</b> {fmtCount(works.scrap)} sit in the yard and the belt only
-            takes {rate(works.belt)} a press. Belt Speed is what widens it.
+            <b>Backlog:</b> {fmtCount(works.scrap)} scrap waiting. Belt Speed widens the belt.
           </p>
         )}
         {!starved && !backlog && (
           <p className="fx-state">
-            The belt is keeping up: {rate(draw)} scrap a press in and out, {fmt(perScrap)} credits
-            a scrap, {fmt(perHour)} credits an hour.
+            Keeping up: {rate(draw)} scrap a press, {fmt(perHour)} credits an hour.
           </p>
         )}
 
         <p className="fx-shop">
-          Two lines in the Shop move these numbers. <b>Foundry</b> raises what one scrap is worth;{' '}
-          <b>Belt Speed</b> raises how much scrap a press the belt pulls.
-          {autoSpinMs <= 0 && ' Auto Summon is off, so the line moves when you summon.'}
+          Shop: <b>Foundry</b> raises scrap worth, <b>Belt Speed</b> widens the belt.
+          {autoSpinMs <= 0 && ' Auto Summon is off; the line moves when you summon.'}
         </p>
 
         <button className="btn btn-quiet fx-more" onClick={() => setDetail(!detail)}>
@@ -291,14 +306,14 @@ export default function FactoryView() {
             <div>
               <dt>Into the yard</dt>
               <dd>
-                {rate(supply)} scrap a press — {fmtCount(works.sparesPerPull)} spares a press,{' '}
-                {fmtCount(works.sparesPerScrap)} spares to a scrap
+                {rate(supply)} scrap a press ({fmtCount(works.sparesPerPull)} spares,{' '}
+                {fmtCount(works.sparesPerScrap)} to a scrap)
               </dd>
             </div>
             <div>
               <dt>Out of the yard</dt>
               <dd>
-                {rate(draw)} scrap a press, against a belt that can take {rate(works.belt)}
+                {rate(draw)} scrap a press, of {rate(works.belt)} the belt takes
               </dd>
             </div>
             <div>
@@ -308,8 +323,8 @@ export default function FactoryView() {
             <div>
               <dt>One scrap</dt>
               <dd>
-                {fmt(perScrap)} credits — {fmt(creditsPerCard)} a card × {rate(works.scrapWorth)}{' '}
-                cards a scrap
+                {fmt(perScrap)} credits ({fmt(creditsPerCard)} a card × {rate(works.scrapWorth)}{' '}
+                cards)
               </dd>
             </div>
             <div>

@@ -71,7 +71,10 @@ const RUNGS = [
   { name: 'late', packs: 20, multipack: 16, haste: 24, own: 20_000, budget: { summon: 2500, frame: 22 } },
   // The rung that sells: sixty-five thousand characters, all of them at once.
   { name: 'deep', packs: 24, multipack: 23, haste: 30, own: 65_000, sell: true, budget: { summon: 3000, frame: 24 } },
-  { name: 'silly', packs: 34, multipack: 23, haste: 40, own: 65_000, budget: { summon: 3000, frame: 24 } },
+  // Forty-one wrappers: past this many, "as square as the count allows" put
+  // six rows in the height between the header and the dock and every wrapper
+  // came out a sliver. The grid picks its shape from the room it has instead.
+  { name: 'silly', packs: 34, multipack: 40, haste: 40, own: 65_000, table: 6, budget: { summon: 3000, frame: 24 } },
   // The screen most of this is actually played on, at the rung that hurt.
   { name: 'phone', packs: 20, multipack: 16, haste: 24, own: 20_000, view: PHONE, budget: { summon: 2500, frame: 26 } },
 ]
@@ -83,6 +86,20 @@ const ONLY = (process.env.ANICO_STRESS_RUNGS ?? '').split(',').filter(Boolean)
 const VOICE_PEAK = 8
 /** How much of its pane a big spread has to use. */
 const SPREAD_FILL = 0.9
+/**
+ * How narrow a sealed wrapper may get, in pixels, per rung.
+ *
+ * Forty-one wrappers laid out as a square are six rows deep, and six rows in
+ * the height this view has left leaves each one under thirty pixels wide while
+ * half the screen is empty. Fifty is comfortably past that on a desktop.
+ *
+ * A phone is a different question and the number has to say so: seventeen
+ * wrappers across 390px cannot be wide whatever the arrangement, and the best
+ * one available there is about forty-seven. Holding the phone to the desktop's
+ * figure would only ever measure the width of the phone.
+ */
+const WRAPPER_MIN_PX = 50
+const WRAPPER_MIN_PHONE_PX = 44
 /** How long a purchase may take to show on the shelf, machine running. */
 const SHOP_ANSWER_MS = 800
 /** How long the button that opens a pack may take to become pressable. */
@@ -265,7 +282,7 @@ function climb(dbPath, rung) {
     outfit: 3,
     caravan: 1,
     aim: 1,
-    table: 2,
+    table: rung.table ?? 2,
     hands: 2,
     depth: 1,
     automaton: 10,
@@ -290,6 +307,15 @@ function climb(dbPath, rung) {
             scrap = MAX(scrap, 60000)
       WHERE player_id = ?`,
   ).run(JSON.stringify(badges), JSON.stringify(upgrades), Number.MAX_SAFE_INTEGER, player.id)
+  /*
+   * An empty road.
+   *
+   * Every rung sends a caravan so the route map has something on it, and the
+   * caravans a rung sends are still out when the next one starts. Three rungs
+   * in, every slot is taken and the rung after that quietly shoots an empty
+   * road instead of a journey. Putting a player on a rung means the road too.
+   */
+  db.prepare('DELETE FROM expeditions WHERE player_id = ?').run(player.id)
   db.close()
 }
 
@@ -405,6 +431,7 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
   await page.waitForSelector('.pack-area', { timeout: 60_000 })
   const summon = await page.evaluate(() => performance.now() - window.__t)
   const stacks = await page.locator('.pack-area').count()
+  const wrapper = Math.round(((await page.locator('.pack-area').first().boundingBox()) ?? { width: 0 }).width)
   await page.screenshot({ path: join(OUT, `${rung.name}-sealed.png`) })
 
   // ---- the opening
@@ -553,10 +580,15 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
      * works and the map appears, not that the row exists.
      */
     if (tab === 'expeditions') {
-      const send = page.locator('.exp-route-row .btn-primary:not([disabled])').first()
+      const send = page.locator('.exp-route .btn-primary:not([disabled])').first()
       if (await send.count()) {
         await send.click()
         await page.waitForSelector('.exp-run', { timeout: 8000 })
+      } else {
+        /* Every rung is given the scrap and the roster for the cheapest route,
+           so nothing sendable means the button moved or the gate broke. The
+           guard used to swallow that and shoot an empty road. */
+        failures.push(`${rung.name}: no route could be sent`)
       }
     }
     // Long enough for one cycle of whatever the view animates.
@@ -701,6 +733,8 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
       rung.name.padEnd(6),
       `${(state.cardsPerPull / 1000).toFixed(0)}K cards`.padStart(12),
       `${stacks} packs`.padStart(9),
+      `wrapper ${wrapper}px`.padStart(16) +
+        ok('wrappers not slivers', wrapper >= (rung.view ? WRAPPER_MIN_PHONE_PX : WRAPPER_MIN_PX)),
       `${state.cardRate.toLocaleString()}/s`.padStart(12),
       `summon ${Math.round(summon)}ms`.padStart(15) + ok('summon', summon < rung.budget.summon),
       `frames ${frames.median.toFixed(1)}ms`.padStart(16) + ok('frames', frames.median < rung.budget.frame),
