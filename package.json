@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
     "build:demo": "vite build --config vite.demo.config.ts",
     "dev:demo": "vite --config vite.demo.config.ts",
+    "preview:demo": "vite preview --config vite.demo.config.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "dev:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput & node --watch dist/server/server/index.js",
