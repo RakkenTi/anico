@@ -362,7 +362,7 @@ export default function RollView() {
             </div>
             <span className="claim-bar-note">
               {entry.locked
-                ? 'locked — nothing sells this'
+                ? 'locked: nothing sells this'
                 : entry.willSell
                   ? 'for sale when you summon again'
                   : entry.fresh

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useGame, stackCards } from '../game/store'
 import { rarityOf } from '../game/economy'
 import { stackDepth } from '../game/upgrades'
@@ -102,6 +102,45 @@ function columnsFor(n: number): number {
   }
   return best
 }
+
+/**
+ * Columns for a big pull, sized to the room the grid actually has.
+ *
+ * "As square as the count allows" is right up to a couple of dozen wrappers.
+ * Past that, square means six rows, and six rows crammed into the height
+ * between the header and the dock make every wrapper a sliver while half the
+ * screen's width sits empty. So the shape follows the room instead: for every
+ * plausible column count, work out how wide a wrapper it yields under the
+ * same two limits the stylesheet applies -- its share of the width, its share
+ * of the height -- and keep the widest. Near-ties go to the fullest bottom
+ * row, because thirteen going out as twelve and one reads as a mistake.
+ *
+ * `w`/`room`/`gap`/`lean` mirror the .pack-grid rules in index.css; if those
+ * numbers move, these must move with them.
+ */
+function fitCols(n: number, w: number, room: number, gap: number, lean: number): number {
+  if (n <= 3) return n
+  let bestW = 0
+  const widths = new Array<number>(n + 1).fill(0)
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols)
+    const wide = Math.min((w - (cols - 1) * gap - lean) / cols, (room / rows - gap) / 2, 330)
+    widths[cols] = wide
+    if (wide > bestW) bestW = wide
+  }
+  let best = columnsFor(n)
+  let bestFull = -1
+  for (let cols = 1; cols <= n; cols++) {
+    if (widths[cols] < bestW * 0.97) continue
+    const rows = Math.ceil(n / cols)
+    const full = (n - (rows - 1) * cols) / cols
+    if (full > bestFull) {
+      bestFull = full
+      best = cols
+    }
+  }
+  return best
+}
 /**
  * Delay between one wrapper starting to tear itself open and the next.
  *
@@ -185,10 +224,19 @@ export default function PackOpener({ pack, cards }: Props) {
 
   const stacks = Math.max(1, pack.stacks.length)
 
+  /* The room the grid has, measured off its parent rather than guessed from
+     the viewport: layouts cap the pane at different widths and mega pulls go
+     full-bleed. Null exactly once, before the first layout effect. */
+  const [pane, setPane] = useState<{ w: number; room: number; gap: number; lean: number } | null>(
+    null,
+  )
+
   // The render budget is shared out: one stack shows ten cards deep, twenty
   // show three, and the browser mounts about the same number either way.
   const depth = stackDepth(stacks)
-  const cols = columnsFor(stacks)
+  const cols = pane
+    ? fitCols(stacks, pane.w, pane.room, pane.gap, pane.lean)
+    : columnsFor(stacks)
   const anySealed = pack.stacks.some((st) => st.state === 'sealed')
 
   /*
@@ -517,6 +565,28 @@ export default function PackOpener({ pack, cards }: Props) {
   const origin = useRef<{ x: number; y: number } | null>(null)
   const last = useRef<{ x: number; y: number } | null>(null)
   const surface = useRef<HTMLDivElement>(null)
+
+  /* Before first paint, then on resize: the numbers mirror .pack-grid's own
+     formula in index.css (desktop and its 860px phone override). */
+  useLayoutEffect(() => {
+    const measure = () => {
+      const holder = surface.current?.parentElement
+      if (!holder) return
+      const phone = window.innerWidth <= 860
+      setPane({
+        w: holder.clientWidth,
+        room: Math.max(
+          140,
+          phone ? window.innerHeight - 420 : window.innerHeight * 0.64 - 110,
+        ),
+        gap: phone ? 12 : 20,
+        lean: phone ? 30 : 40,
+      })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
 
   /**
    * A hand is welcome while the machine is working.

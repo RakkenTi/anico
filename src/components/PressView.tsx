@@ -4,56 +4,48 @@
  * A duplicate does not vanish: a copy landing on a stack you already own sheds
  * a spare fraction of a card, and a copy landing on a deep stack sheds nearly a
  * whole one. The press mills those spares into scrap, and the Factory buys the
- * scrap. Nothing on this page is pressable -- the machine runs by itself, once
- * per press, awake or away.
+ * scrap. It runs by itself, once per press, awake or away -- and the machine
+ * itself is the interaction: slam it and the Factory belt runs three presses'
+ * worth of the yard right now. Tapping can never outrun the press that fills
+ * the yard; it just melts the backlog faster.
  *
- * Which is exactly why it used to be a number in a box, and why that was wrong.
- * A faucet the player never touches is a faucet the player never believes in,
- * so the read-out is the machine: a ram on the real cadence, real portraits out
+ * The read-out is the machine: a ram on the real cadence, real portraits out
  * of the real collection going under it, and scrap coming out the far side.
- * When Finer Mill or Auto Summon speeds the works up the ram speeds up with it,
- * which is the only proof of an upgrade an idle mechanic can offer.
+ * When Finer Mill or Auto Summon speeds the works up the ram speeds up with
+ * it.
  *
  * Every repeating thing here is a CSS keyframe reading one custom property for
  * its duration. This view can be left open for a working day and must cost
- * nothing to leave open: no animation frame, no interval driving motion, and
- * seven moving elements in total.
+ * nothing to leave open: no animation frame, no interval driving motion. The
+ * only transient React state is the slam itself, which exists exactly as long
+ * as the player is hammering the machine.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGame } from '../game/store'
 import type { OwnedCharacter } from '../game/types'
 import { fmt, fmtCount } from '../game/format'
+import { sfx } from '../game/sound'
 import '../styles/press.css'
 
 /** Faces held in reserve, so the feed is not the same three cards forever. */
 const POOL = 12
-/**
- * How often the portraits under the ram are swapped for three others.
- *
- * The one thing on this page that is a React state change, and deliberately
- * slow: at four seconds it is under a thousand renders in an hour of three
- * images and a line of text, against sixty thousand if the swap chased the
- * ram. The motion itself never touches React.
- */
+/** How often the portraits under the ram are swapped for three others. */
 const FACE_SWAP_MS = 4200
 /** What the idle machine breathes on, since it has no real cadence to keep. */
 const IDLE_STROKE_MS = 3600
+/** Client-side throttle on manual slams; the server's own limit is 110ms. */
+const SLAM_GAP_MS = 160
+/** Hold-to-repeat cadence. Slightly over the throttle so every repeat lands. */
+const HOLD_MS = 170
 
 /**
  * Where each portrait sits under the ram, where it comes in from, and how far
- * ahead of the others it goes.
- *
- * Three of them, because a rank of three reads as a handful being crushed
- * rather than as one card being shown, and because at 390px a card here is
- * about twenty-five pixels wide and a fourth would stop being a face.
- *
- * `x` is the seat measured off the centre of the press and `from` is how far
- * left of that seat the bin's mouth is, both in the frame's own units, so all
- * three fall out of one mouth and fan out along the table on the way in. `off`
- * is a fraction of one stroke and is kept under 2%: a card that leaves early
- * is flat before the ram arrives, and a ram stopped above a card it has not
- * touched is worse than three cards landing together.
+ * ahead of the others it goes. Three of them, because a rank of three reads as
+ * a handful being crushed rather than one card being shown. `x` is the seat
+ * measured off the centre of the press and `from` is how far left of that seat
+ * the bin's mouth is; `off` is a fraction of one stroke, kept under 2% so the
+ * ram is never stopped above a card it has not touched.
  */
 const SLOTS = [
   { x: -0.15, from: -0.39, tilt: -14, off: -0.016 },
@@ -61,49 +53,32 @@ const SLOTS = [
   { x: 0.15, from: -0.69, tilt: -2, off: 0 },
 ]
 
-/**
- * The material waiting on the feed table.
- *
- * These never move and that is their job: they are what guarantees a still
- * frame of this view has the collection in it, whatever instant of the stroke
- * it catches. `x` is measured off the left edge of the frame.
- */
+/** The material waiting on the feed table. These never move: they are what
+    guarantees a still frame of this view has the collection in it. */
 const QUEUE = [
   { x: 0.23, tilt: -5 },
   { x: 0.3, tilt: 4 },
 ]
 
-/**
- * Chips off the far side.
- *
- * Two, half a stroke apart, which is not decoration: one chip is in the air
- * for three fifths of a cycle and two offset by half of one means there is
- * always scrap crossing the frame. The still that catches this machine with
- * its ram at the top still catches it working.
- *
- * They stop just short of the counter rather than on it. The counter is the
- * one thing in the frame that cannot shrink all the way with it -- digits
- * below eleven pixels stop being digits -- so on a phone it is proportionally
- * wide, and a chip aimed at the middle of it lands on top of the number.
- */
+/** Chips off the far side, half a stroke apart so there is always scrap
+    crossing the frame. They stop just short of the counter. */
 const CHIPS = [
   { x: 0.2, y: 0.25, off: 0 },
   { x: 0.17, y: 0.21, off: -0.5 },
 ]
 
-/**
- * Scrap a press, said honestly.
- *
- * fmtCount rounds, and scrap a press spends most of the game between a
- * thousandth and a hundred -- the exact band it would round to "0". Above a
- * hundred the suffixes are the right answer again.
- */
-function scrapText(n: number): string {
-  if (n >= 100) return fmtCount(n)
-  if (n >= 10) return n.toFixed(1)
-  if (n >= 1) return n.toFixed(2)
-  return n.toFixed(3)
-}
+/** Where each spark of a slam burst flies, in units of --press-h. */
+const SPARKS = [
+  { x: -0.16, y: -0.1, s: 1 },
+  { x: -0.09, y: -0.17, s: 0.7 },
+  { x: 0.02, y: -0.2, s: 0.85 },
+  { x: 0.11, y: -0.15, s: 0.7 },
+  { x: 0.18, y: -0.07, s: 1 },
+  { x: -0.2, y: -0.02, s: 0.6 },
+  { x: 0.22, y: -0.01, s: 0.6 },
+]
+
+type Pay = { id: number; text: string; dx: number }
 
 export default function PressView() {
   const works = useGame((s) => s.works)
@@ -111,16 +86,14 @@ export default function PressView() {
   const effects = useGame((s) => s.effects)
   const autoSpinMs = useGame((s) => s.autoSpinMs)
   const skipOwned = useGame((s) => s.settings.skipOwned)
+  const slamPress = useGame((s) => s.slamPress)
   const [showNumbers, setShowNumbers] = useState(false)
 
   /**
-   * One ram stroke per scrap, clamped at both ends.
-   *
-   * Uncapped this is a machine that either strobes or looks dead: a late-game
-   * press makes a scrap every summon, an early one takes four hundred summons
-   * to make one. A quarter of a second is as fast as a slam still reads as a
-   * slam, and four seconds is as slow as a running machine may look before the
-   * player decides it has stopped.
+   * One ram stroke per scrap, clamped at both ends. Uncapped this is a machine
+   * that either strobes or looks dead: a quarter second is as fast as a slam
+   * still reads as a slam, four seconds is as slow as a running machine may
+   * look before the player decides it has stopped.
    */
   const perPress = works.sparesPerPull / Math.max(1, works.sparesPerScrap)
   const pressMs = autoSpinMs > 0 ? autoSpinMs : 1500
@@ -130,13 +103,9 @@ export default function PressView() {
 
   /**
    * The faces the machine feeds on: the deepest stacks held, because those are
-   * the stacks actually shedding the spares being milled.
-   *
-   * One linear pass with a twelve-slot shortlist rather than a sort. The
-   * collection runs to five figures and this page draws three portraits of it,
-   * so ordering the whole thing to pick three would be the most expensive work
-   * on the view by an order of magnitude. Once the shortlist has filled a
-   * replacement is rare, so re-finding the weakest seat costs nothing amortised.
+   * the stacks actually shedding the spares being milled. One linear pass with
+   * a twelve-slot shortlist rather than a sort -- the collection runs to five
+   * figures and this page draws three portraits of it.
    */
   const pool = useMemo(() => {
     const best: OwnedCharacter[] = []
@@ -183,62 +152,139 @@ export default function PressView() {
     [pool, cursor],
   )
 
+  /* ---------------------------------------------------------------- slam
+   *
+   * A tap anywhere on the rig is a manual stroke. Client throttle at 160ms,
+   * one slamPress() per accepted tap. The manual stroke animation is a class
+   * with two alternating names so a second tap restarts it, and the transient
+   * payout markers are keyed by a counter and removed on animationend.
+   */
+  const lastSlam = useRef(0)
+  const slamId = useRef(0)
+  const [strokeId, setStrokeId] = useState(0)
+  const [pays, setPays] = useState<Pay[]>([])
+  const [starved, setStarved] = useState(0)
+
+  const trySlam = useCallback(() => {
+    const now = performance.now()
+    if (now - lastSlam.current < SLAM_GAP_MS) return
+    lastSlam.current = now
+    const id = ++slamId.current
+    setStrokeId(id)
+    /* Honest sound up front: a slam only sounds like a slam if the yard has
+       anything in it to crush. */
+    if (useGame.getState().works.scrap > 0) sfx.slam()
+    else sfx.tap()
+    void slamPress().then((paid) => {
+      if (paid > 0) {
+        setPays((p) => [...p.slice(-3), { id, text: `+${fmt(paid)}`, dx: ((id % 5) - 2) * 10 }])
+      } else {
+        setStarved(id)
+        setPays([])
+      }
+    })
+  }, [slamPress])
+
+  /* The manual-stroke class outlives the animation slightly, then clears so
+     the automatic cadence takes the ram back. */
+  useEffect(() => {
+    if (!strokeId) return
+    const t = setTimeout(() => setStrokeId(0), 360)
+    return () => clearTimeout(t)
+  }, [strokeId])
+
+  /* Press-and-hold repeats at the throttle. The interval only lives while a
+     pointer is down on the machine. */
+  const hold = useRef<ReturnType<typeof setInterval> | null>(null)
+  const stopHold = useCallback(() => {
+    if (hold.current) {
+      clearInterval(hold.current)
+      hold.current = null
+    }
+  }, [])
+  useEffect(() => stopHold, [stopHold])
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return
+      trySlam()
+      stopHold()
+      hold.current = setInterval(trySlam, HOLD_MS)
+    },
+    [trySlam, stopHold],
+  )
+  /* Space and Enter arrive as a click with detail 0; pointer taps already
+     fired on pointerdown and are dropped here. */
+  const onClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.detail === 0) trySlam()
+    },
+    [trySlam],
+  )
+
   const rate = works.sparesPerPull
-  const left = Math.max(0, works.sparesPerScrap - works.spares)
-  const presses = rate > 0 ? Math.ceil(left / rate) : 0
   const fill = Math.min(100, (works.spares / Math.max(1, works.sparesPerScrap)) * 100)
   const strokesPerMin = Math.round(60000 / stroke)
-  /* Scrap a minute only means anything once something is pressing on its own.
-     By hand the honest unit is scrap a press, because the clock is you. */
-  const perMinute = autoSpinMs > 0 ? perPress * (60000 / autoSpinMs) : 0
   const cardsPerPull = effects().cardsPerPull
 
   const rigStyle = { '--press-stroke': `${stroke}ms` } as React.CSSProperties
+  const machineCls = [
+    'press-machine',
+    idle ? 'idle' : '',
+    strokeId ? (strokeId % 2 ? 'slam-a' : 'slam-b') : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div className="press-view">
-      <p className="press-lede">
-        A copy of a character you already hold does not stack for nothing: it sheds a{' '}
-        <b>spare</b>, and a copy landing on a deep stack sheds more of one. The press mills spares
-        into <b>scrap</b>, and the Factory buys the scrap. It runs by itself on every press, here
-        or away.
-      </p>
-
       <div className="panel">
         <h2 className="section-title">
           Hydraulic Press
-          <span className="slot-count">
-            {idle ? 'stopped' : `${fmtCount(strokesPerMin)} strokes a minute`}
-          </span>
+          <span className="slot-count">{idle ? 'stopped' : `${fmtCount(strokesPerMin)}/min`}</span>
         </h2>
         <p className="section-sub">
           {idle
-            ? 'Nothing is coming down the chute, so the ram is parked.'
-            : 'The ram keeps pace with the mill, so it speeds up when your rate does. There is nothing here to press.'}
+            ? skipOwned
+              ? 'Skip Owned is on, so no spares come in.'
+              : 'No spares yet. Duplicates feed the press.'
+            : 'Runs on its own. Slam it to melt the yard faster.'}
         </p>
 
-        {/* The machine says nothing a screen reader needs: every number painted
-            on it is repeated as text in the meters underneath. */}
-        <div className={`press-machine ${idle ? 'idle' : ''}`} style={rigStyle} aria-hidden="true">
-          <div className="press-rig">
-            <div className="press-crown">
-              <span className="press-plate">Hydraulic Press</span>
+        {/* The machine is the button: every number painted on it is repeated
+            as text in the meters underneath. */}
+        <button
+          type="button"
+          className={machineCls}
+          style={rigStyle}
+          aria-label="Slam the press"
+          title="Runs the belt through the yard now."
+          onPointerDown={onPointerDown}
+          onPointerUp={stopHold}
+          onPointerLeave={stopHold}
+          onPointerCancel={stopHold}
+          onClick={onClick}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <span className="press-rig" aria-hidden="true">
+            <span className="press-crown">
+              <span className="press-plate">Anico Hydraulics</span>
               <span className="press-lamp" />
-              <span className="press-spm">{idle ? 'idle' : `${fmtCount(strokesPerMin)}/min`}</span>
-            </div>
+              <span className="press-spm">{idle ? 'IDLE' : `${fmtCount(strokesPerMin)}/MIN`}</span>
+            </span>
 
-            <div className="press-column left" />
-            <div className="press-column right" />
-            <div className="press-guide left" />
-            <div className="press-guide right" />
+            <span className="press-column left" />
+            <span className="press-column right" />
+            <span className="press-guide left" />
+            <span className="press-guide right" />
 
-            <div className="press-bin" />
-            <div className="press-table" />
-            <div className="press-ramp" />
-            <div className="press-base" />
+            <span className="press-bin" />
+            <span className="press-table" />
+            <span className="press-ramp" />
+            <span className="press-base" />
 
             {queue.map((face, i) => (
-              <div
+              <span
                 key={`q${i}`}
                 className="press-queue"
                 style={
@@ -249,11 +295,11 @@ export default function PressView() {
                 }
               >
                 {face && <img src={face.image} alt="" draggable={false} loading="lazy" />}
-              </div>
+              </span>
             ))}
 
             {faces.map((face, i) => (
-              <div
+              <span
                 key={i}
                 className="press-card"
                 style={
@@ -266,10 +312,10 @@ export default function PressView() {
                 }
               >
                 {face && <img src={face.image} alt="" draggable={false} loading="lazy" />}
-              </div>
+              </span>
             ))}
 
-            <div className="press-bed" />
+            <span className="press-bed" />
 
             {CHIPS.map((chip, i) => (
               <span
@@ -285,58 +331,58 @@ export default function PressView() {
               />
             ))}
 
-            <div className="press-plunger">
+            <span className="press-cyl" />
+            <span className="press-plunger">
               <span className="press-rod" />
               <span className="press-ram" />
-            </div>
+            </span>
 
-            <div className="press-gauge">
+            <span className="press-gauge">
               <span className="press-gauge-label">spares</span>
               <span className="press-gauge-bar">
                 <span style={{ width: `${fill}%` }} />
               </span>
-            </div>
+            </span>
 
-            <div className="press-yard">
-              <span className="press-yard-n">{fmtCount(works.scrap)}</span>
-              <span className="press-yard-label">scrap</span>
-            </div>
-          </div>
-        </div>
+            <span className="press-slam-tag">Slam</span>
 
-        {idle ? (
-          <div className="press-idle">
-            {skipOwned ? (
-              <p>
-                <b>Skip Owned is on.</b> A pull never deals you a character you already hold, so
-                nothing is a duplicate, nothing sheds a spare, and the press has nothing to mill.
-                Turn it off in Settings and it starts on the next press.
-              </p>
-            ) : (
-              <p>
-                <b>No spares are coming in.</b> The press only mills duplicates. Keep summoning
-                until a character repeats — every copy after the first sheds a spare — and the ram
-                starts on its own.
-              </p>
+            {pays.map((p) => (
+              <span
+                key={p.id}
+                className="press-pay"
+                style={{ '--pay-dx': `${p.dx}px` } as React.CSSProperties}
+                onAnimationEnd={(e) => {
+                  if (e.target === e.currentTarget)
+                    setPays((cur) => cur.filter((q) => q.id !== p.id))
+                }}
+              >
+                {p.text}
+                {SPARKS.map((s, i) => (
+                  <i
+                    key={i}
+                    style={
+                      {
+                        '--spark-x': `calc(var(--press-h) * ${s.x})`,
+                        '--spark-y': `calc(var(--press-h) * ${s.y})`,
+                        '--spark-s': s.s,
+                      } as React.CSSProperties
+                    }
+                  />
+                ))}
+              </span>
+            ))}
+
+            {starved > 0 && (
+              <span
+                key={starved}
+                className="press-starved"
+                onAnimationEnd={() => setStarved(0)}
+              >
+                yard empty
+              </span>
             )}
-          </div>
-        ) : (
-          <div className="press-lines">
-            <p className="press-line">
-              <b>{fmtCount(Math.round(rate))} spares a press.</b> That is {scrapText(perPress)} scrap
-              a press
-              {perMinute > 0 && <>, about {scrapText(perMinute)} scrap a minute</>}.{' '}
-              {presses <= 1
-                ? 'The next scrap comes off on this press.'
-                : `Next scrap in about ${fmtCount(presses)} presses.`}
-            </p>
-            <p className="press-line dim">
-              Two things speed it up. Deeper stacks: a copy landing on a stack at its cap sheds a
-              whole spare, one halfway there sheds half. And <b>Finer Mill</b> in the Shop, which
-              cuts the {fmtCount(works.sparesPerScrap)} spares a scrap costs.
-            </p>
-          </div>
-        )}
+          </span>
+        </button>
 
         <div className="press-meters">
           <div className="meter">
@@ -353,16 +399,16 @@ export default function PressView() {
             </span>
           </div>
           <div className="meter">
-            <span className="meter-label">Scrap in the yard</span>
+            <span className="meter-label">Scrap in yard</span>
             <b className="meter-value">{fmtCount(works.scrap)}</b>
             <span className="meter-note">
-              the belt takes <b>{scrapText(works.belt)}</b> a press
+              belt takes <b>{scrapText(works.belt)}</b> a press
             </span>
           </div>
           <div className="meter">
-            <span className="meter-label">Factory paid</span>
+            <span className="meter-label">Paid last press</span>
             <b className="meter-value credits-text">{fmt(works.factoryRate)}</b>
-            <span className="meter-note">credits, over the last press</span>
+            <span className="meter-note">credits</span>
           </div>
         </div>
 
@@ -405,4 +451,16 @@ export default function PressView() {
       </div>
     </div>
   )
+}
+
+/**
+ * Scrap a press, said honestly: fmtCount rounds, and scrap a press spends
+ * most of the game between a thousandth and a hundred, the exact band it
+ * would round to "0".
+ */
+function scrapText(n: number): string {
+  if (n >= 100) return fmtCount(n)
+  if (n >= 10) return n.toFixed(1)
+  if (n >= 1) return n.toFixed(2)
+  return n.toFixed(3)
 }

@@ -295,6 +295,11 @@ export function createApp(db: DB, config: Config) {
     sync(c, { state: game.abandonCommission(db, c.get('player'), Number(c.req.param('id'))) }),
   )
 
+  api.post('/works/slam', (c) => {
+    const { snapshot, ...paid } = game.slamPress(db, c.get('player'))
+    return sync(c, { state: snapshot, ...paid })
+  })
+
   api.post('/expedition', async (c) => {
     const b = await body(c)
     return sync(c, { state: game.sendExpedition(db, c.get('player'), String(b.route)) })

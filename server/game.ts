@@ -1934,6 +1934,33 @@ export function sendExpedition(db: DB, player: Player, key: string): Snapshot {
   return snapshot(db, player)
 }
 
+/**
+ * A hand on the ram.
+ *
+ * One slam runs the belt for a few presses' worth at once. It spends nothing
+ * but the yard, so tapping can never outrun the Press that fills it -- it is
+ * the manual assist, the way a swipe helps a pack open. Rate-limited here
+ * rather than trusted to the client.
+ */
+const SLAM_PRESSES = 3
+const SLAM_GAP_MS = 110
+const lastSlam = new Map<number, number>()
+
+export function slamPress(
+  db: DB,
+  player: Player,
+): { snapshot: Snapshot; melted: number; paid: number } {
+  const now = Date.now()
+  if (now - (lastSlam.get(player.id) ?? 0) < SLAM_GAP_MS) {
+    return { snapshot: snapshot(db, player), melted: 0, paid: 0 }
+  }
+  lastSlam.set(player.id, now)
+  const row = loadState(db, player.id)
+  const { fx } = loadoutOf(row)
+  const r = runFactory(db, player.id, SLAM_PRESSES, fx, creditsPerCard(row, fx))
+  return { snapshot: snapshot(db, player), ...r }
+}
+
 /** Bring a caravan home. Only the last waypoint waits for a hand. */
 export function collectExpedition(
   db: DB,

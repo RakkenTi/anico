@@ -369,4 +369,35 @@ export const sfx = {
   error() {
     play('error', { gain: 0.7 })
   },
+
+  /* ------------------------------------------------------------- the works */
+
+  /** The ram coming down: a stamp with real weight behind it. */
+  slam() {
+    play('stamp', { rate: 0.7, gain: 1, gap: 90, keep: true })
+    play('tap', { at: 0.04, rate: 0.55, gain: 0.5 })
+  },
+
+  /** Scrap paying out on the line: a small metallic tick, heavily rationed
+      so a fast belt is a texture rather than a slot machine. */
+  melt() {
+    play('coins', { rate: 1.3, gain: 0.3, gap: 900 })
+  },
+
+  /** A caravan setting out. */
+  depart() {
+    play('fan', { rate: 0.82, gain: 0.7 })
+    play('powerup-short', { at: 0.12, gain: 0.4 })
+  },
+
+  /** A caravan home with the bounty. */
+  arrive() {
+    play('coins-big', { gain: 0.9, keep: true })
+    play('jingle-win', { at: 0.12, gain: 0.55, keep: true })
+  },
+
+  /** A contract pinned to the board. */
+  pin() {
+    play('stamp', { rate: 1.3, gain: 0.55 })
+  },
 }

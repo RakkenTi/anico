@@ -258,6 +258,8 @@ interface GameState {
   dismissMuster: () => void
   abandonCommission: (id: number) => Promise<void>
   /** The works (ADR 0014). */
+  /** One hand-slam of the ram: melts a few belt-loads now. Resolves to what it paid. */
+  slamPress: () => Promise<number>
   sendExpedition: (route: string) => Promise<void>
   collectExpedition: (id: number) => Promise<void>
   setAim: (series: string | null) => Promise<void>
@@ -881,8 +883,15 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
+    slamPress: async () => {
+      const res = await guard(() => api.slam())
+      if (!res) return 0
+      apply(res.state)
+      return res.paid
+    },
+
     sendExpedition: async (route) => {
-      sfx.buy()
+      sfx.depart()
       const res = await guard(
         () => api.sendExpedition(route),
         (m) => get().pushToast(m, 'info'),
@@ -896,7 +905,7 @@ export const useGame = create<GameState>()((set, get) => {
         (m) => get().pushToast(m, 'info'),
       )
       if (!res) return
-      sfx.reveal('mythic')
+      sfx.arrive()
       apply(res.state)
       get().popCoins(res.paid)
       get().pushToast(`${res.route} came home: +${fmt(res.paid)} credits`, 'credits')
