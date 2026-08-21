@@ -18,6 +18,12 @@
  *   opening     how long the pull takes against what Open Speed promised
  *   sound       voices started in the same tenth of a second
  *   spread      whether the cards use the pane they were given
+ *   sell        whether a collection of sixty-five thousand can be sold at all
+ *
+ * Every rung also plays against a collection the size a rung that deep would
+ * actually have. What a player owns is its own axis of end game: a summon
+ * reads it, a sale walks all of it, and both have been the slowest thing in
+ * the game while a pull of ten million cards was fine.
  *
  *   npm run stress                 # boots its own instance
  *   ANICO_STRESS_PORT=8099 npm run stress
@@ -37,24 +43,37 @@ const PORT = Number(process.env.ANICO_STRESS_PORT ?? 8099)
 const USER = 'stress'
 const PASS = 'correct-horse'
 const OUT = process.env.ANICO_STRESS_SHOTS ?? 'shots/stress'
-const CATALOG = Number(process.env.ANICO_STRESS_CATALOG ?? 6000)
+/*
+ * A catalog big enough for a collection to get lost in.
+ *
+ * It used to be six thousand, which meant every rung played against a
+ * collection of at most six thousand characters -- and the two worst things
+ * this game has done were both things it only does once a collection is ten
+ * times that. What a player owns is a dimension of end game in its own right,
+ * so it is one here too: see `own` on each rung.
+ */
+const CATALOG = Number(process.env.ANICO_STRESS_CATALOG ?? 80_000)
 
 /**
  * The rungs, in the order a player climbs them.
  *
  * `packs` is Pack Size and `multipack` is Extra Packs, so the pull is
  * 60 x 1.3^packs cards in (1 + multipack) wrappers; `haste` is Open Speed,
- * which is the rate the whole pull empties at.
+ * which is the rate the whole pull empties at. `own` is how many characters
+ * are already in the collection before the rung is played, topped up rather
+ * than reset, because a summon reads what is already owned and a sale walks
+ * the whole of it.
  */
 const DESKTOP = { width: 1440, height: 900 }
 const PHONE = { width: 390, height: 844 }
 const RUNGS = [
-  { name: 'mid', packs: 12, multipack: 6, haste: 14, budget: { summon: 1500, frame: 20 } },
-  { name: 'late', packs: 20, multipack: 16, haste: 24, budget: { summon: 2500, frame: 22 } },
-  { name: 'deep', packs: 24, multipack: 23, haste: 30, budget: { summon: 3000, frame: 24 } },
-  { name: 'silly', packs: 34, multipack: 23, haste: 40, budget: { summon: 3000, frame: 24 } },
+  { name: 'mid', packs: 12, multipack: 6, haste: 14, own: 2_000, budget: { summon: 1500, frame: 20 } },
+  { name: 'late', packs: 20, multipack: 16, haste: 24, own: 20_000, budget: { summon: 2500, frame: 22 } },
+  // The rung that sells: sixty-five thousand characters, all of them at once.
+  { name: 'deep', packs: 24, multipack: 23, haste: 30, own: 65_000, sell: true, budget: { summon: 3000, frame: 24 } },
+  { name: 'silly', packs: 34, multipack: 23, haste: 40, own: 65_000, budget: { summon: 3000, frame: 24 } },
   // The screen most of this is actually played on, at the rung that hurt.
-  { name: 'phone', packs: 20, multipack: 16, haste: 24, view: PHONE, budget: { summon: 2500, frame: 26 } },
+  { name: 'phone', packs: 20, multipack: 16, haste: 24, own: 20_000, view: PHONE, budget: { summon: 2500, frame: 26 } },
 ]
 
 /** ANICO_STRESS_RUNGS=late,phone runs just those, for chasing one down. */
@@ -68,6 +87,8 @@ const SPREAD_FILL = 0.9
 const SHOP_ANSWER_MS = 800
 /** How long the button that opens a pack may take to become pressable. */
 const REACH_MS = 900
+/** How long selling a whole collection may take to show an emptied shelf. */
+const SELL_MS = 8000
 
 /* --------------------------------------------------------------- helpers */
 
@@ -129,6 +150,29 @@ function seed(dbPath, n) {
     }
   })()
   db.close()
+}
+
+/**
+ * Fill the collection up to `n` characters.
+ *
+ * Topped up rather than reset, so a rung that sells everything is followed by
+ * one that has to build it back. Claims are spread across the catalog rather
+ * than clustered, because both the pool draw and the series count read them.
+ */
+function stock(dbPath, n) {
+  const db = new Database(dbPath)
+  const player = db.prepare('SELECT id FROM players WHERE username = ?').get(USER)
+  const have = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
+  const stmt = db.prepare(
+    'INSERT OR IGNORE INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?,?,?,?)',
+  )
+  const now = Date.now()
+  db.transaction(() => {
+    for (let i = 0; i < n; i++) stmt.run(player.id, 1000 + i, now - i * 1000, 40 + (i % 900))
+  })()
+  const after = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
+  db.close()
+  return { before: have, after }
 }
 
 /** Put the player on a rung: every badge, and the upgrades this rung names. */
@@ -230,6 +274,7 @@ for (const signal of ['exit', 'SIGINT', 'SIGTERM']) {
 
 for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name))) {
   climb(join(dataDir, 'anico.db'), rung)
+  const held = stock(join(dataDir, 'anico.db'), rung.own)
   server = serve(dataDir)
   await up()
 
@@ -378,6 +423,48 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
   await page.screenshot({ path: join(OUT, `${rung.name}-shop.png`) })
 
   /*
+   * Selling the whole collection.
+   *
+   * Sixty-five thousand ids in one request, which SQLite will not compile into
+   * one statement -- and until this checked, the answer to "sell everything"
+   * was that the button did nothing and said nothing. Timed from the press of
+   * the confirmation to the shelf actually emptying, because a sale that is
+   * still running after eight seconds is a sale nobody believes happened.
+   */
+  let sold = null
+  if (rung.sell) {
+    // The machine off first. It pulls on every tab -- only the waiting for
+    // wrappers to be torn is tied to the summon screen -- so left running it
+    // claims new characters while the sale is in flight and the shelf can
+    // never be seen to empty. What is being checked here is the sale.
+    await page.locator('.tab', { hasText: /summon/i }).click({ force: true })
+    await page.getByRole('button', { name: /Automaton/i }).click()
+    await page.waitForFunction(() => fetch('/api/state').then((r) => r.json()).then((s) => !s.autoSpin))
+    await page.locator('.tab', { hasText: /collection/i }).click({ force: true })
+    await page.waitForSelector('.col-bulk-toggle')
+    const owned = await page.evaluate(() => fetch('/api/state').then((r) => r.json()).then((s) => s.collection.length))
+    await page.locator('.col-bulk-toggle').click()
+    await page.locator('.bulk-actions button', { hasText: /^Select all/ }).click()
+    const sellBtn = page.locator('.bulk-actions .btn-danger')
+    await sellBtn.click()
+    const asked = Date.now()
+    await sellBtn.click()
+    const emptied = await page
+      .waitForFunction(
+        () =>
+          document.querySelector('.empty-state') !== null ||
+          document.querySelectorAll('.collection-grid .char-card').length === 0,
+        null,
+        { timeout: 30_000 },
+      )
+      .then(() => Date.now() - asked)
+      .catch(() => Infinity)
+    const left = await page.evaluate(() => fetch('/api/state').then((r) => r.json()).then((s) => s.collection.length))
+    sold = { owned, left, ms: emptied }
+    await page.screenshot({ path: join(OUT, `${rung.name}-sold.png`) })
+  }
+
+  /*
    * What the opening should have taken.
    *
    * Open Speed is quoted in cards a second and a pull holds what the wrappers
@@ -414,6 +501,13 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('spread width', spread.fill >= SPREAD_FILL),
       `shop ${bought === Infinity ? 'never updated' : `${bought}ms to answer`}`.padStart(24) +
         ok('shop responsiveness', bought < SHOP_ANSWER_MS),
+      `holding ${held.after.toLocaleString()} characters`.padStart(31),
+      ...(sold
+        ? [
+            `sold ${sold.owned.toLocaleString()} in ${sold.ms === Infinity ? 'never' : `${sold.ms}ms`}, ${sold.left} left`.padStart(36) +
+              ok('collection sells', sold.ms < SELL_MS && sold.left === 0),
+          ]
+        : []),
     ].join('\n        '),
   )
 

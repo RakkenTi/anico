@@ -442,11 +442,18 @@ export function drawFromPool(
 }
 
 /**
- * Draw one character worth at least `minValue`, from the same pool a normal
- * roll uses. Backs the Emerald guarantee: a pack that came up short is topped
- * up rather than re-rolled, so the promise costs one extra query and never
- * loops. Returns null when the pool holds nobody that good, which is the
- * honest answer on an instance whose crawl has barely started.
+ * Draw characters worth at least `minValue`, from the same pool a normal roll
+ * uses. Backs the Emerald guarantee: a pack that came up short is topped up
+ * rather than re-rolled, so the promise costs one query and never loops.
+ * Returns fewer than asked -- possibly none -- when the pool holds nobody that
+ * good, which is the honest answer on an instance whose crawl has barely
+ * started.
+ *
+ * A whole pull's guarantees are drawn at once. Every wrapper promises its own
+ * floor, so this used to run per wrapper, and a shuffle of the catalog against
+ * a thousand already-dealt ids is not a cheap query: two dozen wrappers was
+ * three quarters of a second of the summon spent asking the same question two
+ * dozen times.
  */
 export function drawAboveValue(
   db: DB,
@@ -455,19 +462,21 @@ export function drawAboveValue(
   poolSize: number,
   exclude: number[],
   excludeOwnedBy: number | null,
-): PoolPick | null {
+  count: number,
+): PoolPick[] {
+  if (count <= 0) return []
   const floor = poolFloor(db, poolSize, pref)
   const owned = excludeOwnedBy
     ? 'AND id NOT IN (SELECT character_id FROM claims WHERE player_id = @player)'
     : ''
   const holes = exclude.map(() => '?').join(',')
-  const row = db
+  const rows = db
     .prepare(
       `SELECT * FROM characters
         WHERE favourites >= @floor AND credit_value >= @min ${genderClause(pref)} ${owned}
           ${exclude.length ? `AND id NOT IN (${holes})` : ''}
-        ORDER BY RANDOM() LIMIT 1`,
+        ORDER BY RANDOM() LIMIT @count`,
     )
-    .get({ floor, min: minValue, player: excludeOwnedBy ?? 0 }, ...exclude)
-  return row ? rowToCharacter(row) : null
+    .all({ floor, min: minValue, count, player: excludeOwnedBy ?? 0 }, ...exclude)
+  return (rows as any[]).map(rowToCharacter)
 }
