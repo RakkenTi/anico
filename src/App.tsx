@@ -14,17 +14,11 @@ import type { IconName } from './game/icons'
 import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
 import { useAutomaton } from './components/useAutomaton'
-import PressView from './components/PressView'
-import FactoryView from './components/FactoryView'
-import ExpeditionsView from './components/ExpeditionsView'
 import ContractsView from './components/ContractsView'
 
 type Tab =
   | 'roll'
   | 'collection'
-  | 'press'
-  | 'factory'
-  | 'expeditions'
   | 'contracts'
   | 'wishes'
   | 'shop'
@@ -37,9 +31,6 @@ type Tab =
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: 'roll', label: 'Summon', icon: 'cards_fan' },
   { key: 'collection', label: 'Collection', icon: 'cards_collection' },
-  { key: 'press', label: 'Press', icon: 'flask_full' },
-  { key: 'factory', label: 'Factory', icon: 'gear' },
-  { key: 'expeditions', label: 'Expeditions', icon: 'campfire' },
   { key: 'contracts', label: 'Contracts', icon: 'crown_a' },
   { key: 'wishes', label: 'Wishes', icon: 'star' },
   { key: 'shop', label: 'Shop', icon: 'pouch' },
@@ -48,26 +39,22 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 ]
 
 /**
- * Whether the works have started for this account.
+ * Whether the contract board has anything to say yet.
  *
- * All four tabs arrive together, because they are one system: the Press mills
- * duplicates into scrap, the Factory melts scrap into credits, expeditions
- * spend a lump of it for a bigger payout later, and contracts are the goal
- * board that pays for having built a collection at all.
- *
- * Shipping them from the first summon meant a new player's first look was four
- * empty machines and a shelf they could not afford, which is a tutorial in
- * being stuck. They open on the first spare -- the first copy landing on a
- * stack with any depth to it -- which is exactly when the summon stops being
+ * A contract asks for a breadth of one series at a depth of stars, so a
+ * collection of four cards can answer none of them and a board of five refusals
+ * is a tutorial in being stuck. It opens once there is a collection to measure
+ * against -- which is a few pulls in, and exactly when the summon stops being
  * the whole game.
  */
-function worksOpen(s: ReturnType<typeof useGame.getState>): boolean {
-  const w = s.works
-  return w.spares > 0 || w.scrap > 0 || w.sparesPerPull > 0 || w.out.length > 0
+const BOARD_OPENS_AT = 40
+
+function boardOpen(s: ReturnType<typeof useGame.getState>): boolean {
+  return s.collection.length >= BOARD_OPENS_AT
 }
 
-/** The four tabs that arrive together when the works open. */
-const WORKS = new Set<Tab>(['press', 'factory', 'expeditions', 'contracts'])
+/** Tabs that wait for the board to open. */
+const LATE = new Set<Tab>(['contracts'])
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('roll')
@@ -112,12 +99,12 @@ export default function App() {
      does not take its own tab away underneath the player. Not persisted: the
      snapshot answers this correctly on every load, and a flag on the device
      would show the board to the next account to sign in here. */
-  const opened = useGame(worksOpen)
+  const opened = useGame(boardOpen)
   const [everOpen, setEverOpen] = useState(false)
   // Adjusted during render rather than in an effect: it is derived from what
   // this render already knows, and an effect would paint the tabs away and back.
   if (opened && !everOpen) setEverOpen(true)
-  const tabs = opened || everOpen ? TABS : TABS.filter((t) => !WORKS.has(t.key))
+  const tabs = opened || everOpen ? TABS : TABS.filter((t) => !LATE.has(t.key))
 
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt
@@ -192,9 +179,6 @@ export default function App() {
       <main className="main">
         {tab === 'roll' && <RollView />}
         {tab === 'collection' && <CollectionView />}
-        {tab === 'press' && <PressView />}
-        {tab === 'factory' && <FactoryView />}
-        {tab === 'expeditions' && <ExpeditionsView />}
         {tab === 'contracts' && <ContractsView />}
         {tab === 'wishes' && <WishesView />}
         {tab === 'shop' && <ShopView />}

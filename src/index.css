@@ -1162,7 +1162,7 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   box-shadow: 0 0 6px var(--ok);
 }
 
-.shelf-head { margin: 0 0 8px; }
+.shelf-head { display: flex; flex-direction: column; margin: 0 0 8px; }
 .shelf-head h2 {
   margin: 0;
   font-family: var(--serif);
@@ -1247,7 +1247,24 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
    answers nothing. */
 .row-blurb { font-size: 11px; line-height: 1.45; color: var(--text-dim); }
 
-/* Where the summon's shop ends and the works' begins. Same shelf and the same
+/* The bulk-buy switch: how many levels a shop row buys at a press. Sits under
+   the shelf's own blurb, so it reads as a setting for the list below it rather
+   than as another thing to buy. */
+.buy-amount { margin-top: 8px; align-self: flex-start; }
+.buy-amount .seg { padding: 4px 12px; font-size: 12px; }
+
+/* What a row's price tag says when it is buying more than one level: the sum,
+   and under it the number of levels that sum actually covers. */
+.row-cost-n {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+/* Where the summon's shop ends and the long game begins. Same shelf and the same
    credits -- nothing here is locked behind anything (ADR 0014) -- but eighteen
    rows in one run is a list nobody reads to the bottom of. */
 .shelf-split {
@@ -2471,36 +2488,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   color: var(--text-dim);
 }
 .version-line b { color: var(--value-soft); font-variant-numeric: tabular-nums; }
-
-/* -------------------------------------------------------------- the works */
-
-/* Shared by the Press, the Factory and Expeditions: a labelled read-out with
-   a number, a note and sometimes a bar. Each of those three views owns its own
-   stylesheet for everything else it draws, because four people built them at
-   once and one shared file is one shared merge conflict. */
-.meter {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--well);
-}
-.meter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
-.meter-value { font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
-.meter-of { font-style: normal; font-size: 13px; color: var(--text-dim); }
-.meter-note { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
-.meter-note b { color: var(--text); font-weight: 600; }
-.meter-bar {
-  display: block;
-  height: 3px;
-  margin-top: 4px;
-  border-radius: 2px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.meter-bar > span { display: block; height: 100%; background: var(--value); }
 
 /* --------------------------------------------------------- the muster */
 

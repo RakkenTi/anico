@@ -48,12 +48,22 @@ export interface ServerSettings {
   autoSell: AutoSell
   /** Never roll a character this player already owns. */
   skipOwned: boolean
+  /**
+   * Let Auto Aim point Called Shot for you.
+   *
+   * A setting rather than a second purchase: the upgrade is what makes the
+   * machine capable of aiming, and this is whether it is allowed to. Default
+   * on, because nobody buys Auto Aim in order to leave it off, and off is one
+   * switch away for a player who wants the crosshair back.
+   */
+  autoAim: boolean
 }
 
 export const DEFAULT_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
   autoSell: 'off',
   skipOwned: false,
+  autoAim: true,
 }
 
 const clampInt = (v: unknown, lo: number, hi: number, fallback: number): number => {
@@ -102,5 +112,6 @@ export function sanitizeSettings(patch: any, current: ServerSettings): ServerSet
     next.autoSell = patch.autoSell
   }
   if (typeof patch?.skipOwned === 'boolean') next.skipOwned = patch.skipOwned
+  if (typeof patch?.autoAim === 'boolean') next.autoAim = patch.autoAim
   return next
 }

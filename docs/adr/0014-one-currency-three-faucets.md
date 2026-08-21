@@ -1,5 +1,11 @@
 # One currency, three faucets
 
+> **Superseded by ADR 0015.** One currency and one shop survive, and so does
+> the contract board. The three faucets do not: pricing the Factory as a share
+> of the whole summon, where the share was itself an endless shop line, put the
+> economy's growth exponent above one and a save reached 1e110 in ten minutes.
+> The Press, the Factory and Expeditions are removed.
+
 ADR 0013 built a second economy because credits could not be made to matter
 again: by a quadrillion the shop was finished and any new mechanic paid in
 credits joined a river already flowing at Qa a second. Scrip and Renown were

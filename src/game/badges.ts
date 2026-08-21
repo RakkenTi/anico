@@ -12,9 +12,10 @@
  */
 
 import { RARITY_MIN } from './economy.js'
-import { beltRate, caravans, foundryMult, outfitMult, sparesPerScrap } from './industry.js'
 import {
   aimShare,
+  aimSlots,
+  autoAimOwned,
   autoSpinMs,
   cardRate,
   maxDealtFor,
@@ -22,13 +23,13 @@ import {
   maxStarsFor,
   coinChanceBonus,
   coinValueMult,
-  mergeMult,
   offlineHours,
   offlineRate,
   packMult,
   packsPerPull,
   roundCost,
   sellMult,
+  stackMult,
   wishMult,
   type Upgrades,
 } from './upgrades.js'
@@ -258,8 +259,8 @@ export interface Effects {
   packsPerPull: number
   /** Cards one press draws in total, across every pack in it. */
   cardsPerPull: number
-  /** What a star multiplies a stack by. */
-  mergeMult: number
+  /** What a merged stack is worth over and above its stars (Merge Value). */
+  stackMult: number
   /** Everything in the shop costs this multiple of its list price. */
   priceMult: number
   /** Credit value the guaranteed cards in a pack are drawn above. */
@@ -269,8 +270,9 @@ export interface Effects {
   /** The rarity the guarantee names, for the UI to say out loud. */
   guaranteeRarity: (typeof GUARANTEE_TIERS)[number] | null
 
-  /* The works (ADR 0014). Bought with credits in the same shop as everything
-     above, because no mechanic here holds another one's ceilings hostage. */
+  /* The board, and the ceilings the summon runs into. Bought with credits in
+     the same shop as everything above, because no mechanic here holds another
+     one's ceilings hostage (ADR 0014). */
   /** Stars a stack may merge to. */
   maxStars: number
   /** Real cards one press deals, however large the pull is. */
@@ -279,16 +281,10 @@ export interface Effects {
   maxStacks: number
   /** Share of every pull drawn from the series Called Shot names. */
   aimShare: number
-  /** Spare copies the Press needs for one scrap. */
-  sparesPerScrap: number
-  /** Scrap the Factory's belt pulls through per press. */
-  belt: number
-  /** Cards one scrap is worth: the Foundry's fraction of this player's press. */
-  scrapWorth: number
-  /** What an expedition's bounty is multiplied by. */
-  outfit: number
-  /** Expeditions that may be on the road at once. */
-  caravans: number
+  /** Series Called Shot may point at simultaneously (Split Aim). */
+  aimSlots: number
+  /** Auto Aim is bought: the machine may point the crosshair itself. */
+  autoAim: boolean
 }
 
 export const BASE_WISH_SLOTS = 3
@@ -328,7 +324,7 @@ export function computeEffects(b: Badges, u: Upgrades): Effects {
     offlineHours: u.automaton > 0 ? offlineHours(u.nightshift) : 0,
     packsPerPull: packsPerPull(u.multipack),
     cardsPerPull: packSize * packsPerPull(u.multipack),
-    mergeMult: mergeMult(u.alchemy),
+    stackMult: stackMult(u.alchemy),
     priceMult: at(b.ruby, RUBY_DISCOUNT),
     guaranteeValue: guaranteeRarity ? RARITY_MIN[guaranteeRarity] : 0,
     guaranteeCount: emerald >= 6 ? 3 : emerald >= 5 ? 2 : emerald >= 1 ? 1 : 0,
@@ -337,13 +333,8 @@ export function computeEffects(b: Badges, u: Upgrades): Effects {
     maxDealt: maxDealtFor(u.hands),
     maxStacks: maxStacksFor(u.table),
     aimShare: aimShare(u.aim),
-    sparesPerScrap: sparesPerScrap(u.mill),
-    belt: beltRate(u.belt),
-    // Cards, not a bare multiplier: the Foundry buys a fraction of a *press*,
-    // and a press is exponential where scrap is flat. See BASE_SCRAP_WORTH.
-    scrapWorth: foundryMult(u.foundry) * packSize * packsPerPull(u.multipack),
-    outfit: outfitMult(u.outfit),
-    caravans: caravans(u.caravan),
+    aimSlots: aimSlots(u.focus),
+    autoAim: autoAimOwned(u.autoaim),
   }
 }
 

@@ -436,6 +436,46 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ALTER TABLE raids DROP COLUMN accepted_at;
     `,
   },
+  {
+    name: '017_no_works',
+    sql: `
+    -- The Press, the Factory and Expeditions are removed (ADR 0015).
+    --
+    -- Three machines that all paid credits and none of which were the game
+    -- anybody opened this to play. The Factory in particular was an economy
+    -- bug wearing a chassis: it paid a fraction of a *whole pull* per scrap,
+    -- and both halves of that fraction -- the Foundry and the belt -- were
+    -- endless shop lines, so income compounded faster than prices did and a
+    -- balance ran away to the end of the double once it got going.
+    --
+    -- Everything they owned goes with them. Nothing here is refunded, because
+    -- what those levels bought no longer exists to be worth anything.
+    DROP TABLE IF EXISTS expeditions;
+    ALTER TABLE player_state DROP COLUMN spares;
+    ALTER TABLE player_state DROP COLUMN scrip;
+    ALTER TABLE player_state DROP COLUMN scrap;
+    ALTER TABLE player_state DROP COLUMN auto_spares;
+    ALTER TABLE player_state DROP COLUMN heat;
+    ALTER TABLE player_state DROP COLUMN heat_at;
+    ALTER TABLE player_state DROP COLUMN renown;
+    ALTER TABLE player_state DROP COLUMN renown_json;
+    UPDATE player_state SET upgrades_json = json_remove(
+      CASE WHEN json_valid(upgrades_json) THEN upgrades_json ELSE '{}' END,
+      '$.mill', '$.foundry', '$.belt', '$.outfit', '$.caravan'
+    );
+
+    -- Called Shot aims at a list now, because Split Aim buys width. One name
+    -- becomes a list of one.
+    ALTER TABLE player_state ADD COLUMN aim_json TEXT NOT NULL DEFAULT '[]';
+    UPDATE player_state SET aim_json = json_array(aim_series)
+      WHERE aim_series IS NOT NULL AND aim_series <> '';
+    ALTER TABLE player_state DROP COLUMN aim_series;
+
+    -- Every posted reward was priced against a curve that included the works.
+    -- Cleared rather than converted; the board reposts on the next boot.
+    DELETE FROM raids;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

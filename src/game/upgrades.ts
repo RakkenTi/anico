@@ -5,18 +5,43 @@
  * on something the loop already does, its price is a multiple of the last
  * level, and the multiple is always larger than the gain -- so each level
  * takes a little longer than the one before it and the curve keeps going long
- * after the numbers stop being pronounceable. Six of the nine lines have no
- * last level at all; the three that do buy a *shape* rather than a rate, and
- * say so.
+ * after the numbers stop being pronounceable.
  *
- * The previous version stopped: pack sizes were capped at two hundred, the
- * multipliers were "+5% per level" against prices that tripled, and the end of
- * the game arrived somewhere in the millions. Additive effects against
- * exponential prices is a treadmill that grinds to a halt by construction.
+ * ## Why the growth numbers are what they are
+ *
+ * A line whose effect multiplies by `g` per level against a price that
+ * multiplies by `c` per level contributes `r = ln g / ln c` to the exponent of
+ * the whole economy: spend a balance `S` across the shop and income comes back
+ * proportional to `S^R`, where `R` is the sum of every line's `r`. That one
+ * number decides whether this is a game or a firework.
+ *
+ *   R < 1  the balance grows like a polynomial in time. Each order of
+ *          magnitude costs more play than the last, which is the entire
+ *          feeling an idle game is selling.
+ *   R > 1  the balance reaches infinity in *finite time*. Dump everything into
+ *          the shop, come back richer than you spent, repeat, and the save is
+ *          over in ten minutes.
+ *
+ * The previous release was R ~ 1.5, and it got there through the Factory: a
+ * scrap was worth a fraction of a *whole pull*, and both halves of that
+ * fraction -- the Foundry and the belt -- were endless lines. The works are
+ * gone (ADR 0015) and what is left is priced so that R lands near 0.74:
+ *
+ *   Sell Value   x1.18 per level against x2.00   r = 0.24
+ *   Pack Size    x1.28 per level against x2.50   r = 0.27
+ *   Coin Drops   x1.22 per level against x2.40   r = 0.23
+ *
+ * Everything else is either capped, additive, or outside the loop that pays
+ * for it. Open Speed decides how much of a pull you *see*; Extra Packs adds a
+ * wrapper rather than multiplying one; Merge Value pays on a collection you
+ * sell rather than on the summon that feeds it.
+ *
+ * If a new endless line is ever added here, work out its `r` and check the
+ * sum. That is the whole review.
  */
 
 import { MAX_STARS } from './economy.js'
-import { beltRate, caravans, foundryMult, outfitMult, sparesPerScrap } from './industry.js'
+import { fmtCount, fmtMult } from './format.js'
 
 export type UpgradeKey =
   | 'packs'
@@ -28,16 +53,13 @@ export type UpgradeKey =
   | 'nightshift'
   | 'alchemy'
   | 'divination'
-  /* The works, and the ceilings they used to be locked behind (ADR 0014). */
+  /* The board, and the ceilings the summon runs into. */
   | 'depth'
   | 'hands'
   | 'table'
   | 'aim'
-  | 'mill'
-  | 'foundry'
-  | 'belt'
-  | 'outfit'
-  | 'caravan'
+  | 'focus'
+  | 'autoaim'
 
 export type Upgrades = Record<UpgradeKey, number>
 
@@ -55,11 +77,8 @@ export const EMPTY_UPGRADES: Upgrades = {
   hands: 0,
   table: 0,
   aim: 0,
-  mill: 0,
-  foundry: 0,
-  belt: 0,
-  outfit: 0,
-  caravan: 0,
+  focus: 0,
+  autoaim: 0,
 }
 
 /* --------------------------------------------------------------- ceilings */
@@ -72,13 +91,7 @@ export const EMPTY_UPGRADES: Upgrades = {
  * Pack sizes run away by design, so at some point a pack stops being a thing
  * you look at and becomes a number. What decides where that point is, is *how
  * fast your hands are*: Open Speed buys cards a second, and six seconds of them
- * is how much of the pull you get to go through. That is the only reading of
- * the cap that makes the numbers add up -- a pack of ten thousand emptied in
- * five seconds at fifty cards a second never did.
- *
- * It used to be a flat two hundred cards in at most six stacks, which meant
- * every level of Pack Size, Extra Packs and Open Speed past a certain point
- * changed nothing you could see.
+ * is how much of the pull you get to go through.
  */
 export const DEAL_SECONDS = 6
 /** Nobody deals less than this, however slow their hands. */
@@ -90,8 +103,7 @@ export const MAX_DEALT = 1_000
  * Cards this pull lays out, given the hands opening it.
  *
  * The ceiling is a floor: Wider Deal raises it, so callers that know whose
- * pull it is pass the player's own (ADR 0013). A thousand is what it is before
- * anybody has bought any.
+ * pull it is pass the player's own (ADR 0013).
  */
 export function dealtFor(total: number, rate: number, cap: number = MAX_DEALT): number {
   const hands = Math.round(Math.max(1, rate) * DEAL_SECONDS)
@@ -107,7 +119,6 @@ export const MAX_STACKS = 24
  * Ten at most, and fewer when there are many stacks. A pack of two thousand
  * shows ten cards and a counter: the pile pops one off the front and gains one
  * at the back, which is the whole of what anybody can see of a stack anyway.
- * Mounting the real depth would be two thousand images to show four.
  */
 export const STACK_RENDER_BUDGET = 80
 export const STACK_RENDER_MAX = 10
@@ -118,25 +129,14 @@ export function stackDepth(stacks: number): number {
 /* ------------------------------------------------------------ the ladders */
 
 /**
- * Keys that belong to the works rather than to the summon.
+ * Keys that belong to the board and to the summon's ceilings.
  *
- * Only used to draw a divider in the shop: eighteen rows in one flat list is a
- * list nobody reads, and these nine arrive together with four new tabs. The
- * point of the divider is that they are *in the same shop* -- the whole
- * complaint that started this was one mechanic's upgrades being locked behind
- * another's (ADR 0014).
+ * Only used to draw a divider in the shop: one flat list of fifteen rows is a
+ * list nobody reads to the bottom of. They are still in the same shop, bought
+ * with the same credits -- no mechanic here holds another one's upgrades
+ * hostage (ADR 0014).
  */
-export const WORKS_KEYS = new Set<UpgradeKey>([
-  'mill',
-  'foundry',
-  'belt',
-  'outfit',
-  'caravan',
-  'aim',
-  'table',
-  'hands',
-  'depth',
-])
+export const LATE_KEYS = new Set<UpgradeKey>(['aim', 'focus', 'autoaim', 'table', 'hands', 'depth'])
 
 export interface UpgradeDef {
   key: UpgradeKey
@@ -154,7 +154,7 @@ export interface UpgradeDef {
 }
 
 /** Pack size is multiplied by this per level, not added to. */
-export const PACK_GROWTH = 1.3
+export const PACK_GROWTH = 1.28
 /** Everything sells for this much more per level of Appraisal. */
 export const APPRAISAL_GROWTH = 1.18
 /** Cards a second at rest, and what a level of Open Speed multiplies it by. */
@@ -168,8 +168,8 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     icon: 'dollar',
     blurb: 'Cards and duplicates are worth more when you sell them.',
     baseCost: 6_000,
-    growth: 1.95,
-    effect: (l) => `${fmtX(sellMult(l))} sell value`,
+    growth: 2.0,
+    effect: (l) => `${fmtMult(sellMult(l))} sell value`,
   },
   {
     key: 'haste',
@@ -186,8 +186,8 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     icon: 'cards_stack',
     blurb: 'More cards in every pack. Multiplies, so it never stops mattering.',
     baseCost: 12_000,
-    growth: 2.15,
-    effect: (l) => (l > 0 ? `${fmtX(packMult(l))} pack size` : 'base pack size'),
+    growth: 2.5,
+    effect: (l) => (l > 0 ? `${fmtMult(packMult(l))} pack size` : 'base pack size'),
   },
   {
     key: 'fortune',
@@ -195,10 +195,10 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     icon: 'd20',
     blurb: 'Coins drop more often and are worth more.',
     baseCost: 8_000,
-    growth: 2.05,
+    growth: 2.4,
     effect: (l) =>
       l > 0
-        ? `+${(coinChanceBonus(l) * 100).toFixed(1)}% drop chance, ${fmtX(coinValueMult(l))} value`
+        ? `+${(coinChanceBonus(l) * 100).toFixed(1)}% drop chance, ${fmtMult(coinValueMult(l))} value`
         : 'base coin drops',
   },
   {
@@ -214,10 +214,10 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     key: 'alchemy',
     name: 'Merge Value',
     icon: 'flask_full',
-    blurb: 'Each star on a merged stack multiplies it by more.',
+    blurb: 'Merged stacks are worth more when you sell them.',
     baseCost: 40_000,
-    growth: 1.95,
-    effect: (l) => `${fmtX(mergeMult(l))} per star`,
+    growth: 2.5,
+    effect: (l) => `${fmtMult(stackMult(l))} on a merged stack`,
   },
   {
     key: 'automaton',
@@ -248,69 +248,20 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     baseCost: 25_000,
     growth: 2.6,
     maxLevel: 10,
-    effect: (l) => (l > 0 ? `${fmtX(wishMult(l))} wish chance` : 'base wish chance'),
+    effect: (l) => (l > 0 ? `${fmtMult(wishMult(l))} wish chance` : 'base wish chance'),
   },
 
-  /* ------------------------------------------------------------- the works
+  /* ---------------------------------------------------- the board and the
+   * ceilings the summon runs into.
    *
-   * These five used to be a second currency's shopping list, bought with
-   * Renown, which meant the summon's own ceilings -- how deep a stack merges,
-   * how many cards a press deals, how many wrappers fit on screen -- were
-   * locked behind a different mechanic entirely. One shop, one currency, and
-   * no mechanic holds another one's upgrades hostage (ADR 0014).
+   * Priced for the player who needs them: a quadrillion credits is somebody
+   * who has bought everything above this line twice over, so these do not
+   * compete with the early shop. They are what the late shop is *for*.
    *
-   * They are priced for the player who needs them. A quadrillion credits is a
-   * player who has bought everything above this line twice over, so these do
-   * not compete with the early shop; they are what the late shop is *for*, and
-   * that was the real complaint behind the second economy.
+   * None of them multiply income. Three raise a ceiling the summon has run
+   * into, and three point the pull at the contract board -- which is the only
+   * thing in the game that makes one particular character worth wanting.
    */
-  {
-    key: 'mill',
-    name: 'Finer Mill',
-    icon: 'gear',
-    blurb: 'The Press gets more scrap out of the same spare copies.',
-    baseCost: 3_000_000,
-    growth: 3.4,
-    maxLevel: 6,
-    effect: (l) => `${sparesPerScrap(l)} spares a scrap`,
-  },
-  {
-    key: 'foundry',
-    name: 'Foundry',
-    icon: 'flask_full',
-    blurb: 'The Factory pays more for every scrap it melts. Never stops mattering.',
-    baseCost: 2_000_000,
-    growth: 2.2,
-    effect: (l) => `a scrap is worth ${(foundryMult(l) * 100).toFixed(1)}% of a press`,
-  },
-  {
-    key: 'belt',
-    name: 'Belt Speed',
-    icon: 'cards_stack_high',
-    blurb: 'The Factory pulls more scrap through per press. Clears a backlog.',
-    baseCost: 5_000_000,
-    growth: 2.35,
-    effect: (l) => `${fmtCount(Math.round(beltRate(l)))} scrap a press`,
-  },
-  {
-    key: 'outfit',
-    name: 'Outfitters',
-    icon: 'pouch',
-    blurb: 'Every expedition comes home with more.',
-    baseCost: 25_000_000,
-    growth: 1.9,
-    effect: (l) => `${fmtX(outfitMult(l))} bounty`,
-  },
-  {
-    key: 'caravan',
-    name: 'Caravans',
-    icon: 'campfire',
-    blurb: 'More expeditions on the road at the same time.',
-    baseCost: 400_000_000,
-    growth: 14,
-    maxLevel: 3,
-    effect: (l) => `${caravans(l)} on the road`,
-  },
   {
     key: 'aim',
     name: 'Called Shot',
@@ -320,6 +271,26 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     growth: 6,
     maxLevel: 6,
     effect: (l) => (l > 0 ? `${Math.round(aimShare(l) * 100)}% of a pull, aimed` : 'no target'),
+  },
+  {
+    key: 'focus',
+    name: 'Split Aim',
+    icon: 'cards_fan',
+    blurb: 'Aim at several series at once. The aimed share is divided between them.',
+    baseCost: 300_000_000,
+    growth: 7,
+    maxLevel: 5,
+    effect: (l) => `${aimSlots(l)} series aimed at once`,
+  },
+  {
+    key: 'autoaim',
+    name: 'Auto Aim',
+    icon: 'd20',
+    blurb: 'Points Called Shot at the contracts you are nearest to finishing, every pull.',
+    baseCost: 2_000_000_000,
+    growth: 4,
+    maxLevel: 1,
+    effect: (l) => (l > 0 ? 'aims itself at the closest contracts' : 'you aim by hand'),
   },
   {
     key: 'table',
@@ -345,7 +316,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     key: 'depth',
     name: 'Deeper Merges',
     icon: 'd20',
-    blurb: 'Stacks merge past ★12. Each star multiplies what the whole stack is worth.',
+    blurb: 'Stacks merge past ★12, which is what the hard contracts ask for.',
     baseCost: 10_000_000_000,
     growth: 20,
     maxLevel: 6,
@@ -353,11 +324,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   },
 ]
 
-/* -------------------------------------------------------- the works' maths
- *
- * The ceilings the summon runs into. All five were a separate tree once; what
- * they do is unchanged, only what pays for them.
- */
+/* ------------------------------------------------- the ceilings' own maths */
 
 /** Stars a stack may merge to. */
 export function maxStarsFor(level: number): number {
@@ -369,9 +336,9 @@ export function maxStarsFor(level: number): number {
  *
  * Every dealt card is a claim written, so this is the one line here the server
  * pays for: four hundred more cards a level, not a doubling. It also very
- * slightly lowers credit income -- a dealt duplicate pays 16% of sell value
- * where an appraised card pays 100% -- for three and a half times the spares,
- * which is the trade the Press exists to make.
+ * slightly lowers credit income -- a dealt duplicate pays a fraction of sell
+ * value where an appraised card pays all of it -- for three and a half times
+ * the copies, which is the trade the contract board exists to make.
  */
 export function maxDealtFor(level: number): number {
   return MAX_DEALT + 400 * lv6(level)
@@ -385,50 +352,28 @@ export function aimShare(level: number): number {
   return lv6(level) === 0 ? 0 : Math.min(0.6, 0.1 * lv6(level))
 }
 
+/** Series Called Shot may be pointed at simultaneously. */
+export function aimSlots(level: number): number {
+  return 1 + Math.max(0, Math.min(5, Math.floor(level || 0)))
+}
+
+/** Whether the machine is allowed to do the aiming. */
+export function autoAimOwned(level: number): boolean {
+  return Math.floor(level || 0) > 0
+}
+
 const lv6 = (n: number) => Math.max(0, Math.min(6, Math.floor(n || 0)))
 
 /* ------------------------------------------------------------ the numbers */
 
-/**
- * Short scale, shared by both local formatters.
- *
- * Local because this module is shared with the server and imports nothing.
- * It is the same ladder `src/game/format.ts` uses, kept in step by hand: Open
- * Speed compounds at 1.45 a level and never stops, and the K-only version this
- * replaced printed "91293213913.1K" on the shop row.
- */
-const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'UDc', 'DDc', 'TDc']
-
-function scaled(n: number, plainBelow: number): string {
-  if (!Number.isFinite(n)) return '\u221e'
-  const v = Math.abs(n)
-  if (v < plainBelow) return Math.round(v).toLocaleString()
-  const tier = Math.floor(Math.log10(v) / 3)
-  if (tier >= SUFFIXES.length) {
-    const exp = Math.floor(Math.log10(v))
-    return `${(v / Math.pow(10, exp)).toFixed(2)}e${exp}`
-  }
-  const x = v / Math.pow(1000, tier)
-  return `${x.toFixed(x >= 100 ? 0 : x >= 10 ? 1 : 2)}${SUFFIXES[tier]}`
-}
-
-function fmtCount(n: number): string {
-  return scaled(n, 10_000)
-}
-
-function fmtX(n: number): string {
-  if (n < 10) return `\u00d7${Number(n.toFixed(2))}`
-  return `\u00d7${scaled(n, 10_000)}`
-}
-
 const lv = (level: number) => Math.max(0, Math.floor(level))
 
-/** How much deeper Deeper Packs has made a pack. */
+/** How much deeper Pack Size has made a pack. */
 export function packMult(level: number): number {
   return Math.pow(PACK_GROWTH, lv(level))
 }
 
-/** Packs torn at once, which is what Both Hands buys. */
+/** Packs torn at once, which is what Extra Packs buys. */
 export function packsPerPull(level: number): number {
   return 1 + lv(level)
 }
@@ -436,11 +381,9 @@ export function packsPerPull(level: number): number {
 /**
  * Cards a second the hands can actually manage.
  *
- * Multiplied, not added to. Four more cards a second is everything at level one
- * and nothing at level twenty, and it fell further behind every line it is
- * priced beside: Pack Size multiplies, Sell Value multiplies, and Open Speed
- * was still handing out the same four. It decides how much of a pull you
- * actually open now, which is the other half of why it had to compound.
+ * Multiplied, not added to. It decides how much of a pull you actually open,
+ * which is why it compounds -- but it is capped by Wider Deal at the top, so
+ * it is a line that buys *sight* rather than income.
  */
 export function cardRate(level: number): number {
   return Math.round(BASE_CARD_RATE * Math.pow(CARD_RATE_GROWTH, lv(level)))
@@ -458,13 +401,22 @@ export function coinChanceBonus(level: number): number {
 }
 
 export function coinValueMult(level: number): number {
-  return Math.pow(1.25, lv(level))
+  return Math.pow(1.22, lv(level))
 }
 
-/** What a star multiplies a stack by, per star. */
-export const BASE_MERGE_MULT = 2.6
-export function mergeMult(level: number): number {
-  return BASE_MERGE_MULT + 0.45 * lv(level)
+/**
+ * What a merged stack sells for, over and above its stars.
+ *
+ * This used to raise the *per star* multiplier, and per star is the one place
+ * in this game where a linear-looking number is an exponent: a stack merges to
+ * eighteen stars, so `+0.45 a level` was `x1.98 income a level` against a
+ * price that only doubled, and the line paid for itself twice over on every
+ * rung. It multiplies the finished stack now, which is the same idea priced
+ * honestly.
+ */
+export const STACK_GROWTH = 1.35
+export function stackMult(level: number): number {
+  return Math.pow(STACK_GROWTH, lv(level))
 }
 
 /** Wishes, relative to their base rate. */
@@ -502,17 +454,11 @@ export function offlineHours(level: number): number {
  *
  * The first rungs of the endless lines cost a fraction of list price, and the
  * fraction fades out by the sixth. An exponential ladder priced honestly from
- * level one is correct on paper and terrible in the first ten minutes: the
- * shop is full of things worth a minute and a half of grinding each, so the
- * opening reads as a wall rather than a hook. This is the ramp on to the
- * curve, and it costs the late game nothing -- by level five the price is the
- * one the ladder always said it was.
+ * level one is correct on paper and terrible in the first ten minutes.
  *
- * The three lines that end are left at list price. They buy a *shape* -- a
- * machine that presses the button, a night shift, better odds on a wish --
- * and their first level is an unlock rather than a rung. Discounting those
- * would hand over the whole late game in the first ten minutes, which is the
- * opposite of what a ramp is for.
+ * The lines that end are left at list price. They buy a *shape* -- a machine
+ * that presses the button, a night shift, a crosshair -- and their first level
+ * is an unlock rather than a rung.
  */
 const OPENING_DISCOUNT = [0.06, 0.12, 0.25, 0.45, 0.7]
 
@@ -530,14 +476,68 @@ export function upgradeCost(def: UpgradeDef, currentLevel: number, priceMult = 1
   return roundCost(def.baseCost * Math.pow(def.growth, level) * opening * priceMult)
 }
 
-/** Three significant figures, and never below ten. */
+/**
+ * Three significant figures, and never below ten.
+ *
+ * A price the doubles can no longer hold answers `Infinity`, which is the
+ * honest answer: that level is unreachable and everything that reads a cost
+ * treats it as unaffordable. It used to answer `MAX_SAFE_INTEGER`, which made
+ * the most expensive level in the game cost nine quadrillion -- pocket change
+ * to anyone who had got that far, and an infinite ladder of free levels.
+ */
 export function roundCost(raw: number): number {
-  if (!Number.isFinite(raw)) return Number.MAX_SAFE_INTEGER
+  if (Number.isNaN(raw)) return Infinity
+  if (!Number.isFinite(raw)) return Infinity
   if (raw < 1000) return Math.max(10, Math.round(raw / 10) * 10)
   const mag = Math.pow(10, Math.floor(Math.log10(raw)) - 2)
-  return Math.round(raw / mag) * mag
+  const rounded = Math.round(raw / mag) * mag
+  return Number.isFinite(rounded) ? rounded : Infinity
 }
 
 export function upgradeMaxed(def: UpgradeDef, level: number): boolean {
   return def.maxLevel !== undefined && level >= def.maxLevel
+}
+
+/**
+ * What buying `count` more levels of a line costs, and how many are actually
+ * bought.
+ *
+ * Every level costs more than the last, so a bulk price is a sum rather than a
+ * multiplication, and it stops at whatever comes first: the level cap, the
+ * balance, or a price the doubles can no longer hold. The server prices a bulk
+ * buy the same way from the same table -- this is what the button says, not
+ * what it charges.
+ */
+export const BULK_MAX = 250
+
+export function bulkCost(
+  def: UpgradeDef,
+  level: number,
+  budget: number,
+  want: number | 'max',
+  priceMult = 1,
+): { levels: number; cost: number } {
+  const limit = want === 'max' ? BULK_MAX : Math.max(1, Math.min(BULK_MAX, Math.floor(want)))
+  let levels = 0
+  let cost = 0
+  while (levels < limit) {
+    const at = level + levels
+    if (upgradeMaxed(def, at)) break
+    const next = upgradeCost(def, at, priceMult)
+    if (!Number.isFinite(next) || cost + next > budget) break
+    cost += next
+    levels++
+  }
+  return { levels, cost }
+}
+
+/** The price tag a bulk button wears: what it would cost, affordable or not. */
+export function askingPrice(
+  def: UpgradeDef,
+  level: number,
+  want: number | 'max',
+  priceMult = 1,
+): number {
+  if (want === 'max') return upgradeCost(def, level, priceMult)
+  return bulkCost(def, level, Infinity, want, priceMult).cost
 }

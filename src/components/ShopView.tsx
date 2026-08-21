@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react'
-import { useGame } from '../game/store'
+import { useGame, useUi } from '../game/store'
 import { BADGE_DEFS, BADGE_MAX, ROMAN, badgeCost, badgeUnlocked } from '../game/badges'
-import { UPGRADE_DEFS, WORKS_KEYS, upgradeCost, upgradeMaxed } from '../game/upgrades'
+import { LATE_KEYS, UPGRADE_DEFS, bulkCost, upgradeCost, upgradeMaxed } from '../game/upgrades'
 import { RARITY_NAMES, packCost } from '../game/economy'
 import { fmt, fmtCount } from '../game/format'
 import Icon from './Icon'
@@ -19,8 +19,18 @@ import type { IconName } from '../game/icons'
  *
  * Rows never re-order. Sorting by price meant the thing you were reaching for
  * moved the moment you bought something else.
+ *
+ * One row buys as many levels as the amount switch says. Late on, a level of
+ * an endless line is a fraction of a second's income and buying one at a time
+ * is a repetitive strain injury with a progress bar; the switch buys ten,
+ * twenty-five, or everything the balance covers, and the row prints what that
+ * actually comes to rather than a per-level price times a number.
  */
 type Shelf = 'upgrades' | 'badges'
+
+/** What the amount switch offers. */
+const AMOUNTS: (number | 'max')[] = [1, 10, 25, 'max']
+const amountLabel = (a: number | 'max') => (a === 'max' ? 'Max' : `×${a}`)
 
 export default function ShopView() {
   const s = useGame()
@@ -28,6 +38,8 @@ export default function ShopView() {
   const priceMult = fx.priceMult
   const [shelf, setShelf] = useState<Shelf>('upgrades')
   const [open, setOpen] = useState<string | null>(null)
+  const buyAmount = useUi((u) => u.buyAmount)
+  const setUi = useUi((u) => u.set)
 
   const badgeReady = BADGE_DEFS.some((def) => {
     const level = s.badges[def.key]
@@ -41,6 +53,11 @@ export default function ShopView() {
     const level = s.upgrades[def.key] ?? 0
     return !upgradeMaxed(def, level) && s.credits >= upgradeCost(def, level, priceMult)
   })
+
+  /* What a press of a row would actually do, priced level by level against the
+     balance: every level costs more than the last, so this is a sum. */
+  const quote = (def: (typeof UPGRADE_DEFS)[number], level: number) =>
+    bulkCost(def, level, s.credits, buyAmount, priceMult)
 
   return (
     <div className="shop-view">
@@ -132,32 +149,46 @@ export default function ShopView() {
                 <b className="credits-text"> Ruby: {Math.round((1 - priceMult) * 100)}% off.</b>
               )}
             </p>
+            <div className="buy-amount segmented" role="group" aria-label="Levels per purchase">
+              {AMOUNTS.map((a) => (
+                <button
+                  key={String(a)}
+                  className={`seg ${buyAmount === a ? 'active' : ''}`}
+                  onClick={() => setUi({ buyAmount: a })}
+                >
+                  {amountLabel(a)}
+                </button>
+              ))}
+            </div>
           </header>
           <ul className="shop-rows">
             {UPGRADE_DEFS.map((def, i) => {
               const level = s.upgrades[def.key] ?? 0
               const maxed = upgradeMaxed(def, level)
-              const cost = upgradeCost(def, level, priceMult)
-              const affordable = !maxed && s.credits >= cost
+              const { levels, cost } = maxed ? { levels: 0, cost: 0 } : quote(def, level)
+              const affordable = levels > 0
+              // What one level costs, for the row that cannot afford even that.
+              const nextCost = maxed ? 0 : upgradeCost(def, level, priceMult)
+              const to = level + Math.max(1, levels)
               const id = `u:${def.key}`
-              // Where the summon's lines end and the works' begin. Same shop,
-              // same credits -- the rule is only that nothing is locked behind
-              // anything (ADR 0014) -- but eighteen rows in one run is a list
-              // nobody reads to the bottom of.
-              const opensWorks = WORKS_KEYS.has(def.key) && !WORKS_KEYS.has(UPGRADE_DEFS[i - 1]?.key)
+              // Where the summon's lines end and the long game begins. Same
+              // shop, same credits -- the rule is only that nothing is locked
+              // behind anything (ADR 0014) -- but one flat run of fifteen rows
+              // is a list nobody reads to the bottom of.
+              const opensLate = LATE_KEYS.has(def.key) && !LATE_KEYS.has(UPGRADE_DEFS[i - 1]?.key)
               return (
                 <Fragment key={def.key}>
-                {opensWorks && (
+                {opensLate && (
                   <li className="shelf-split">
-                    <b>The works</b>
-                    <span>The Press, the Factory, expeditions, and the ceilings your summon runs into.</span>
+                    <b>The long game</b>
+                    <span>The contract board, and the ceilings your summon runs into.</span>
                   </li>
                 )}
                 <li className={`shop-row ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}>
                   <button
                     className="row-buy"
                     disabled={maxed || !affordable}
-                    onClick={() => s.buyUpgrade(def.key)}
+                    onClick={() => s.buyUpgrade(def.key, buyAmount)}
                     title={def.blurb}
                   >
                     <span className="row-icon">
@@ -167,7 +198,9 @@ export default function ShopView() {
                       <span className="row-name">
                         {def.name}
                         {(maxed || level > 0) && (
-                          <em className="row-lv">{maxed ? 'max' : `Lv ${level}`}</em>
+                          <em className="row-lv">
+                            {maxed ? 'max' : levels > 1 ? `Lv ${level} \u2192 ${to}` : `Lv ${level}`}
+                          </em>
                         )}
                       </span>
                       <span className="row-effect">
@@ -176,12 +209,15 @@ export default function ShopView() {
                           <>
                             {' '}
                             <span className="row-arrow">&rsaquo;</span>{' '}
-                            <b>{def.effect(level + 1)}</b>
+                            <b>{def.effect(to)}</b>
                           </>
                         )}
                       </span>
                     </span>
-                    <span className="row-cost">{maxed ? 'done' : fmt(cost)}</span>
+                    <span className="row-cost">
+                      {maxed ? 'done' : fmt(affordable ? cost : nextCost)}
+                      {!maxed && levels > 1 && <em className="row-cost-n">{levels} levels</em>}
+                    </span>
                   </button>
                   <button
                     className="row-more"

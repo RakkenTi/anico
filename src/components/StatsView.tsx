@@ -275,7 +275,7 @@ export default function StatsView() {
           <span className="dot">·</span>
           <span>
             average value{' '}
-            <b>{collection.length > 0 ? Math.round(worth / collection.length) : 0}</b>
+            <b>{fmt(collection.length > 0 ? worth / collection.length : 0)}</b>
           </span>
         </div>
       </div>
