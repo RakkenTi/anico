@@ -7,8 +7,8 @@ rest, and spend the credits on a shop that never runs out of things to sell you.
 ![Anico: a first pack, ten packs, forty-eight packs](./docs/img/hero.gif)
 
 *One summon screen from a first ten-card pack to forty-eight wrappers at once.
-There is a [WebM of the same clip](./docs/img/hero.webm) at half the weight for
-anywhere that can play video.*
+There is a [WebM of the same clip](./docs/img/hero.webm) at half the weight and
+twice the size for anywhere that can play video.*
 
 Character data and art come from the [AniList GraphQL API](https://docs.anilist.co/),
 fetched once by the server and cached in the instance's own database. One deployment is
