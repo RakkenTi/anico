@@ -1,7 +1,32 @@
 import { useEffect, useState } from 'react'
-import { api, type CatalogStatus } from '../api'
+import { api, type CatalogStatus, type Invite } from '../api'
 import { useGame } from '../game/store'
 import { POOL_OPTIONS } from '../game/pool'
+
+/**
+ * How many people one link lets in.
+ *
+ * Zero is a standing link, which is the shape a group chat wants: one URL
+ * pasted once, rather than the admin minting a code per person and then
+ * working out which of six strangers used which.
+ */
+const SEAT_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: '1 use' },
+  { value: 5, label: '5 uses' },
+  { value: 25, label: '25 uses' },
+  { value: 0, label: 'No limit' },
+]
+
+const linkFor = (code: string) => `${location.origin}/?invite=${encodeURIComponent(code)}`
+
+/** What a link has left on it, in the words the row wants. */
+function seats(i: Invite): string {
+  if (i.revoked_at) return 'revoked'
+  if (i.max_uses === 0) return `${i.uses} joined, no limit`
+  const left = Math.max(0, i.max_uses - i.uses)
+  if (left === 0) return `used up (${i.uses}/${i.max_uses})`
+  return `${i.uses}/${i.max_uses} used`
+}
 
 /**
  * Instance administration, shown only to the admin account: who can join, who
@@ -10,7 +35,11 @@ import { POOL_OPTIONS } from '../game/pool'
 export default function AdminPanel() {
   const pushToast = useGame((s) => s.pushToast)
   const [users, setUsers] = useState<Awaited<ReturnType<typeof api.adminUsers>>['users']>([])
-  const [invites, setInvites] = useState<Awaited<ReturnType<typeof api.adminInvites>>['invites']>([])
+  const [invites, setInvites] = useState<Invite[]>([])
+  const [seatCount, setSeatCount] = useState(1)
+  // The link most recently copied, so the row can say so rather than relying
+  // on a toast the phone has been told not to show.
+  const [copied, setCopied] = useState<string | null>(null)
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null)
   const [busy, setBusy] = useState(false)
   // Bumping this re-runs the loader; it keeps the fetch inside the effect,
@@ -49,14 +78,27 @@ export default function AdminPanel() {
     }
   }, [nonce])
 
+  /**
+   * Put a link on the clipboard, and say so where it was asked for.
+   *
+   * `navigator.clipboard` is only there on a secure origin and can be refused
+   * even then, so the link is always in a field on the row as well: the button
+   * is the convenience, the field is the guarantee.
+   */
+  const copyLink = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(linkFor(code))
+      setCopied(code)
+      setTimeout(() => setCopied((c) => (c === code ? null : c)), 2500)
+    } catch {
+      pushToast('Could not reach the clipboard. Copy the link from the field.', 'alert')
+    }
+  }
+
   const newInvite = async () => {
     setBusy(true)
-    const { code } = await api.createInvite()
-    setBusy(false)
-    await navigator.clipboard
-      ?.writeText(`${location.origin}/?invite=${code}`)
-      .then(() => pushToast('Invite link copied to the clipboard.', 'info'))
-      .catch(() => pushToast(`Invite code: ${code}`, 'info'))
+    const { invite } = await api.createInvite(seatCount).finally(() => setBusy(false))
+    await copyLink(invite.code)
     refresh()
   }
 
@@ -206,37 +248,70 @@ export default function AdminPanel() {
 
       <div className="setting-row">
         <label>Invites</label>
-        <button className="btn btn-quiet" onClick={newInvite} disabled={busy}>
-          Create an invite link
-        </button>
-        <ul className="admin-list">
-          {invites.map((i) => (
-            <li key={i.code}>
-              <code className="invite-code">{i.code}</code>
-              <span className="admin-meta">
-                {i.used_by ? `used by ${i.used_by}` : 'unused'}
-              </span>
-              {!i.used_by && (
-                <button
-                  className="btn btn-ghost admin-action invite-revoke"
-                  title="Withdraw this invite so the link stops working"
-                  onClick={async () => {
-                    await api.deleteInvite(i.code)
-                    pushToast('Invite withdrawn. That link no longer works.', 'info')
-                    refresh()
-                  }}
-                >
-                  Withdraw
-                </button>
-              )}
-            </li>
-          ))}
+        <div className="invite-new">
+          <select
+            className="input"
+            value={seatCount}
+            onChange={(e) => setSeatCount(Number(e.target.value))}
+          >
+            {SEAT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button className="btn btn-quiet" onClick={newInvite} disabled={busy}>
+            {busy ? 'Minting…' : 'Create an invite link'}
+          </button>
+        </div>
+        <ul className="admin-list invite-list">
+          {invites.map((i) => {
+            const spent = !!i.revoked_at || (i.max_uses > 0 && i.uses >= i.max_uses)
+            return (
+              <li key={i.code} className={spent ? 'invite-spent' : ''}>
+                {/* The whole link, not the code: what somebody pastes into a
+                    chat is a URL, and the code alone made every admin build
+                    one by hand. Read-only and selectable, so the clipboard
+                    button is a convenience rather than the only way through. */}
+                <input
+                  className="input invite-link"
+                  value={linkFor(i.code)}
+                  readOnly
+                  onFocus={(e) => e.currentTarget.select()}
+                  aria-label={`Invite link ${i.code}`}
+                />
+                <span className="admin-meta invite-seats">{seats(i)}</span>
+                {i.used_by.length > 0 && (
+                  <span className="admin-meta invite-joined">{i.used_by.join(', ')}</span>
+                )}
+                {/* A link that cannot let anybody else in is a record, not a
+                    control: nothing to copy and nothing left to withdraw. */}
+                {!spent && (
+                  <div className="confirm-row">
+                    <button className="btn btn-ghost admin-action" onClick={() => void copyLink(i.code)}>
+                      {copied === i.code ? 'Copied' : 'Copy link'}
+                    </button>
+                    <button
+                      className="btn btn-ghost admin-action invite-revoke"
+                      title="Withdraw this invite so the link stops working"
+                      onClick={async () => {
+                        await api.deleteInvite(i.code)
+                        pushToast('Invite withdrawn. That link no longer works.', 'alert')
+                        refresh()
+                      }}
+                    >
+                      Withdraw
+                    </button>
+                  </div>
+                )}
+              </li>
+            )
+          })}
           {invites.length === 0 && <li className="admin-meta">No invites yet.</li>}
         </ul>
         <p className="setting-hint">
-          Each invite works once, and registration is closed to anyone without one. An unused
-          invite can be withdrawn; a used one stays, because it is the record of how that
-          account came to exist.
+          Registration is closed to anyone without a link. A link can carry one seat or
+          twenty-five, or none at all, in which case it lets anybody in until you withdraw
+          it. Withdrawing a link nobody used deletes it; withdrawing one people joined
+          through keeps the row, because it is the record of how those accounts exist.
         </p>
       </div>
     </div>

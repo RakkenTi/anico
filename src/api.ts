@@ -8,6 +8,21 @@ import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
 import type { Contract, Musterer } from './game/contracts'
+import type { Ranks } from './game/ranks'
+
+export type { RankBoard, RankRow, RankUnit, Ranks } from './game/ranks'
+
+/** An invite link, as the admin panel sees it. */
+export interface Invite {
+  code: string
+  created_at: number
+  /** Seats on this link. Zero is a standing link with no limit. */
+  max_uses: number
+  uses: number
+  revoked_at: number | null
+  /** Everyone who joined through it, in the order they arrived. */
+  used_by: string[]
+}
 
 export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
@@ -148,7 +163,7 @@ export class ApiError extends Error {
  */
 export interface Instance {
   fetch: (path: string, init?: RequestInit) => Promise<Response>
-  listen?: (onState: (s: Snapshot) => void) => () => void
+  listen?: (onState: (s: Snapshot) => void, onBuild: (id: string) => void) => () => void
 }
 
 let instance: Instance | null = null
@@ -182,8 +197,11 @@ const post = <T,>(path: string, body?: unknown) =>
  * snapshot, minus the collection, which is fetched separately when its
  * revision moves.
  */
-export function listenForState(onState: (s: Snapshot) => void): () => void {
-  if (instance) return instance.listen ? instance.listen(onState) : () => {}
+export function listenForState(
+  onState: (s: Snapshot) => void,
+  onBuild: (id: string) => void,
+): () => void {
+  if (instance) return instance.listen ? instance.listen(onState, onBuild) : () => {}
   if (typeof EventSource === 'undefined') return () => {}
   const source = new EventSource('/api/events')
   source.addEventListener('state', (e) => {
@@ -191,6 +209,18 @@ export function listenForState(onState: (s: Snapshot) => void): () => void {
       onState(JSON.parse((e as MessageEvent).data) as Snapshot)
     } catch {
       /* a half-written frame is not worth a crash */
+    }
+  })
+  /*
+   * The instance says what it is on every stream it opens, and EventSource
+   * opens a new one by itself the moment the old one drops. So a restart on a
+   * new image announces itself here, with no polling and nothing to schedule.
+   */
+  source.addEventListener('version', (e) => {
+    try {
+      onBuild(String((JSON.parse((e as MessageEvent).data) as { build: string }).build))
+    } catch {
+      /* likewise */
     }
   })
   return () => source.close()
@@ -205,6 +235,9 @@ export const api = {
   logout: () => post<{ ok: true }>('/auth/logout'),
 
   state: () => request<Snapshot>('/state'),
+  /** What the instance is running. Compared against what this tab booted on. */
+  version: () => request<{ build: string }>('/version'),
+  ranks: () => request<Ranks>('/ranks'),
   catalog: () => request<CatalogStatus>('/catalog'),
 
   /** `packs` is how many wrappers to tear: zero is the free single card. */
@@ -233,6 +266,8 @@ export const api = {
   grant: (amount: number) => post<{ state: Snapshot }>('/grant', { amount }),
   reset: (username: string, password: string) =>
     post<{ state: Snapshot }>('/reset', { username, password }),
+  rename: (username: string, password: string) =>
+    post<{ state: Snapshot }>('/rename', { username, password }),
 
   adminUsers: () =>
     request<{
@@ -245,11 +280,9 @@ export const api = {
         sessions: number
       }[]
     }>('/admin/users'),
-  adminInvites: () =>
-    request<{ invites: { code: string; created_at: number; used_at: number | null; used_by: string | null }[] }>(
-      '/admin/invites',
-    ),
-  createInvite: () => post<{ code: string }>('/admin/invites'),
+  adminInvites: () => request<{ invites: Invite[] }>('/admin/invites'),
+  /** `maxUses` of 0 is a standing link with no seat count. */
+  createInvite: (maxUses: number) => post<{ invite: Invite }>('/admin/invites', { maxUses }),
   setSandbox: (id: number, sandbox: boolean) =>
     request<{ ok: true }>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ sandbox }) }),
   revokeSessions: (id: number) =>

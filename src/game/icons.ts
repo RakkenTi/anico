@@ -26,7 +26,7 @@ import campfire from '../assets/icons/campfire.svg'
 import cardsSeek from '../assets/icons/cards_seek.svg'
 import gear from '../assets/icons/gi_gear.png'
 import star from '../assets/icons/gi_star.png'
-import chart from '../assets/icons/gi_leaderboardsComplex.png'
+import podium from '../assets/icons/gi_leaderboardsComplex.png'
 
 export const ICONS = {
   cards_fan: cardsFan,
@@ -47,7 +47,7 @@ export const ICONS = {
   cards_seek: cardsSeek,
   gear,
   star,
-  chart,
+  podium,
 } as const
 
 export type IconName = keyof typeof ICONS

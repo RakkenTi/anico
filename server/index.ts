@@ -9,6 +9,7 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { readFileSync, existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { openDb, purgeSandboxProfiles } from './db.js'
 import { purgeExpiredSessions } from './auth.js'
@@ -29,14 +30,26 @@ const dropped = purgeSandboxProfiles(db)
 if (dropped > 0) console.log(`[anico] cleared ${dropped} sandbox profile(s)`)
 setInterval(() => purgeExpiredSessions(db), 6 * 3_600_000).unref()
 
-const app = createApp(db, { cookieSecure: COOKIE_SECURE })
-
 // Static client. Hashed assets are immutable; index.html must never be cached
 // or an update leaves people on a stale bundle talking to a newer API.
 const clientRoot = resolve(CLIENT_DIR)
 const indexHtml = existsSync(join(clientRoot, 'index.html'))
   ? readFileSync(join(clientRoot, 'index.html'), 'utf8')
   : null
+
+/*
+ * What this instance is serving.
+ *
+ * The shell, hashed. Every asset it points at is content-addressed by Vite, so
+ * a build that changed anything at all changes this string and a build that
+ * changed nothing does not -- which is exactly the question a connected tab is
+ * asking when it wants to know whether to reload itself.
+ */
+const BUILD_ID = indexHtml
+  ? createHash('sha256').update(indexHtml).digest('hex').slice(0, 12)
+  : 'dev'
+
+const app = createApp(db, { cookieSecure: COOKIE_SECURE, buildId: BUILD_ID })
 
 // The shell is served by us, never by the static middleware, so it always
 // carries no-cache: a stale index.html would pair an old bundle with a new API.
@@ -65,6 +78,7 @@ app.get('*', (c) => {
 serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`[anico] listening on http://0.0.0.0:${info.port}`)
   console.log(`[anico] data in ${resolve(DATA_DIR)}, ${catalogSize(db)} characters in the catalog`)
+  console.log(`[anico] build ${BUILD_ID}`)
   if (CRAWL_ON_BOOT) void startCrawl(db)
 })
 

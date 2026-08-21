@@ -65,8 +65,25 @@ export interface CreateError {
 }
 
 /**
+ * Judge a username.
+ *
+ * One place, because signing up and renaming have to agree: a name nobody
+ * could have registered is a name nobody should be able to move to.
+ */
+export function checkUsername(name: string): string | null {
+  if (name.length < 2 || name.length > 24) return 'Username must be 2 to 24 characters.'
+  if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
+    return 'Username may use letters, numbers, dot, dash and underscore.'
+  }
+  return null
+}
+
+/** Thrown inside the registration transaction when the invite ran out first. */
+class InviteSpent extends Error {}
+
+/**
  * Register an account. The first registration on a fresh instance becomes the
- * admin; every later one must present an unused invite.
+ * admin; every later one must present an invite with a seat left on it.
  */
 export async function register(
   db: DB,
@@ -75,25 +92,24 @@ export async function register(
   invite: string | undefined,
 ): Promise<CreateResult | CreateError> {
   const name = username.trim()
-  if (name.length < 2 || name.length > 24) {
-    return { ok: false, error: 'Username must be 2 to 24 characters.' }
-  }
-  if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
-    return { ok: false, error: 'Username may use letters, numbers, dot, dash and underscore.' }
-  }
+  const badName = checkUsername(name)
+  if (badName) return { ok: false, error: badName }
   if (password.length < 8) {
     return { ok: false, error: 'Password must be at least 8 characters.' }
   }
 
   const first = playerCount(db) === 0
-  let inviteRow: { code: string } | undefined
+  let inviteRow: { code: string; max_uses: number; uses: number } | undefined
   if (!first) {
     const code = (invite ?? '').trim()
-    if (!code) return { ok: false, error: 'An invite code is required to register on this instance.' }
+    if (!code) return { ok: false, error: 'An invite is required to register on this instance.' }
     inviteRow = db
-      .prepare('SELECT code FROM invites WHERE code = ? AND used_by IS NULL')
-      .get(code) as { code: string } | undefined
-    if (!inviteRow) return { ok: false, error: 'That invite code is not valid or has already been used.' }
+      .prepare('SELECT code, max_uses, uses FROM invites WHERE code = ? AND revoked_at IS NULL')
+      .get(code) as { code: string; max_uses: number; uses: number } | undefined
+    if (!inviteRow) return { ok: false, error: 'That invite is not valid.' }
+    if (inviteRow.max_uses > 0 && inviteRow.uses >= inviteRow.max_uses) {
+      return { ok: false, error: 'That invite has been used up.' }
+    }
   }
 
   const taken = db.prepare('SELECT 1 FROM players WHERE username_lower = ?').get(name.toLowerCase())
@@ -104,6 +120,18 @@ export async function register(
   const settings: ServerSettings = { ...DEFAULT_SETTINGS }
 
   const player = db.transaction(() => {
+    // Hashing a password takes long enough for two people to arrive on the
+    // same link, so the seat is taken here rather than counted above: the
+    // update only lands while there is one left, and no seat means no account.
+    if (inviteRow) {
+      const seat = db
+        .prepare(
+          `UPDATE invites SET uses = uses + 1
+            WHERE code = ? AND revoked_at IS NULL AND (max_uses = 0 OR uses < max_uses)`,
+        )
+        .run(inviteRow.code).changes
+      if (seat === 0) throw new InviteSpent()
+    }
     const info = db
       .prepare(
         `INSERT INTO players (username, username_lower, password_hash, is_admin, sandbox, created_at)
@@ -116,7 +144,9 @@ export async function register(
        VALUES (?, 0, ?, ?, ?)`,
     ).run(id, JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), JSON.stringify(settings))
     if (inviteRow) {
-      db.prepare('UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?').run(id, now, inviteRow.code)
+      db.prepare(
+        'INSERT OR IGNORE INTO invite_uses (code, player_id, used_at) VALUES (?, ?, ?)',
+      ).run(inviteRow.code, id, now)
     }
     return {
       id,
@@ -126,9 +156,39 @@ export async function register(
       sandbox_of: null,
       sandbox_active: 0,
     }
-  })()
+  })
 
-  return { ok: true, player }
+  try {
+    return { ok: true, player: player() }
+  } catch (e) {
+    if (e instanceof InviteSpent) return { ok: false, error: 'That invite has been used up.' }
+    throw e
+  }
+}
+
+/**
+ * Change the name on an account.
+ *
+ * The account, never the sandbox shadow: the shadow wears its owner's name
+ * with a tag on it and is renamed alongside, so leaving the sandbox does not
+ * hand back a profile still labelled with the old one.
+ */
+export function renamePlayer(db: DB, owner: Player, username: string): CreateResult | CreateError {
+  const name = username.trim()
+  const bad = checkUsername(name)
+  if (bad) return { ok: false, error: bad }
+  const id = owner.sandbox_of ?? owner.id
+  const lower = name.toLowerCase()
+  const taken = db
+    .prepare('SELECT 1 FROM players WHERE username_lower = ? AND id <> ?')
+    .get(lower, id)
+  if (taken) return { ok: false, error: 'That username is taken.' }
+
+  db.transaction(() => {
+    db.prepare('UPDATE players SET username = ?, username_lower = ? WHERE id = ?').run(name, lower, id)
+    db.prepare('UPDATE players SET username = ? WHERE sandbox_of = ?').run(`${name} (sandbox)`, id)
+  })()
+  return { ok: true, player: { ...owner, username: name } }
 }
 
 export async function login(
@@ -149,6 +209,15 @@ export async function login(
   const ok = await verifyPassword(password, stored)
   if (!row || !ok) return { ok: false, error: 'Wrong username or password.' }
   return { ok: true, player: toPlayer(row) }
+}
+
+/** Confirm a password against one account, without naming it. */
+export async function checkPassword(db: DB, playerId: number, password: string): Promise<boolean> {
+  const row = db.prepare('SELECT password_hash FROM players WHERE id = ?').get(playerId) as
+    | { password_hash: string }
+    | undefined
+  // Hash on a miss too, so a bad id and a bad password cost the same.
+  return verifyPassword(password, row?.password_hash ?? 'scrypt$00$00')
 }
 
 /** Confirm a player's own password, for actions that should not be one click. */
@@ -289,12 +358,68 @@ export function purgeExpiredSessions(db: DB): void {
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now())
 }
 
-export function createInvite(db: DB, adminId: number): string {
+export const INVITE_USES_MAX = 1000
+
+/**
+ * Mint an invite.
+ *
+ * `maxUses` of zero is a standing link: the shape a group chat wants, where
+ * the admin is not minting a code per person and chasing which one went to
+ * whom. Anything else is a seat count, and the link stops working when the
+ * seats are gone.
+ */
+export function createInvite(db: DB, adminId: number, maxUses = 1): Invite {
+  const seats = Number.isFinite(maxUses)
+    ? Math.min(INVITE_USES_MAX, Math.max(0, Math.floor(maxUses)))
+    : 1
   const code = randomBytes(9).toString('base64url')
-  db.prepare('INSERT INTO invites (code, created_by, created_at) VALUES (?, ?, ?)').run(
-    code,
-    adminId,
-    Date.now(),
+  db.prepare(
+    'INSERT INTO invites (code, created_by, created_at, max_uses) VALUES (?, ?, ?, ?)',
+  ).run(code, adminId, Date.now(), seats)
+  return { code, created_at: Date.now(), max_uses: seats, uses: 0, revoked_at: null, used_by: [] }
+}
+
+export interface Invite {
+  code: string
+  created_at: number
+  /** Seats on this link. Zero is unlimited. */
+  max_uses: number
+  uses: number
+  revoked_at: number | null
+  /** Everyone who joined through it, in the order they arrived. */
+  used_by: string[]
+}
+
+export function listInvites(db: DB, limit = 50): Invite[] {
+  const rows = db
+    .prepare(
+      `SELECT code, created_at, max_uses, uses, revoked_at
+         FROM invites ORDER BY created_at DESC LIMIT ?`,
+    )
+    .all(limit) as Omit<Invite, 'used_by'>[]
+  const names = db.prepare(
+    `SELECT p.username FROM invite_uses u JOIN players p ON p.id = u.player_id
+      WHERE u.code = ? ORDER BY u.used_at`,
   )
-  return code
+  return rows.map((r) => ({
+    ...r,
+    used_by: (names.all(r.code) as { username: string }[]).map((n) => n.username),
+  }))
+}
+
+/**
+ * Take a link out of circulation.
+ *
+ * One that nobody has used is deleted outright; one that somebody joined
+ * through is marked instead, because it is the record of how that account came
+ * to exist and deleting it would orphan them.
+ */
+export function revokeInvite(db: DB, code: string): boolean {
+  const row = db.prepare('SELECT uses FROM invites WHERE code = ?').get(code) as
+    | { uses: number }
+    | undefined
+  if (!row) return false
+  if (row.uses === 0) db.prepare('DELETE FROM invites WHERE code = ?').run(code)
+  else db.prepare('UPDATE invites SET revoked_at = ? WHERE code = ?').run(Date.now(), code)
+  return true
 }

@@ -202,7 +202,7 @@ export default function StatsView() {
     return (
       <div className="stats-view">
         <div className="empty-state">
-          <div className="empty-glyph"><Icon name="chart" /></div>
+          <div className="empty-glyph"><Icon name="cards_seek" /></div>
           <p>No story to tell yet. Summon a few characters and come back.</p>
         </div>
       </div>
