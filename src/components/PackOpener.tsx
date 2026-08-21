@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGame, stackCards } from '../game/store'
 import { rarityOf } from '../game/economy'
-import { STACK_RENDER_DEPTH } from '../game/upgrades'
+import { stackDepth } from '../game/upgrades'
 import { flapPath, foilPath } from '../game/tear'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
@@ -27,10 +27,28 @@ const AUTOTEAR_MS = 420
  * six. Only when the pack has outgrown the hands entirely does this cap bind.
  */
 const MAX_OPEN_S = 8
-/** Below this the browser cannot draw a frame per throw, so they leave in twos. */
+/**
+ * How often a stack may update, at most.
+ *
+ * Every throw is a store write and a render of the whole view, so at a hundred
+ * and fifty cards a second the browser spends longer re-rendering than
+ * animating and the pull takes half again as long as the rate promised. Past
+ * ten ticks a second the cards leave in twos and threes instead, which nobody
+ * can tell apart at that speed and which the clock certainly can.
+ */
+const TICKS_PER_SECOND = 10
 const MIN_STEP_MS = 28
-/** Delay between one wrapper starting to tear itself open and the next. */
-const STAGGER_MS = 130
+/** Cards allowed to be mid-flight at once. They are decoration. */
+const MAX_IN_FLIGHT = 16
+/**
+ * Delay between one wrapper starting to tear itself open and the next.
+ *
+ * Shared out, so ten packs do not spend a second and a half getting started:
+ * the point of the stagger is that they are not in lockstep, not that the last
+ * one waits its turn.
+ */
+const STAGGER_TOTAL_MS = 600
+const STAGGER_MAX_MS = 130
 
 interface Props {
   pack: NonNullable<ReturnType<typeof useGame.getState>['pack']>
@@ -89,9 +107,13 @@ export default function PackOpener({ pack, cards }: Props) {
    */
   const rate = Math.max(1, cardRate, cards.length / MAX_OPEN_S)
   const rawStep = (1000 * stacks) / rate
-  const batch = rawStep >= MIN_STEP_MS ? 1 : Math.ceil(MIN_STEP_MS / rawStep)
+  const target = Math.max(MIN_STEP_MS, 1000 / TICKS_PER_SECOND)
+  const batch = rawStep >= target ? 1 : Math.ceil(target / rawStep)
   const stepMs = Math.max(MIN_STEP_MS, Math.round(rawStep * batch))
 
+  // The render budget is shared out: one stack shows a deep pile, twelve show
+  // a sliver each, and the browser mounts about the same number of cards.
+  const depth = stackDepth(stacks)
   const anySealed = pack.stacks.some((st) => st.state === 'sealed')
   const left = pack.stacks.reduce(
     (n, st, i) => n + Math.max(0, Math.min(pack.perPack, cards.length - i * pack.perPack) - st.revealed),
@@ -167,7 +189,7 @@ export default function PackOpener({ pack, cards }: Props) {
   /** Send some cards on their way, and clear them up once they have landed. */
   const depart = useCallback((going: Departing[]) => {
     if (going.length === 0) return 0
-    setDeparting((d) => [...d, ...going])
+    setDeparting((d) => [...d, ...going].slice(-MAX_IN_FLIGHT))
     window.setTimeout(
       () =>
         setDeparting((d) =>
@@ -243,13 +265,14 @@ export default function PackOpener({ pack, cards }: Props) {
     // One wrapper after another rather than all in the same frame: five packs
     // tearing in perfect unison reads as one animation, not five.
     ;(useGame.getState().pack?.stacks ?? []).forEach((_, i) => {
-      hold.push(window.setTimeout(() => startStack(i), i * STAGGER_MS))
+      const step = Math.min(STAGGER_MAX_MS, STAGGER_TOTAL_MS / stacks)
+      hold.push(window.setTimeout(() => startStack(i), i * step))
     })
     return () => {
       hold.forEach(clearTimeout)
       hold.length = 0
     }
-  }, [running, batch, stepMs, animateTear, slicePack, throwFrom])
+  }, [running, batch, stepMs, stacks, animateTear, slicePack, throwFrom])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -347,7 +370,7 @@ export default function PackOpener({ pack, cards }: Props) {
   return (
     <div className="pack-opener">
       <div
-        className={`pack-grid packs-${Math.min(stacks, 6)} ${anySealed ? 'is-sealed' : ''}`}
+        className={`pack-grid packs-${Math.min(stacks, 12)} ${anySealed ? 'is-sealed' : ''}`}
         ref={surface}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -367,6 +390,7 @@ export default function PackOpener({ pack, cards }: Props) {
             state={st.state}
             thrown={st.revealed}
             cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
+            depth={depth}
             tear={tears[i] ?? 0}
             drag={drag}
             departing={departing.filter((d) => d.stack === i)}
@@ -407,13 +431,15 @@ interface StackProps {
   state: 'sealed' | 'sliced' | 'open'
   thrown: number
   cards: RollResult[]
+  /** Cards mounted behind the top one. A share of the pull's budget. */
+  depth: number
   tear: number
   drag: { x: number; y: number } | null
   departing: Departing[]
 }
 
 /** One wrapper and its pile. Gestures belong to the grid, not to this. */
-function PackStack({ state, thrown, cards, tear, drag, departing }: StackProps) {
+function PackStack({ state, thrown, cards, depth, tear, drag, departing }: StackProps) {
   const sealed = state === 'sealed'
   // Foil takes its colour from the best card in the pack. It gives nothing
   // away that matters -- everything inside is already claimed -- but a pack
@@ -430,7 +456,7 @@ function PackStack({ state, thrown, cards, tear, drag, departing }: StackProps) 
     : undefined
   // Only the top of the stack is ever visible, so only the top of the stack is
   // mounted. The rest is a number under the corner.
-  const behind = cards.slice(thrown + 1, thrown + 1 + STACK_RENDER_DEPTH)
+  const behind = cards.slice(thrown + 1, thrown + 1 + depth)
 
   return (
     <div className={`pack-area foil-${rarity} ${sealed ? 'is-sealed' : ''}`}>

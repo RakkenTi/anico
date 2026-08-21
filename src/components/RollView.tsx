@@ -6,6 +6,7 @@ import { dealDelayMs, dealStepMs, dealtFraction } from '../game/sound'
 import { fmt, fmtCount } from '../game/format'
 import { packCost } from '../game/economy'
 import CharacterCard from './CharacterCard'
+import { useVirtualGrid } from './useVirtualGrid'
 import Icon from './Icon'
 import PackOpener from './PackOpener'
 
@@ -24,6 +25,15 @@ export default function RollView() {
   const pullSize = s.cardsPerPull
   const entry = s.rolled[s.selected]
   const mega = s.rolled.length > 20
+  /**
+   * Past this the spread is windowed: only the rows on screen are mounted.
+   *
+   * A pull deals as much as your hands can manage, which is a thousand cards
+   * once Open Speed is deep enough. A thousand cards is a thousand images and
+   * as many foil frames; a phone simply stops. The deal cascade goes with it,
+   * because a cascade nobody can see the end of is a delay, not a flourish.
+   */
+  const windowed = s.rolled.length > 150
 
   /**
    * The order the spread is laid out in.
@@ -72,13 +82,29 @@ export default function RollView() {
     return () => clearTimeout(t)
   }, [s.rollCount, rolledCount])
 
+  const {
+    outerRef: spreadOuter,
+    innerRef: spreadInner,
+    start: spreadStart,
+    end: spreadEnd,
+    totalHeight: spreadHeight,
+    offset: spreadOffset,
+  } = useVirtualGrid(windowed ? s.rolled.length : 0, `${s.rollCount}|${s.rollSort}`)
+  const shown = useMemo(() => {
+    const from = windowed ? spreadStart : 0
+    const to = windowed ? spreadEnd : view.length
+    const out: number[] = []
+    for (let i = from; i < to; i++) out.push(i)
+    return out
+  }, [windowed, spreadStart, spreadEnd, view.length])
+
   // Follow the deal: when a fresh spread overflows its pane, glide the
   // scroll down in step with the flip cascade until the last row lands.
   // Any manual input (wheel/touch/click) hands control back to the user.
   const stageRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = stageRef.current
-    if (!mega || !el || rolledCount === 0) return
+    if (!mega || windowed || !el || rolledCount === 0) return
     el.scrollTop = 0
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const total = rolledCount * dealStepMs(rolledCount)
@@ -111,7 +137,7 @@ export default function RollView() {
     }
     raf = requestAnimationFrame(tick)
     return stop
-  }, [s.rollCount, mega, rolledCount])
+  }, [s.rollCount, mega, windowed, rolledCount])
 
   // The spread's highest-value card gets a one-shot pulse once dealt.
   const bestIdx =
@@ -142,48 +168,63 @@ export default function RollView() {
              summon used to have a layout of its own — a card twice the size,
              with its own type scale — and on a phone that one card filled the
              screen while saying less than a spread slot does. */
+          /* One card and ten are the same thing at different widths. A single
+             summon used to have a layout of its own — a card twice the size,
+             with its own type scale — and on a phone that one card filled the
+             screen while saying less than a spread slot does. */
           <div
-            className={`roll-spread ${s.rolled.length === 1 ? 'single' : ''}`}
-            key={s.rollCount}
-            style={{
-              // pulse fires with the rarity stinger, after the last card
-              ['--pulse-delay' as string]: `${s.rolled.length * dealStepMs(s.rolled.length) + 80}ms`,
-            }}
+            className="spread-scroller"
+            ref={spreadOuter}
+            style={{ height: windowed ? spreadHeight : undefined }}
           >
-            {view.map((i) => s.rolled[i]).map((r, pos) => {
-              const i = view[pos]
-              return (
-              <div
-                key={`${r.char.id}-${i}`}
-                className={`spread-slot ${i === s.selected ? 'selected' : ''} ${r.owned && !r.fresh ? 'owned' : ''} ${i === bestIdx ? 'spotlight' : ''}`}
-                style={{ ['--deal-delay' as string]: `${dealDelayMs(pos, s.rolled.length).toFixed(1)}ms` }}
-              >
-                <div className="flip-inner">
-                  <div className="flip-back" aria-hidden="true">✦</div>
-                  <CharacterCard
-                    character={r.char}
-                    wished={r.wished}
-                    locked={r.locked}
-                    compact
-                    onClick={() => s.selectRolled(i)}
-                    overlay={
-                      r.wished && r.fresh ? (
-                        <span className="spread-tag wished">a wish</span>
-                      ) : r.willSell && !r.locked ? (
-                        <span className="spread-tag selling">for sale</span>
-                      ) : r.fresh ? (
-                        <span className="spread-tag fresh">new</span>
-                      ) : r.owned ? (
-                        <span className="spread-tag">
-                          {r.compensation > 0 ? `dupe +${r.compensation}` : 'owned'}
-                        </span>
-                      ) : null
-                    }
-                  />
-                </div>
-              </div>
-              )
-            })}
+            <div
+              className={`roll-spread ${s.rolled.length === 1 ? 'single' : ''} ${windowed ? 'windowed' : ''}`}
+              key={s.rollCount}
+              ref={spreadInner}
+              style={{
+                // pulse fires with the rarity stinger, after the last card
+                ['--pulse-delay' as string]: `${s.rolled.length * dealStepMs(s.rolled.length) + 80}ms`,
+                transform: windowed ? `translateY(${spreadOffset}px)` : undefined,
+              }}
+            >
+              {shown.map((pos) => {
+                const i = view[pos]
+                const r = s.rolled[i]
+                return (
+                  <div
+                    key={`${r.char.id}-${i}`}
+                    className={`spread-slot ${i === s.selected ? 'selected' : ''} ${r.owned && !r.fresh ? 'owned' : ''} ${i === bestIdx ? 'spotlight' : ''}`}
+                    style={{
+                      ['--deal-delay' as string]: `${dealDelayMs(pos, s.rolled.length).toFixed(1)}ms`,
+                    }}
+                  >
+                    <div className="flip-inner">
+                      <div className="flip-back" aria-hidden="true">✦</div>
+                      <CharacterCard
+                        character={r.char}
+                        wished={r.wished}
+                        locked={r.locked}
+                        compact
+                        onClick={() => s.selectRolled(i)}
+                        overlay={
+                          r.wished && r.fresh ? (
+                            <span className="spread-tag wished">a wish</span>
+                          ) : r.willSell && !r.locked ? (
+                            <span className="spread-tag selling">for sale</span>
+                          ) : r.fresh ? (
+                            <span className="spread-tag fresh">new</span>
+                          ) : r.owned ? (
+                            <span className="spread-tag">
+                              {r.compensation > 0 ? `dupe +${r.compensation}` : 'owned'}
+                            </span>
+                          ) : null
+                        }
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         ) : (
           <div className="card-back idle">

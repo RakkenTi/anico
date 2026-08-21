@@ -27,11 +27,19 @@ buying something every twenty minutes or so. There is no last purchase.
   table an exponent. Eighteen digits of separators hide the magnitude rather
   than showing it.
 - **A pull stops being something you look at.** A pack that holds a million
-  cards is a number, not a spread. Two hundred cards are dealt, granted and laid
-  out; everything behind them is opened by the machine and appraised at what the
-  dealt cards averaged. One pull is O(200) database writes however large it
-  nominally is, and the alternative — a million rows, a million images, the same
-  answer — is not a feature.
+  cards is a number, not a spread. What is dealt, granted and laid out is as
+  much as the player's hands can manage: six seconds of Open Speed, floored at
+  two hundred cards and capped at a thousand. Everything behind that is opened
+  by the machine and appraised at what the dealt cards averaged. A pull is
+  O(1000) database writes however large it nominally is, and the alternative (a
+  million rows, a million images, the same answer) is not a feature.
+
+  The first version of this was a flat two hundred cards in at most six stacks,
+  which is the same idea with the player left out of it: every level of Pack
+  Size, Extra Packs and Open Speed past a low bar changed nothing anybody could
+  see, and a pack of ten thousand that emptied in five seconds at fifty cards a
+  second did not add up. Tying the cap to Open Speed makes the arithmetic
+  visible and gives that line a job it never stops doing.
 - **Badges stay finite, and that is their job.** Six lines of six levels, each
   one unlocking or changing something you can name: whether packs exist, how
   many wishes you may pin, what a pack promises. They are the shape of the game;

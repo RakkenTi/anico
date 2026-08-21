@@ -95,10 +95,13 @@ once **Both Hands** is bought: one pack, or all of them, torn side by side with 
 wrappers and their own piles. The word exists because "pack" stopped being the unit of a
 press. The free single card is neither: it costs nothing and is always there.
 
-**Appraised** — what happens to the part of a pull too large to deal. Two hundred cards
-are laid out and granted; the rest are opened by the machine and turned straight into
-credits at what the dealt cards averaged (ADR 0007). Not a penalty and not a rounding:
-it is what keeps a pull of a million cards from being a million rows.
+**Appraised** — what happens to the part of a pull too large to deal. What is laid out and
+granted is as much as your hands can manage: six seconds of **Open Speed**, floored at two
+hundred cards and capped at a thousand. The rest is opened by the machine and turned
+straight into credits at what the dealt cards averaged (ADR 0007). Not a penalty and not a
+rounding: it is what keeps a pull of a million cards from being a million rows, and tying
+it to Open Speed is what makes the numbers add up -- a pack of ten thousand emptied in
+five seconds at fifty cards a second never did.
 
 **Pack price** — what opening a pack costs, twelve credits a card, always less than the
 cards inside are worth. The sink the whole economy turns on (ADR 0005): credits used to

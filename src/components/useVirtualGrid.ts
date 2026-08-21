@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /**
  * Render only the rows of a grid that are on screen.
@@ -16,15 +16,26 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * decides how much of it exists.
  */
 export function useVirtualGrid(count: number, resetKey: unknown) {
-  const outerRef = useRef<HTMLDivElement>(null)
-  const innerRef = useRef<HTMLDivElement>(null)
+  /*
+   * Callback refs, held in state.
+   *
+   * The grid is not always in the document when this hook first runs: a spread
+   * appears only once the pack it came out of has been emptied, by which time
+   * the card count has long since settled and nothing would make a plain ref
+   * re-measure. Keeping the element in state means attaching it *is* the
+   * change that triggers measurement.
+   */
+  const [outer, setOuter] = useState<HTMLDivElement | null>(null)
+  const [inner, setInner] = useState<HTMLDivElement | null>(null)
+  const outerRef = useCallback((el: HTMLDivElement | null) => setOuter(el), [])
+  const innerRef = useCallback((el: HTMLDivElement | null) => setInner(el), [])
   const [cols, setCols] = useState(1)
   const [rowH, setRowH] = useState(0)
   const [range, setRange] = useState({ start: 0, end: 48 })
 
   /** Read the grid back: how many columns it chose, and how tall a row is. */
   const measure = useCallback(() => {
-    const grid = innerRef.current
+    const grid = inner
     const first = grid?.firstElementChild as HTMLElement | null
     if (!grid || !first) return
     const style = getComputedStyle(grid)
@@ -33,10 +44,10 @@ export function useVirtualGrid(count: number, resetKey: unknown) {
     const height = first.getBoundingClientRect().height + gap
     if (columns !== cols) setCols(columns)
     if (height > 0 && Math.abs(height - rowH) > 0.5) setRowH(height)
-  }, [cols, rowH])
+  }, [inner, cols, rowH])
 
   const update = useCallback(() => {
-    const el = outerRef.current
+    const el = outer
     if (!el || rowH <= 0) return
     const rect = el.getBoundingClientRect()
     const viewport = window.innerHeight || 800
@@ -49,7 +60,7 @@ export function useVirtualGrid(count: number, resetKey: unknown) {
     const start = startRow * cols
     const end = Math.min(count, endRow * cols)
     setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
-  }, [cols, rowH, count])
+  }, [outer, cols, rowH, count])
 
   // Any ancestor may be the thing that scrolls -- the window on a desktop, a
   // pane on a phone -- so the listener is captured at the document rather than
@@ -58,8 +69,11 @@ export function useVirtualGrid(count: number, resetKey: unknown) {
     const onScroll = () => update()
     document.addEventListener('scroll', onScroll, { capture: true, passive: true })
     window.addEventListener('resize', onScroll, { passive: true })
-    update()
+    // After the frame, not during the commit: the rows have to exist before
+    // there is anything to measure them against.
+    const id = requestAnimationFrame(onScroll)
     return () => {
+      cancelAnimationFrame(id)
       document.removeEventListener('scroll', onScroll, { capture: true })
       window.removeEventListener('resize', onScroll)
     }
@@ -68,20 +82,22 @@ export function useVirtualGrid(count: number, resetKey: unknown) {
   // Re-measure whenever the layout could have changed underneath us: a
   // different filter, a resize, a card that grew a star.
   useEffect(() => {
-    measure()
-    update()
+    const id = requestAnimationFrame(() => {
+      measure()
+      update()
+    })
+    return () => cancelAnimationFrame(id)
   }, [measure, update, resetKey, count])
 
   useEffect(() => {
-    const el = innerRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
+    if (!inner || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(() => {
       measure()
       update()
     })
-    ro.observe(el)
+    ro.observe(inner)
     return () => ro.disconnect()
-  }, [measure, update])
+  }, [inner, measure, update])
 
   const rows = rowH > 0 ? Math.ceil(count / cols) : 0
   const start = rowH > 0 ? range.start : 0
