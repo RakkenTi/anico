@@ -3,6 +3,7 @@ import { useGame, useUi } from '../game/store'
 import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
+import { DEMO } from '../game/demo'
 import type { RollGender, LayoutKey, ThemeKey } from '../game/types'
 import type { ServerSettings } from '../api'
 
@@ -252,6 +253,9 @@ export default function SettingsView() {
         </div>
       )}
 
+      {/* Both of these need an account: one is an admin privilege, the other
+          asks for credentials the demo never issued. */}
+      {!DEMO && (
       <div className="panel">
         <h2 className="section-title">Danger zone</h2>
         <div className="setting-row">
@@ -316,6 +320,7 @@ export default function SettingsView() {
           )}
         </div>
       </div>
+      )}
 
       {isAdmin && <AdminPanel />}
 

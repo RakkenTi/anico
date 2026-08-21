@@ -1,0 +1,57 @@
+# The public demo: the whole instance, built as a static site.
+#
+# Deliberately not wired to a Pages deployment. Publishing this puts a playable
+# copy of the game on the open internet under a personal domain, which is a
+# decision rather than a build step -- so this workflow proves the demo still
+# builds and still boots, and stops there. Add the deploy job when the audit
+# says go.
+name: Demo build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The shim's whole job is to behave exactly like better-sqlite3, so the
+      # suite runs every case against both. It also carries the drift guards:
+      # a second path to /api, a node import in the rules, or a route that
+      # stops answering with the state it published.
+      - run: npm test
+
+      - run: npm run lint
+      - run: npm run build
+
+      # The catalog is a build input, not a build output: it takes hours of
+      # polite crawling to make and is committed alongside the demo. Without
+      # it there is nothing to boot, and a green build that shipped an empty
+      # catalog would be worse than a red one.
+      - name: The catalog is present
+        run: |
+          test -f demo/public/catalog.db || {
+            echo "demo/public/catalog.db is missing. Run: npm run bake:catalog"
+            exit 1
+          }
+
+      - run: npm run build:demo
+
+      # Boots the built site in a real browser and plays it: the instance has
+      # to start, the catalog has to load, and a summon has to grant a card.
+      # Everything up to here would pass on a demo that renders a blank page.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run smoke:demo

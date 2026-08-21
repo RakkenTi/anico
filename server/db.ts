@@ -494,7 +494,21 @@ export function openDb(file: string): DB {
    * sixty-five thousand.
    */
   db.pragma('optimize')
+  migrate(db)
+  return db
+}
 
+/**
+ * Bring a database up to the current schema.
+ *
+ * Split out from `openDb` because it is the only portable half of it: the rest
+ * is a directory, a file and file-only pragmas, none of which exist where the
+ * demo build runs SQLite in a browser tab. Sharing the loop rather than
+ * duplicating it is what stops the demo's schema drifting from an instance's.
+ *
+ * Idempotent, and safe to call on a database that is already current.
+ */
+export function migrate(db: DB, log: (line: string) => void = console.log): void {
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
     name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`)
   const applied = new Set(
@@ -509,9 +523,8 @@ export function openDb(file: string): DB {
         Date.now(),
       )
     })()
-    console.log(`[db] applied migration ${m.name}`)
+    log(`[db] applied migration ${m.name}`)
   }
-  return db
 }
 
 /**
