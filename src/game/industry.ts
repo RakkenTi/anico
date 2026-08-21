@@ -99,6 +99,55 @@ export function factoryPay(scrap: number, creditsPerCard: number, scrapWorth: nu
   return Math.floor(Math.max(0, scrap) * Math.max(0, creditsPerCard) * Math.max(0, scrapWorth))
 }
 
+/* ------------------------------------------------------------------- heat */
+
+/**
+ * Heat: what a hand on the machine is worth.
+ *
+ * Everything else in the works is paced by material -- spares arrive when the
+ * summon deals duplicates, and no amount of tapping makes a collection deeper.
+ * That is the right shape for an idle game and it left both machines with
+ * nothing to do but watch, which is the complaint the works kept earning.
+ *
+ * Heat is the answer: a tap on either machine raises it, it multiplies what
+ * every scrap fetches, and it halves every few seconds. So it is worth a lot
+ * while somebody is stood at the press and nothing whatever to the away rate,
+ * which is the only way to add a clicker to an idle game without making idling
+ * the wrong move.
+ *
+ * It decays by wall clock rather than by presses, and that is not the clock
+ * ADR 0004 threw out: nothing is gated behind it, nothing is lost by missing
+ * it, and a player who never taps plays exactly the game they played before.
+ */
+export const HEAT_PER_TAP = 0.22
+/** Heat halves every this many milliseconds since it was last raised. */
+export const HEAT_HALF_MS = 7000
+/** What a scrap fetches at full heat, as a multiple of cold. */
+export const HEAT_MAX_MULT = 2
+
+/** Heat as it stands now, given what it was and when it was last touched. */
+export function heatNow(heat: number, at: number, now: number): number {
+  if (!(heat > 0)) return 0
+  const dt = Math.max(0, now - at)
+  const h = heat * Math.pow(0.5, dt / HEAT_HALF_MS)
+  return h < 0.005 ? 0 : Math.min(1, h)
+}
+
+/** The multiple `heat` puts on a payout. */
+export function heatMult(heat: number): number {
+  return 1 + Math.max(0, Math.min(1, heat)) * (HEAT_MAX_MULT - 1)
+}
+
+/**
+ * What one hand slam mills the tank at.
+ *
+ * The automatic stroke waits for a whole scrap's worth of spares; a slam
+ * brings the ram down on whatever is in there now, and mills it hot. The
+ * bonus is what stops the tap being pure impatience -- it is worth doing even
+ * when the tank is nearly full.
+ */
+export const HAND_MULT = 1.5
+
 /* --------------------------------------------------------- the Expeditions */
 
 /** Expeditions that may be out at once, before Caravans. */
@@ -216,8 +265,10 @@ export interface Works {
   belt: number
   /** Cards one scrap is worth: the Foundry's fraction of this player's press. */
   scrapWorth: number
-  /** Credits the Factory paid over the last press. */
+  /** Credits the Factory pays per press at the rate material is arriving. */
   factoryRate: number
+  /** Heat, 0 to 1: the multiple a hand on the machine is currently buying. */
+  heat: number
   /** Distinct characters held: what gates a route. */
   reach: number
   caravans: number

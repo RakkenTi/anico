@@ -1,739 +1,242 @@
 /* ============================================================
-   The Factory line.
-   One conveyor drawn in gradients: a scrap heap, a belt with a
-   moving tread and a roller undercarriage, a furnace with a lit
-   mouth, a stamper with a striking die, coins off the end.
-   Every repeating motion is a keyframe whose duration comes
-   from a custom property the view sets from real throughput, so
-   Belt Speed makes the belt faster instead of making a number
-   bigger. Only transform and opacity are animated: this page
-   stays open for hours.
+   The Factory: a furnace.
 
-   The molten colours are fixed hex rather than tokens, the same
-   way the pack foils are: fire is fire in every theme. The
-   machine's metal is all tokens.
+   Three squares and an arrow. Material on the left, fire underneath, credits
+   on the right -- the shape of every crafting UI anyone has ever used, which
+   is the point: the old belt was thirty pixel dimensions of machinery saying
+   the same sentence, and it read as decoration rather than as a read-out.
+
+   One custom property drives the motion: --fx-period, one sweep of the arrow
+   per scrap through the fire, written by the view from the player's real
+   throughput. Only transform, opacity and width are animated.
    ============================================================ */
 
 .factory-view { display: flex; flex-direction: column; gap: 12px; }
 
 .fx-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
 }
 .fx-gold { color: var(--value); }
 
-.fx-title-rate {
-  margin-left: 10px;
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-dim);
-}
+/* --------------------------------------------------------- the furnace
 
-/* ------------------------------------------------ the line
+   Three squares and an arrow, in the arrangement every crafting UI uses:
+   material top left, fuel under it, arrow across, product on the right.
+   Held to a narrow max-width so it stays one compact object instead of
+   stretching an arrow across a desktop.
+*/
 
-   Three columns because that is the machine: what is waiting,
-   what is moving, what came out. It stays horizontal at every
-   width -- a conveyor stacked into a column is not a conveyor
-   -- so the ends shrink and the belt keeps the rest. */
-.fx-line {
-  position: relative;
+.fx-furnace {
+  --fx-period: 1200ms;
+  --slot: clamp(62px, 16vw, 82px);
+
   display: grid;
-  grid-template-columns: minmax(58px, 94px) 1fr minmax(66px, 116px);
-  gap: 14px;
-  align-items: end;
-  /* Room above the belt for the stations, which hang over it. */
-  padding: 44px 16px 18px;
-  margin: 0 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  /* A dim hall: light falls from above, and the furnace warms the
-     floor around where it stands. */
-  background:
-    radial-gradient(90% 70% at 50% 0%, rgba(255, 255, 255, 0.04), transparent 60%),
-    radial-gradient(46% 42% at 45% 100%, rgba(255, 138, 42, 0.07), transparent 75%),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 16px, transparent 16px),
-    var(--well);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    inset 0 -16px 26px -20px rgba(0, 0, 0, 0.55);
-  overflow: hidden;
-}
-
-/* ------------------------------------------------ the yard */
-.fx-yard { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.fx-bin {
-  position: relative;
-  display: block;
+  grid-template-columns: var(--slot) minmax(56px, 1fr) var(--slot);
+  grid-template-rows: var(--slot) auto;
+  align-items: center;
+  justify-items: center;
+  gap: 12px clamp(12px, 4vw, 26px);
   width: 100%;
-  height: 66px;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 22px);
   border: 1px solid var(--line-strong);
-  border-top: none;
-  border-radius: 2px 2px 4px 4px;
+  border-radius: 16px;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.08) 40%, rgba(255, 255, 255, 0.03)),
-    var(--surface);
-  box-shadow: inset 0 4px 9px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+    radial-gradient(90% 70% at 22% 100%, var(--accent-soft), transparent 62%),
+    linear-gradient(180deg, var(--surface-2), var(--well));
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.18s ease, transform 0.06s ease;
 }
-/* Side rails of the hopper, so the heap sits in something built. */
-.fx-bin::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  background:
-    linear-gradient(180deg, var(--raised), var(--line-strong)) 0 0 / 4px 100% no-repeat,
-    linear-gradient(180deg, var(--raised), var(--line-strong)) 100% 0 / 4px 100% no-repeat;
-  pointer-events: none;
-}
-/* The hazard lip along the front, in front of whatever is piled behind it. */
-.fx-bin::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 7px;
-  z-index: 2;
-  border-top: 1px solid rgba(0, 0, 0, 0.35);
-  background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.55) 0 6px, var(--value) 6px 12px);
-  opacity: 0.45;
-  pointer-events: none;
-}
-/* The heap is scaled, not resized: one static transform, no layout.
-   A jagged skyline and three kinds of tonal noise, so it reads as
-   rubble rather than as a striped rectangle. */
-.fx-heap {
-  position: absolute;
-  left: 3px;
-  right: 3px;
-  top: 4px;
-  bottom: 0;
-  transform: scaleY(var(--fx-pile, 0));
-  transform-origin: 50% 100%;
-  clip-path: polygon(
-    0 100%, 0 40%, 10% 22%, 22% 34%, 34% 10%, 47% 28%, 58% 6%,
-    70% 26%, 82% 14%, 92% 30%, 100% 20%, 100% 100%
-  );
-  background:
-    radial-gradient(9px 7px at 18% 24%, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.24) 68%, transparent 76%),
-    radial-gradient(11px 8px at 48% 38%, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.28) 70%, transparent 78%),
-    radial-gradient(8px 7px at 79% 26%, rgba(255, 255, 255, 0.13), rgba(0, 0, 0, 0.22) 68%, transparent 76%),
-    radial-gradient(10px 8px at 28% 62%, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.3) 70%, transparent 78%),
-    radial-gradient(9px 7px at 62% 72%, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.26) 68%, transparent 76%),
-    radial-gradient(12px 9px at 90% 60%, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.3) 72%, transparent 80%),
-    linear-gradient(180deg, var(--raised), var(--line-strong));
-}
-.fx-cap {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  text-align: center;
-  overflow-wrap: anywhere;
-}
+.fx-furnace:hover { border-color: var(--line-value); }
+.fx-furnace:active { transform: translateY(1px); }
+.fx-furnace:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-/* A yard the belt cannot get through is the one state on this page that is
-   worth money to fix, so it is the one thing here that wears the value colour. */
-.fx-line[data-state='backlog'] .fx-bin { border-color: var(--value); }
-.fx-line[data-state='backlog'] .fx-bin::after { opacity: 0.7; }
-.fx-line[data-state='backlog'] .fx-yard .fx-cap { color: var(--value-soft); }
-.fx-line[data-state='starved'] .fx-bin { border-style: dashed; border-color: var(--line); }
+/* --------------------------------------------------------- the slots */
 
-/* ------------------------------------------------ the belt
-
-   A stand, not a stripe: the run itself, a row of rollers under
-   it, and two legs down to the floor of the panel. */
-/*
- * The line, drawn bigger where there is room for it.
- *
- * Every part of this machine is sized in pixels because the parts have to
- * agree with each other to a pixel: a roller under a leg, a die over a coin.
- * On a desktop panel that machine is a thin ribbon in a wide frame, and the
- * fix is not thirty separate breakpoint overrides but one honest statement
- * that the whole assembly is drawn larger. `zoom` scales the layout box as
- * well as the paint, so the grid around it still measures correctly.
- */
-@media (min-width: 900px) {
-  .fx-line { zoom: 1.32; }
-}
-
-.fx-belt { position: relative; height: 56px; }
-/* The roller row. Static circles: the moving tread above them is
-   what sells the rotation. */
-.fx-belt::before {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 36px;
-  height: 9px;
-  background-image: radial-gradient(
-    circle at 50% 50%,
-    var(--raised) 0 2.4px,
-    var(--line-strong) 2.5px 3.6px,
-    transparent 3.7px
-  );
-  background-size: 18px 9px;
-  background-repeat: repeat-x;
-  background-position: 0 50%;
-  opacity: 0.9;
-}
-/* The legs. */
-.fx-belt::after {
-  content: '';
-  position: absolute;
-  inset: 44px 0 0 0;
-  background:
-    linear-gradient(180deg, var(--line-strong), rgba(0, 0, 0, 0.35)) 15% 0 / 7px 100% no-repeat,
-    linear-gradient(180deg, var(--line-strong), rgba(0, 0, 0, 0.35)) 85% 0 / 7px 100% no-repeat;
-}
-.fx-track {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 8px;
-  height: 26px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 35%, rgba(0, 0, 0, 0.3)),
-    var(--surface-2);
-  box-shadow:
-    inset 0 -3px 6px rgba(0, 0, 0, 0.35),
-    0 5px 9px -4px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-/* End drums, so the belt has something to run around. */
-.fx-track::before,
-.fx-track::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: 15px;
-  height: 15px;
-  margin-top: -7.5px;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  background:
-    radial-gradient(circle at 50% 50%, var(--line-strong) 0 2px, transparent 2.5px),
-    radial-gradient(circle at 34% 30%, var(--raised), var(--surface-2) 55%, var(--well));
-}
-.fx-track::before { left: 4px; }
-.fx-track::after { right: 4px; }
-
-.fx-tread {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -14px;
-  width: calc(100% + 14px);
-  /* Cleat, shadow, glint: a 14px loop, which is exactly what the
-     keyframe translates by. */
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0 10px,
-    rgba(0, 0, 0, 0.34) 10px 12px,
-    rgba(255, 255, 255, 0.06) 12px 14px
-  );
-  animation: fx-tread var(--fx-tread, 900ms) linear infinite;
-  will-change: transform;
-}
-@keyframes fx-tread {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(14px, 0, 0); }
-}
-
-/*
- * A rider is the width of the belt with one piece of scrap pinned to its left
- * edge, and it is the rider that moves. Percentages in translateX resolve
- * against the element's own width, so a full-width rider is the only way to
- * cross the belt end to end in a keyframe that never has to know how wide the
- * belt happens to be on this phone.
- */
-.fx-rider {
-  position: absolute;
-  inset: 0;
-  animation: fx-ride var(--fx-travel, 2s) linear infinite;
-  will-change: transform;
-}
-@keyframes fx-ride {
-  from { transform: translate3d(-4%, 0, 0); }
-  to { transform: translate3d(104%, 0, 0); }
-}
-
-/* The piece itself wears three costumes, one per leg of the trip.
-   Each is an opacity keyframe with the same duration and delay as
-   the ride, cut where the stations stand: the ride runs -4% to
-   104%, so a station at X% of the run is (X + 4) / 108 of the loop.
-   Melter at 38% -> 38.9%; stamper at 72% -> 70.4%. */
-.fx-chunk,
-.fx-ingot,
-.fx-coin {
-  position: absolute;
-  top: 50%;
-  animation-duration: var(--fx-travel, 2s);
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-  animation-delay: inherit;
-  will-change: opacity, transform;
-}
-.fx-chunk {
-  left: -9px;
-  width: 16px;
-  height: 15px;
-  margin-top: -8px;
-  background:
-    linear-gradient(148deg, rgba(255, 255, 255, 0.18), transparent 45%),
-    linear-gradient(150deg, var(--raised), var(--line-strong) 70%);
-  clip-path: polygon(22% 0, 100% 16%, 86% 100%, 6% 80%);
-  animation-name: fx-life-chunk;
-}
-/* Every chunk off the same pile, no two alike. The riders are
-   nth-children 2..5 of the track, after the tread. */
-.fx-rider:nth-child(3) .fx-chunk {
-  width: 13px;
-  height: 15px;
-  clip-path: polygon(0 26%, 62% 0, 100% 38%, 82% 100%, 14% 90%);
-  background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 50%),
-    linear-gradient(170deg, var(--raised), var(--line-strong) 60%);
-}
-.fx-rider:nth-child(4) .fx-chunk {
-  width: 17px;
-  height: 12px;
-  clip-path: polygon(14% 12%, 88% 0, 100% 66%, 60% 100%, 0 74%);
-  background:
-    linear-gradient(148deg, rgba(255, 255, 255, 0.2), transparent 40%),
-    linear-gradient(140deg, var(--raised), var(--line-strong) 55%);
-}
-.fx-rider:nth-child(5) .fx-chunk {
-  width: 14px;
-  height: 13px;
-  clip-path: polygon(30% 0, 100% 30%, 78% 92%, 18% 100%, 0 40%);
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.1), transparent 55%),
-    linear-gradient(155deg, var(--raised), var(--line-strong) 80%);
-}
-.fx-ingot {
-  left: -10px;
-  width: 20px;
-  height: 9px;
-  margin-top: -4px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #ffe9a0, #ff9432 45%, #cf4a12);
-  box-shadow:
-    0 0 9px rgba(255, 150, 50, 0.6),
-    0 0 2px rgba(255, 205, 130, 0.9);
-  opacity: 0;
-  animation-name: fx-life-ingot;
-}
-.fx-coin {
-  left: -8px;
-  width: 14px;
-  height: 14px;
-  margin-top: -7px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 34% 30%, #ffefb2, #f2c14e 55%, #b07d1f 92%);
-  box-shadow:
-    inset 0 0 0 1.5px rgba(120, 84, 18, 0.55),
-    0 1px 2px rgba(0, 0, 0, 0.4);
-  opacity: 0;
-  animation-name: fx-life-coin;
-}
-@keyframes fx-life-chunk {
-  0%, 37.4% { opacity: 1; }
-  38.9%, 100% { opacity: 0; }
-}
-@keyframes fx-life-ingot {
-  0%, 38.3% { opacity: 0; }
-  39.4%, 69.6% { opacity: 1; }
-  70.6%, 100% { opacity: 0; }
-}
-@keyframes fx-life-coin {
-  0%, 70.2% { opacity: 0; transform: scale3d(0.4, 0.4, 1); }
-  71.8% { opacity: 1; transform: scale3d(1.18, 1.18, 1); }
-  73.6%, 100% { opacity: 1; transform: scale3d(1, 1, 1); }
-}
-
-/* ------------------------------------------------ the stations
-
-   They straddle the belt: the bottom of each one sits over the track,
-   so a piece of scrap passes underneath rather than beside. */
-.fx-station {
-  position: absolute;
-  bottom: 28px;
-  transform: translateX(-50%);
+.fx-slot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  width: 64px;
+  justify-content: center;
+  gap: 2px;
+  width: var(--slot);
+  height: var(--slot);
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 2px var(--line);
 }
-.fx-melter { left: 38%; }
-.fx-stamper { left: 72%; }
-.fx-tag {
-  margin-bottom: 11px;
-  font-size: 9px;
-  letter-spacing: 0.07em;
+.fx-in { grid-column: 1; grid-row: 1; }
+.fx-out { grid-column: 3; grid-row: 1; }
+.fx-fuel { grid-column: 1; grid-row: 2; }
+
+.fx-slot-mark { width: 16px; height: 16px; border-radius: 3px; }
+.fx-slot-mark.scrap {
+  background: var(--text-dim);
+  clip-path: polygon(20% 0, 100% 22%, 80% 100%, 0 74%);
+}
+.fx-slot-mark.coin {
+  border-radius: 50%;
+  background: var(--value);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.22);
+}
+.fx-slot-n {
+  font-family: var(--serif);
+  font-size: clamp(0.78rem, 2.6vw, 0.95rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fx-slot-tag {
+  font-style: normal;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
-/* --- the furnace. A housing with a shouldered top, a flue, a lit
-   mouth, and heat spilling onto the belt under it. */
-.fx-hood {
+/* --------------------------------------------------------- the arrow */
+
+.fx-arrow {
+  grid-column: 2;
+  grid-row: 1;
   position: relative;
-  width: 62px;
-  height: 46px;
-  border-radius: 3px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 32%),
-    radial-gradient(2.5px 2.5px at 8px 39px, rgba(255, 255, 255, 0.2), transparent 70%),
-    radial-gradient(2.5px 2.5px at 54px 39px, rgba(255, 255, 255, 0.2), transparent 70%),
-    linear-gradient(180deg, var(--raised), var(--surface-2) 68%, var(--well));
-  clip-path: polygon(0 26%, 14% 0, 86% 0, 100% 26%, 100% 100%, 0 100%);
+  width: 100%;
+  max-width: 92px;
+  height: 26px;
+  /* A bar with a head on the end: the arrow every furnace has. */
+  clip-path: polygon(0 26%, 62% 26%, 62% 0, 100% 50%, 62% 100%, 62% 74%, 0 74%);
+  background: var(--line-strong);
 }
-/* The mouth: an arch of fire under the housing. */
-.fx-hood::after {
-  content: '';
+.fx-arrow-fill {
   position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 32px;
-  height: 23px;
-  margin-left: -16px;
-  border-radius: 16px 16px 2px 2px;
-  background: radial-gradient(
-    140% 120% at 50% 100%,
-    #ffe9a0 0%,
-    #ff9432 34%,
-    #d84f14 62%,
-    #6d1c06 100%
-  );
-  box-shadow: inset 0 0 7px rgba(255, 190, 100, 0.7);
-  animation: fx-ember 1.7s ease-in-out infinite;
+  inset: 0;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--value), var(--accent));
+  animation: fxSweep var(--fx-period) linear infinite;
 }
-/* The flue, outside the housing's clip so it needs its own element. */
-.fx-stack {
-  position: absolute;
-  bottom: 44px;
-  left: 10px;
-  width: 9px;
-  height: 11px;
-  border-radius: 2px 2px 0 0;
-  background: linear-gradient(90deg, var(--line-strong), var(--raised) 45%, var(--line-strong));
+@keyframes fxSweep {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
 }
-/* Firelight on the belt: a blurred pool that breathes a little. */
-.fx-heat {
-  position: absolute;
-  bottom: -15px;
-  left: 50%;
-  width: 86px;
-  height: 30px;
-  margin-left: -43px;
-  background: radial-gradient(
-    50% 60% at 50% 32%,
-    rgba(255, 150, 50, 0.5),
-    rgba(255, 110, 30, 0.16) 60%,
-    transparent 80%
-  );
-  filter: blur(5px);
-  animation: fx-haze 2.3s ease-in-out infinite;
-  pointer-events: none;
-}
-@keyframes fx-ember {
-  0%, 100% { opacity: 1; }
-  21% { opacity: 0.84; }
-  43% { opacity: 0.95; }
-  64% { opacity: 0.78; }
-  82% { opacity: 0.92; }
-}
-@keyframes fx-haze {
-  0%, 100% { opacity: 0.8; transform: scale3d(1, 1, 1); }
-  32% { opacity: 0.55; transform: scale3d(0.94, 1.06, 1); }
-  62% { opacity: 0.9; transform: scale3d(1.05, 0.96, 1); }
-}
-/* The pour: one flare per piece passing, phased by the view. */
-.fx-flash {
-  position: absolute;
-  bottom: -6px;
-  left: 50%;
+
+/* --------------------------------------------------------- the fire
+
+   The flame is the fuel gauge: an outline that fills from the bottom with
+   the heat, so a cold furnace shows an empty flame and a hot one a full
+   one. Exactly the read a furnace's fuel icon gives.
+*/
+
+.fx-flame {
+  position: relative;
   width: 26px;
-  height: 16px;
-  margin-left: -13px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, #ffe9a0, #ff8a2a 60%, transparent);
-  opacity: 0;
-  animation: fx-fire var(--fx-period, 600ms) ease-out infinite;
-  will-change: transform, opacity;
+  height: 34px;
+  border-radius: 50% 50% 46% 46% / 62% 62% 38% 38%;
+  overflow: hidden;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
-@keyframes fx-fire {
-  0% { opacity: 0; transform: scale3d(0.4, 0.4, 1); }
-  6% { opacity: 0.95; transform: scale3d(1, 1, 1); }
-  40% { opacity: 0; transform: scale3d(1.35, 1.55, 1); }
-  100% { opacity: 0; transform: scale3d(0.4, 0.4, 1); }
-}
-/* A cold furnace: mouth down to embers, no firelight on the belt. */
-.fx-line[data-state='starved'] .fx-hood::after { animation: none; opacity: 0.22; }
-.fx-line[data-state='starved'] .fx-heat { animation: none; opacity: 0.08; }
-
-/* --- the stamper. A C-frame press: top beam, two posts, and a die
-   that strikes down between them onto whatever is passing. */
-.fx-frame {
-  position: relative;
-  width: 44px;
-  height: 40px;
-  border-radius: 3px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 38%),
-    radial-gradient(2.5px 2.5px at 6px 6px, rgba(255, 255, 255, 0.22), transparent 70%),
-    radial-gradient(2.5px 2.5px at 38px 6px, rgba(255, 255, 255, 0.22), transparent 70%),
-    linear-gradient(180deg, var(--raised), var(--surface-2) 72%, var(--well));
-  clip-path: polygon(
-    0 0, 100% 0, 100% 100%, 77% 100%, 77% 28%, 23% 28%, 23% 100%, 0 100%
-  );
-}
-.fx-piston {
+.fx-flame i {
   position: absolute;
-  bottom: 9px;
-  left: 50%;
-  width: 18px;
-  height: 17px;
-  margin-left: -9px;
-  background:
-    linear-gradient(0deg, #f2c14e 0 3px, transparent 3px),
-    linear-gradient(90deg, var(--line-strong), var(--raised) 45%, var(--line-strong));
-  clip-path: polygon(28% 0, 72% 0, 72% 42%, 100% 55%, 100% 100%, 0 100%, 0 55%, 28% 42%);
-  animation: fx-stamp var(--fx-period, 600ms) ease-in-out infinite;
-  will-change: transform;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* A pilot light at the floor: a wholly empty flame reads as a broken icon
+     rather than as a cold one. */
+  height: calc(12% + var(--h, 0) * 88%);
+  background: linear-gradient(180deg, var(--value-soft), var(--accent) 85%);
+  transition: height 0.25s ease-out;
 }
-@keyframes fx-stamp {
-  0% { transform: translate3d(0, 0, 0); }
-  8% { transform: translate3d(0, 13px, 0); }
-  26% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(0, 0, 0); }
+.fx-furnace.hot .fx-flame {
+  box-shadow: inset 0 0 0 1px var(--line-value), 0 0 14px var(--accent-soft);
+  animation: fxFlicker 900ms ease-in-out infinite alternate;
 }
-/* The strike: a short flat flare where the die lands. */
-.fx-spark {
-  position: absolute;
-  bottom: -9px;
-  left: 50%;
-  width: 24px;
-  height: 9px;
-  margin-left: -12px;
-  border-radius: 50%;
-  background: radial-gradient(
-    closest-side,
-    rgba(255, 236, 170, 0.95),
-    rgba(255, 190, 80, 0.5) 60%,
-    transparent
-  );
-  opacity: 0;
-  animation: fx-clang var(--fx-period, 600ms) linear infinite;
-  will-change: transform, opacity;
-}
-@keyframes fx-clang {
-  0%, 7% { opacity: 0; transform: scale3d(0.3, 0.4, 1); }
-  9.5% { opacity: 0.9; transform: scale3d(1, 1, 1); }
-  22% { opacity: 0; transform: scale3d(1.6, 1.2, 1); }
-  100% { opacity: 0; transform: scale3d(1.6, 1.2, 1); }
+@keyframes fxFlicker {
+  0% { transform: scaleY(0.96); }
+  100% { transform: scaleY(1.05); }
 }
 
-/* ------------------------------------------------ what comes off the end */
-.fx-credit {
-  position: absolute;
-  right: 4px;
-  top: 13px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: linear-gradient(160deg, #ffe9a0, #f0b83c 55%, #c9932a);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 -1px 0 rgba(110, 76, 16, 0.45),
-    0 1px 3px rgba(0, 0, 0, 0.35);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 14px;
-  white-space: nowrap;
-  color: #3a2a08;
-  opacity: 0;
-  animation: fx-pay var(--fx-coin, 1.2s) ease-out infinite;
-  will-change: transform, opacity;
-}
-/* Up and only slightly out. Two payouts are in the air at once and the old
-   arc drifted them right across the stamper, where they overlapped each other
-   and covered the die. Climbing separates them on the axis they are staggered
-   on, and leaves the machine visible underneath. */
-@keyframes fx-pay {
-  0% { opacity: 0; transform: translate3d(-6px, 2px, 0); }
-  12% { opacity: 1; transform: translate3d(0, -6px, 0); }
-  55% { opacity: 0.95; transform: translate3d(5px, -28px, 0); }
-  100% { opacity: 0; transform: translate3d(9px, -50px, 0); }
-}
-/* The same payout, thrown up instead of out: stacked, the total is above the
-   belt's end rather than beside it, and a coin drifting right would leave the
-   line and be clipped rather than arriving anywhere. */
-@keyframes fx-pay-up {
-  0% { opacity: 0; transform: translate3d(-8px, 0, 0); }
-  12% { opacity: 1; transform: translate3d(-2px, -8px, 0); }
-  100% { opacity: 0; transform: translate3d(6px, -50px, 0); }
-}
+/* --------------------------------------------------------- the label */
 
-.fx-out { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding-bottom: 4px; }
-.fx-total {
+.fx-burn {
+  grid-column: 2 / span 2;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+}
+.fx-burn b {
   font-family: var(--serif);
-  font-size: 18px;
-  line-height: 1.2;
-  color: var(--value);
-  text-shadow: 0 0 16px rgba(255, 190, 80, 0.25);
-  overflow-wrap: anywhere;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.fx-stoke {
+  font-family: var(--serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--on-accent);
+  background: var(--accent);
+  padding: 4px 16px;
+  border-radius: 999px;
+}
+.fx-furnace:active .fx-stoke { background: var(--accent-down); }
+
+/* --------------------------------------------------------- a stoke
+
+   Two names alternated by the view, because an animation only restarts when
+   its name changes. */
+
+.fx-furnace.puff-a .fx-flame { animation: fxPuffA 420ms ease-out; }
+.fx-furnace.puff-b .fx-flame { animation: fxPuffB 420ms ease-out; }
+@keyframes fxPuffA {
+  0% { transform: scale(1); }
+  24% { transform: scale(1.28) translateY(-2px); }
+  100% { transform: scale(1); }
+}
+@keyframes fxPuffB {
+  0% { transform: scale(1); }
+  24% { transform: scale(1.28) translateY(-2px); }
+  100% { transform: scale(1); }
 }
 
-/* ------------------------------------------------ what the line is doing */
+/* --------------------------------------------------------- states */
+
+.fx-furnace.idle .fx-arrow-fill { animation: none; transform: scaleX(0); }
+.fx-furnace.hot { border-color: var(--line-value); }
+
+/* --------------------------------------------------------- the words */
+
 .fx-state {
-  margin: 0 0 8px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface);
-  font-size: 12.5px;
-  line-height: 1.5;
+  margin: 12px 0 0;
+  font-size: 0.86rem;
   color: var(--text-dim);
 }
-.fx-state b { color: var(--text); font-weight: 600; }
-.fx-state.starved { border-color: var(--accent); background: var(--accent-soft); }
-.fx-state.starved b { color: var(--accent); }
-.fx-state.backlog { border-color: var(--line-strong); }
-.fx-state.backlog b { color: var(--value); }
-
-.fx-shop { margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+.fx-state b { color: var(--text); }
+.fx-shop {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
 .fx-shop b { color: var(--text); font-weight: 600; }
 
-.fx-more { margin: 0; }
-.fx-detail {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 6px 14px;
-  margin: 8px 0 0;
-}
-.fx-detail > div {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  background: var(--well);
-}
-.fx-detail dt {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.fx-detail dd { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text); }
-
-/* ------------------------------------------------ narrow
-
-   Below about 700px the three columns stop being a machine.
-
-   The belt is whatever is left after the bin and the total have taken their
-   width, and at 390px that remainder is 150px of run: the two stations stand
-   almost on top of each other and a payout lands on the stamper's own label.
-   So the composition stacks: what is waiting and what has been paid share one
-   line, and the machine gets the whole width underneath them. */
-@media (max-width: 700px) {
-  .fx-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 6px 10px;
-    /* The stations' headroom moves with the belt, so the line no longer
-       reserves it at the top. */
-    padding: 12px 12px 16px;
-  }
-
-  /* The yard turns on its side: a crate with its count beside it, because a
-     tall bin standing next to nothing is just a tall bin. Reversed, so the
-     crate lands at the left edge over the head of the belt it feeds and the
-     count reads away from it. */
-  .fx-yard {
-    flex: 1 1 auto;
-    flex-direction: row-reverse;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-  .fx-bin {
-    flex: 0 0 auto;
-    width: 48px;
-    height: 34px;
-    border-top: 1px solid var(--line-strong);
-    border-radius: 3px;
-  }
-  .fx-cap { text-align: left; }
-
-  /* Ordered rather than reordered in the markup: on a wide screen the total
-     genuinely is the third column, and the belt only takes the whole width
-     here, which is what pushes the total up beside the yard. */
-  .fx-out { order: 1; flex: 0 0 auto; padding-bottom: 0; }
-  .fx-bin::after { height: 5px; }
-  .fx-belt { order: 2; flex: 1 0 100%; margin-top: 56px; }
-  /* Pulled in from the ends: the melter wants the run in front of it to read
-     as approach, and the stamper has to leave the payout somewhere to land.
-     Near enough to the 38/72 the costume keyframes are cut at that the swap
-     happens under each station's housing. */
-  .fx-melter { left: 36%; }
-  .fx-stamper { left: 70%; }
-
-  .fx-credit { font-size: 10px; padding: 1px 6px; animation-name: fx-pay-up; }
-}
-
-/* ------------------------------------------------ phone
-
-   At 390px the line has about 300px of belt and everything on it is drawn to
-   the same scale as the text around it, so only the type and the total shrink. */
-@media (max-width: 430px) {
-  .fx-line { gap: 6px 8px; padding: 12px 10px 14px; }
-  .fx-station { width: 58px; }
-  .fx-total { font-size: 16px; }
-}
-
-/* ------------------------------------------------ stillness
-
-   Motion off, machine still readable: the scrap parks where it would be
-   standing on a running belt -- in its costume for that stretch of the run --
-   and one payout stays on screen instead of flying. The furnace keeps a
-   steady glow instead of a flicker. */
 @media (prefers-reduced-motion: reduce) {
-  .fx-tread,
-  .fx-flash,
-  .fx-piston,
-  .fx-spark,
-  .fx-heat,
-  .fx-hood::after,
-  .fx-chunk,
-  .fx-ingot,
-  .fx-coin { animation: none; }
-  .fx-flash { opacity: 0.5; }
-  .fx-heat { opacity: 0.6; }
-  .fx-rider {
-    animation: none;
-    transform: translate3d(calc(8% + var(--fx-i, 0) * 24%), 0, 0);
-  }
-  /* Parked at 8/32/56/80% of the run: two chunks before the furnace, an
-     ingot between the stations, a coin past the stamper. */
-  .fx-rider:nth-child(4) .fx-chunk { opacity: 0; }
-  .fx-rider:nth-child(4) .fx-ingot { opacity: 1; }
-  .fx-rider:nth-child(5) .fx-chunk { opacity: 0; }
-  .fx-rider:nth-child(5) .fx-coin { opacity: 1; transform: none; }
-  .fx-credit {
-    animation: none;
-    opacity: 1;
-    transform: translate3d(8px, -24px, 0);
-  }
-  .fx-credit + .fx-credit { display: none; }
+  .fx-arrow-fill,
+  .fx-flame { animation: none; }
+  .fx-arrow-fill { transform: scaleX(1); }
 }

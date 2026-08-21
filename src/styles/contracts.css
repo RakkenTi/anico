@@ -176,7 +176,6 @@
 .contract-row.ready { border-color: var(--ok); }
 /* After the ready rule on purpose: a pinned row that is also ready keeps its
    gold edge, which is the state that pays the bonus. */
-.contract-row.pinned { border-left: 3px solid var(--value); }
 .contract-row.ready::before {
   content: '';
   position: absolute;
@@ -245,7 +244,6 @@
 }
 .contract-chip.tier { color: var(--text-dim); border-color: var(--line-strong); }
 .contract-chip.go { color: var(--ok); }
-.contract-chip.pin { color: var(--value); }
 .contract-chip.near { color: var(--accent); }
 .contract-chip.aim { color: var(--accent); }
 .contract-ask { font-size: 12px; line-height: 1.45; color: var(--text-dim); }

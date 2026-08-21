@@ -1,10 +1,15 @@
 /**
  * The contract board.
  *
- * A contract names a series and a depth. Rows sort fulfillable-first, then by
- * how near the collection is. Fulfilling plays a muster; pinning holds a row
- * at a pay bonus. Called Shot (Shop upgrade `aim`) routes a share of every
- * pull toward one series, so each row carries an Aim control for its series.
+ * A contract names a series and a depth, and pays when you hold that much of
+ * it. That is the whole rule. It used to have a second verb -- pinning, which
+ * held a row you could not answer at a bonus, out of three slots, with an
+ * Unpin button to give the slot back -- and a rulebook bolted to a to-do list
+ * is a rulebook nobody reads.
+ *
+ * Called Shot (the Shop's `aim` upgrade) routes a share of every pull toward
+ * one series, so each row carries an Aim control for its own series and the
+ * header carries a picker over everything held.
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -13,14 +18,7 @@ import Icon from './Icon'
 import type { OwnedCharacter } from '../game/types'
 import { fmt, fmtCount } from '../game/format'
 import { sfx } from '../game/sound'
-import {
-  COMMISSION_BONUS,
-  COMMISSION_SLOTS,
-  answered,
-  tierName,
-  type Contract,
-  type Pinned,
-} from '../game/contracts'
+import { answered, tierName, type Contract } from '../game/contracts'
 import MusterStage from './MusterStage'
 import '../styles/contracts.css'
 
@@ -31,23 +29,9 @@ const FACES = 5
 const PICKER_MAX = 30
 
 interface Row {
-  contract: Contract | Pinned
-  /** Pinned to the board rather than fulfillable today: it waits, and pays more. */
-  pinned: boolean
+  contract: Contract
   ready: boolean
   faces: OwnedCharacter[]
-}
-
-/**
- * Where a row sits.
- *
- * Fulfillable first, then whatever the collection is nearest to. The board
- * used to render in database order, so five contracts of wildly different
- * distance sat in a shuffled list and the page read as noise.
- */
-function rank(r: Row): number {
-  if (r.ready) return r.pinned ? 0 : 1
-  return r.pinned ? 2 : 3
 }
 
 /** How far along a row is, as a fraction, guarding a breadth of zero. */
@@ -82,13 +66,13 @@ function Demand({
   aimedAt: boolean
   children: React.ReactNode
 }) {
-  const { contract, ready, pinned, faces } = row
+  const { contract, ready, faces } = row
   const pct = Math.min(100, Math.round(share(contract) * 100))
   return (
     <div
-      className={`contract-row ${ready ? 'ready' : ''} ${pinned ? 'pinned' : ''} ${
-        nearest ? 'next' : ''
-      } ${aimedAt ? 'aimed' : ''}`}
+      className={`contract-row ${ready ? 'ready' : ''} ${nearest ? 'next' : ''} ${
+        aimedAt ? 'aimed' : ''
+      }`}
     >
       <div className="contract-faces" aria-hidden="true">
         {faces.length === 0 ? (
@@ -118,7 +102,6 @@ function Demand({
             {contract.series}
           </b>
           <span className="contract-chip tier">{tierName(contract)}</span>
-          {pinned && <span className="contract-chip pin">pinned ×{COMMISSION_BONUS}</span>}
           {ready && <span className="contract-chip go">ready</span>}
           {nearest && !ready && <span className="contract-chip near">closest</span>}
           {aimedAt && !ready && <span className="contract-chip aim">aimed</span>}
@@ -133,9 +116,7 @@ function Demand({
         >
           <span style={{ width: `${pct}%` }} />
           <em>
-            {ready
-              ? `${contract.breadth} of ${contract.breadth}`
-              : `${contract.held} of ${contract.breadth}`}
+            {contract.held} of {contract.breadth}
           </em>
         </div>
       </div>
@@ -154,9 +135,6 @@ export default function ContractsView() {
   const muster = useGame((s) => s.muster)
   const dismissMuster = useGame((s) => s.dismissMuster)
   const raid = useGame((s) => s.raid)
-  const acceptCommission = useGame((s) => s.acceptCommission)
-  const claimCommission = useGame((s) => s.claimCommission)
-  const abandonCommission = useGame((s) => s.abandonCommission)
   const setAim = useGame((s) => s.setAim)
   const [pickingAim, setPickingAim] = useState(false)
   const [aimQuery, setAimQuery] = useState('')
@@ -183,20 +161,20 @@ export default function ContractsView() {
     return m
   }, [collection])
 
+  /* Fulfillable first, then whatever the collection is nearest to. The board
+     used to render in database order, and five contracts of wildly different
+     distance in a shuffled list read as noise. */
   const rows = useMemo(() => {
-    const all: Row[] = []
-    const add = (c: Contract | Pinned, pinned: boolean) => {
-      const faces = (bySeries.get(c.series) ?? [])
+    const all: Row[] = board.map((c) => ({
+      contract: c,
+      ready: answered(c),
+      faces: (bySeries.get(c.series) ?? [])
         .filter((o) => o.stars >= c.depth)
         .sort((a, b) => b.stars - a.stars)
-        .slice(0, FACES)
-      all.push({ contract: c, pinned, ready: answered(c), faces })
-    }
-    for (const c of board.commissions) add(c, true)
-    for (const c of board.raids) add(c, false)
+        .slice(0, FACES),
+    }))
     return all.sort((a, b) => {
-      const d = rank(a) - rank(b)
-      if (d !== 0) return d
+      if (a.ready !== b.ready) return a.ready ? -1 : 1
       return share(b.contract) - share(a.contract)
     })
   }, [board, bySeries])
@@ -234,94 +212,34 @@ export default function ContractsView() {
 
   const aimShare = effects().aimShare
   const aimOwned = upgrades.aim > 0
-  const slotsFree = Math.max(0, COMMISSION_SLOTS - board.commissions.length)
 
   const aim = (series: string | null) => {
     void setAim(series)
     sfx.tap()
   }
 
-  /* The row's Aim control: point every pull at this row's series. */
-  const aimButton = (c: Contract | Pinned) => {
-    if (!aimOwned) return null
-    const on = aimSeries === c.series
-    return (
-      <button
-        className={`contract-aim-btn ${on ? 'on' : ''}`}
-        title="Aim pulls at this series"
-        aria-pressed={on}
-        onClick={() => aim(on ? null : c.series)}
-      >
-        <Crosshair filled={on} />
-      </button>
-    )
-  }
-
-  /*
-   * A row offers exactly what you can do with it and nothing else. A contract
-   * you are short of gets Pin, not a dead primary button.
-   */
+  /* A row offers exactly what you can do with it: fulfil it, or aim at it. */
   const action = (row: Row) => {
     const c = row.contract
-    const pay = <span className="contract-reward">+{fmt(c.reward)} cr</span>
-    if (row.pinned) {
-      /* The bonus was applied when the pin was taken, so `reward` is already
-         the full amount. */
-      return row.ready ? (
-        <>
-          {aimButton(c)}
-          {pay}
-          <button className="btn btn-primary" onClick={() => void claimCommission(c.id)}>
-            Collect
-          </button>
-        </>
-      ) : (
-        <>
-          {aimButton(c)}
-          {pay}
+    const on = aimSeries === c.series
+    return (
+      <>
+        {aimOwned && (
           <button
-            className="btn btn-quiet"
-            onClick={() => {
-              void abandonCommission(c.id)
-              sfx.tap()
-            }}
-            title="Frees the pin and drops the contract."
+            className={`contract-aim-btn ${on ? 'on' : ''}`}
+            title="Aim pulls at this series"
+            aria-pressed={on}
+            onClick={() => aim(on ? null : c.series)}
           >
-            Unpin
+            <Crosshair filled={on} />
           </button>
-        </>
-      )
-    }
-    if (row.ready) {
-      return (
-        <>
-          {aimButton(c)}
-          {pay}
+        )}
+        <span className="contract-reward">+{fmt(c.reward)} cr</span>
+        {row.ready && (
           <button className="btn btn-primary" onClick={() => void raid(c.id)}>
             Fulfil
           </button>
-        </>
-      )
-    }
-    return (
-      <>
-        {aimButton(c)}
-        {pay}
-        <button
-          className="btn btn-ghost"
-          disabled={slotsFree <= 0}
-          onClick={() => {
-            void acceptCommission(c.id)
-            sfx.pin()
-          }}
-          title={
-            slotsFree > 0
-              ? `Holds this contract at ×${COMMISSION_BONUS} pay (${fmt(Math.round(c.reward * COMMISSION_BONUS))} credits).`
-              : `All ${COMMISSION_SLOTS} pins are in use.`
-          }
-        >
-          Pin
-        </button>
+        )}
       </>
     )
   }
@@ -330,18 +248,14 @@ export default function ContractsView() {
     <div className="contracts-view">
       {muster && <MusterStage muster={muster} onClose={dismissMuster} />}
 
-      <p className="contract-lede">A contract pays credits for characters you already hold.</p>
+      <p className="contract-lede">
+        A contract pays credits for characters you already hold. Fulfil one whenever it is ready.
+      </p>
 
       <div className="panel">
         <h2 className="section-title">
-          Contracts{' '}
-          <span className="slot-count">
-            {slotsFree} of {COMMISSION_SLOTS} pins free
-          </span>
+          Contracts <span className="slot-count">{ready.length} ready</span>
         </h2>
-        <p className="section-sub">
-          Fulfil a ready row any time. Pin one to hold it at ×{COMMISSION_BONUS} pay.
-        </p>
 
         {aimOwned ? (
           <div className={`contract-aim ${aimSeries ? 'live' : ''}`}>
@@ -432,9 +346,7 @@ export default function ContractsView() {
                 {action(row)}
               </Demand>
             ))}
-            {open.length > 0 && ready.length > 0 && (
-              <h3 className="contract-group">Still short</h3>
-            )}
+            {open.length > 0 && ready.length > 0 && <h3 className="contract-group">Still short</h3>}
             {open.map((row) => (
               <Demand
                 key={row.contract.id}

@@ -549,9 +549,10 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         rate: d.works.sparesPerPull,
         belt: d.works.belt,
         perCard: d.creditsPerCard,
-        raids: d.board.raids.length,
-        answerable: d.board.raids.filter((r) => r.held >= r.breadth).length,
-        cast: d.board.raids.map((r) => r.breadth).join('/'),
+        heat: d.works.heat,
+        raids: d.board.length,
+        answerable: d.board.filter((r) => r.held >= r.breadth).length,
+        cast: d.board.map((r) => r.breadth).join('/'),
       })),
   )
 
@@ -607,7 +608,7 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
    * touches sixty-five thousand rows at render time. Pressed here rather than
    * asserted from the API on purpose.
    */
-  const send = page.locator('.contract-row.ready:not(.pinned) .btn-primary:not([disabled])').first()
+  const send = page.locator('.contract-row.ready .btn-primary:not([disabled])').first()
   let muster = null
   if (await send.count()) {
     const began = Date.now()

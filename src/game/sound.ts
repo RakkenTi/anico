@@ -396,8 +396,4 @@ export const sfx = {
     play('jingle-win', { at: 0.12, gain: 0.55, keep: true })
   },
 
-  /** A contract pinned to the board. */
-  pin() {
-    play('stamp', { rate: 1.3, gain: 0.55 })
-  },
 }

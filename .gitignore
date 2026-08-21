@@ -30,3 +30,6 @@ anico-data/
 
 # Screenshots from `npm run shots`.
 shots/
+
+# Throwaway instance used while iterating on the views.
+devdata/

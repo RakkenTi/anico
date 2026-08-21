@@ -239,19 +239,26 @@ Paying by value would make feeding spare Mythics the optimal play and a collecti
 be shredded to feed a machine. It runs while nobody is watching at the rate it runs while
 somebody is.
 
-**Slam** — a hand on the Press. A tap runs the Factory belt through the yard right then,
-and nothing else: it spends the backlog rather than making scrap, so the assist can never
-outrun the mill that fills it. The same shape as swiping a pack open alongside the
-Automaton, and there for the same reason, which is that a faucet nobody may touch is a
-faucet nobody believes in.
+**Slam** — a hand on the works, taken from the Press by tapping the machine and from the
+Factory by stoking the fire. One tap does three things: it raises **heat**, it brings the
+ram down early on whatever spares are in the tank (at a bonus, and without waiting for a
+whole scrap), and it runs the belt over what that made. Its first version only did the
+last of those, and since the yard is empty almost all of the time by design, a tap paid
+zero and read as a button that does nothing.
+
+**Heat** — the only number in the works a hand moves and a collection does not. It
+multiplies what every scrap fetches, up to double, and it halves every seven seconds. So
+it is worth a great deal to somebody stood at the machine and nothing whatever to the
+away rate, which is the only way to put a clicker in an idle game without making idling
+the wrong move. Nothing is gated behind it and nothing is lost by never touching it.
 
 **Scrap** — what the Press pays and the Factory eats. A flat stream: a press deals a
 bounded number of real cards however large the pull is, so about one scrap arrives per
 press whatever the credit curve is doing. That flatness is what stops the works becoming
 free money.
 
-**Factory** — the belt that melts scrap into credits, every press and every hour away.
-Steady throughput, and the faucet that needs no hand on the button. What one scrap is
+**Factory** — the furnace that melts scrap into credits, every press and every hour away.
+Steady throughput, and the faucet that runs without a hand on the button. What one scrap is
 worth is a fraction of a whole *press* rather than a fixed number of credits — priced
 against a card it was 0.1% of the summon by a quadrillion, and priced against a press it
 tracks whatever the summon has become (ADR 0014).
@@ -277,11 +284,6 @@ quadrillion. Nothing is gambled — one you cannot fulfil is refused, not lost.
 there is no refresh and no daily reset. Each row is posted at the rung the collection is
 standing on rather than at a rung drawn blind: a board of five demands nobody can meet is
 a wall, not a mechanic (ADR 0013).
-
-**Pin** — a contract taken on rather than fulfilled. Only ever one you *cannot* currently
-fulfil, which is what makes the two different: a contract tests what you hold and a pin
-is what you go and get. It pays two and a half times as much and waits as long as you
-like. What it costs is one of three slots — scarcity here is slots, not time.
 
 **Muster** — fulfilling a contract, watched rather than read. A rank of the player's own
 cards — the ones that satisfy it, at the stars they merged to — deals in, the demand
