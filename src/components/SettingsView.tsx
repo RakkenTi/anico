@@ -120,8 +120,8 @@ export default function SettingsView() {
           <p className="setting-hint">
             Leave this off if you want to merge. Duplicates stack, and every doubling merges
             a stack a star higher, which is worth far more than the copies were apart. It
-            also switches the Press off outright: a pull with this on deals no duplicates, so
-            no stack grows, no scrap is shed, and the Factory has nothing to melt.
+            also closes the contract board: a pull with this on deals no duplicates, so no
+            stack ever grows past ★0 and nothing on the board can be answered.
           </p>
         </div>
 

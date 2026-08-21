@@ -7,7 +7,6 @@
 import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
-import type { Works } from './game/industry'
 import type { Contract, Musterer } from './game/contracts'
 
 export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
@@ -17,6 +16,8 @@ export interface ServerSettings {
   /** Sell every pull below this rarity as it lands. */
   autoSell: AutoSell
   skipOwned: boolean
+  /** Let Auto Aim point Called Shot at the closest contracts. */
+  autoAim: boolean
 }
 
 /** What a demand paid, and who the instance says went out to earn it. */
@@ -38,13 +39,10 @@ export interface Snapshot {
   poolSize: number
   /** Moves whenever the collection changes, including on another device. */
   collectionRev: number
-  /** The works: see ADR 0014. Spare fractions short of a whole scrap. */
-  /** Everything the works are doing right now (ADR 0014). */
-  works: Works
   /** What one card is worth to this player: every payout is quoted against it. */
   creditsPerCard: number
   /** The series Called Shot is pointed at. */
-  aimSeries: string | null
+  aimSeries: string[]
   board: Contract[]
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
@@ -113,12 +111,6 @@ export interface RollSummary {
   /** Cards the pull held beyond what it dealt: appraised rather than shown. */
   hidden: number
   hiddenFor: number
-  /** Spare fractions this pull shed, milled on arrival (ADR 0014). */
-  spares: number
-  /** Scrap the Press got out of them. */
-  scrap: number
-  /** Credits the Factory and the caravans paid on the back of this press. */
-  melted: number
 }
 
 export interface SessionInfo {
@@ -211,15 +203,10 @@ export const api = {
 
   /* The board (ADR 0013). */
   raid: (id: number) => post<{ state: Snapshot } & RaidPayout>(`/raid/${id}`),
-  slam: () =>
-    post<{ state: Snapshot; milled: number; melted: number; paid: number; heat: number }>(
-      '/works/slam',
-    ),
-  sendExpedition: (route: string) => post<{ state: Snapshot }>('/expedition', { route }),
-  collectExpedition: (id: number) =>
-    post<{ state: Snapshot; paid: number; route: string }>(`/expedition/${id}/collect`),
-  setAim: (series: string | null) => post<{ state: Snapshot }>('/aim', { series }),
-  buyUpgrade: (key: string) => post<{ state: Snapshot }>('/upgrade', { key }),
+  setAim: (series: string[]) => post<{ state: Snapshot }>('/aim', { series }),
+  /** `count` is levels, or 'max' for as many as the balance covers. */
+  buyUpgrade: (key: string, count: number | 'max' = 1) =>
+    post<{ state: Snapshot }>('/upgrade', { key, count }),
   updateSettings: (patch: Partial<ServerSettings>) =>
     request<{ state: Snapshot }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
   grant: (amount: number) => post<{ state: Snapshot }>('/grant', { amount }),

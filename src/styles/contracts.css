@@ -69,7 +69,54 @@
   font-size: 12px;
   color: var(--value-soft);
 }
-.contract-aim-controls { display: flex; flex: none; gap: 6px; align-items: center; }
+.contract-aim-controls { display: flex; flex: none; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* Split Aim: the targets, as chips. A list rather than one name, because the
+   aimed share is divided between them and each chip has to be able to say what
+   its own cut is. */
+.contract-aim-slots {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.contract-aim-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.contract-aim-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.contract-aim-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contract-aim-chip > em {
+  flex: none;
+  font-style: normal;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+/* Auto Aim is holding the crosshair: the chips are a read-out, not a control. */
+.contract-aim-chip:disabled { cursor: default; }
+.contract-aim-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .contract-aim-picker { width: 100%; }
 .contract-aim-search {

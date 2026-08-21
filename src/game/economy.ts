@@ -121,11 +121,23 @@ export function starsFor(copies: number, cap: number = MAX_STARS): number {
 /**
  * What a whole stack sells for: the merged core, plus the copies that have not
  * found a partner yet at face value.
+ *
+ * `bonus` is Merge Value, and it multiplies the finished stack rather than the
+ * per-star rate. Per star is an *exponent* -- a stack merges to eighteen stars
+ * -- so a line that raised `mult` by a flat amount a level multiplied income
+ * by nearly two per level against a price that only doubled, and paid for
+ * itself on every rung forever. This is the same idea priced honestly.
  */
-export function stackValue(value: number, copies: number, stars: number, mult = MERGE_MULT): number {
+export function stackValue(
+  value: number,
+  copies: number,
+  stars: number,
+  bonus = 1,
+  mult = MERGE_MULT,
+): number {
   const merged = Math.pow(2, stars)
   const leftover = Math.max(0, copies - merged)
-  return Math.max(1, Math.round(value * Math.pow(mult, stars) + leftover * value))
+  return Math.max(1, Math.round((value * Math.pow(mult, stars) + leftover * value) * bonus))
 }
 
 /** Names for the star tiers, so a card can say what it has become. */

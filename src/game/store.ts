@@ -18,7 +18,6 @@ import { DAILY_INTERVAL_H, rarityOf } from './economy'
 import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects } from './badges'
 import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
 import { POOL_EVERYTHING } from './pool'
-import type { Works } from './industry'
 import type { Contract, Musterer } from './contracts'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { fmt, fmtCount } from './format'
@@ -37,6 +36,7 @@ const EMPTY_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
   autoSell: 'off',
   skipOwned: false,
+  autoAim: true,
 }
 
 let toastSeq = 1
@@ -138,12 +138,10 @@ interface GameState {
   /** The instance's collection revision, and the one our copy was fetched at. */
   collectionRev: number
   collectionAt: number
-  /* The second economy (ADR 0013). */
-  /** Everything the works are doing right now (ADR 0014). */
-  works: Works
   /** What one card is worth to this player: every payout is quoted against it. */
   creditsPerCard: number
-  aimSeries: string | null
+  /** The series Called Shot is pointed at, in the order they were named. */
+  aimSeries: string[]
   board: Contract[]
   wishes: RolledCharacter[]
   badges: Badges
@@ -252,16 +250,10 @@ interface GameState {
      Automaton uses when nobody is on the page to watch one. */
   raid: (id: number, quiet?: boolean) => Promise<void>
   dismissMuster: () => void
-  /** The works (ADR 0014). */
-  /**
-   * One hand on the machine: stokes the heat, mills the tank, runs the belt.
-   * Resolves to what the tap paid and the heat it left behind.
-   */
-  slamPress: () => Promise<{ paid: number; milled: number; heat: number }>
-  sendExpedition: (route: string) => Promise<void>
-  collectExpedition: (id: number) => Promise<void>
-  setAim: (series: string | null) => Promise<void>
-  buyUpgrade: (key: UpgradeKey) => Promise<void>
+  /** Point Called Shot at a list of series. An empty list clears it. */
+  setAim: (series: string[]) => Promise<void>
+  /** `count` is levels, or 'max' for as many as the balance covers. */
+  buyUpgrade: (key: UpgradeKey, count?: number | 'max') => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
   grantCredits: (amount: number) => Promise<void>
   resetSave: (username: string, password: string) => Promise<string | null>
@@ -296,7 +288,6 @@ export const useGame = create<GameState>()((set, get) => {
       poolSize: s.poolSize,
       collection: s.collection ?? prev.collection,
       collectionRev: s.collectionRev,
-      works: s.works,
       creditsPerCard: s.creditsPerCard,
       aimSeries: s.aimSeries,
       board: s.board,
@@ -393,20 +384,8 @@ export const useGame = create<GameState>()((set, get) => {
     collection: [],
     collectionRev: 0,
     collectionAt: 0,
-    works: {
-      spares: 0,
-      sparesPerScrap: 900,
-      sparesPerPull: 0,
-      scrap: 0,
-      belt: 2,
-      scrapWorth: 0,
-      heat: 0,
-      reach: 0,
-      caravans: 1,
-      out: [],
-    },
     creditsPerCard: 0,
-    aimSeries: null,
+    aimSeries: [],
     board: [],
     wishes: [],
     badges: { ...EMPTY_BADGES },
@@ -848,34 +827,6 @@ export const useGame = create<GameState>()((set, get) => {
 
     dismissMuster: () => set({ muster: null }),
 
-    slamPress: async () => {
-      const res = await guard(() => api.slam())
-      if (!res) return { paid: 0, milled: 0, heat: 0 }
-      apply(res.state)
-      return { paid: res.paid, milled: res.milled, heat: res.heat }
-    },
-
-    sendExpedition: async (route) => {
-      sfx.depart()
-      const res = await guard(
-        () => api.sendExpedition(route),
-        (m) => get().pushToast(m, 'info'),
-      )
-      if (res) apply(res.state)
-    },
-
-    collectExpedition: async (id) => {
-      const res = await guard(
-        () => api.collectExpedition(id),
-        (m) => get().pushToast(m, 'info'),
-      )
-      if (!res) return
-      sfx.arrive()
-      apply(res.state)
-      get().popCoins(res.paid)
-      get().pushToast(`${res.route} came home: +${fmt(res.paid)} credits`, 'credits')
-    },
-
     setAim: async (series) => {
       sfx.tap()
       const res = await guard(
@@ -885,10 +836,10 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    buyUpgrade: async (key) => {
+    buyUpgrade: async (key, count = 1) => {
       sfx.buy()
       const res = await guard(
-        () => api.buyUpgrade(key),
+        () => api.buyUpgrade(key, count),
         (m) => get().pushToast(m, 'info'),
       )
       if (res) apply(res.state)
@@ -940,15 +891,8 @@ interface UiSettings {
   layout: LayoutKey
   soundEnabled: boolean
   soundVolume: number
-  /**
-   * A route the Automaton re-outfits whenever a caravan comes home.
-   *
-   * On the device rather than the account, and deliberately: it is the same
-   * kind of thing as Auto Summon's own switch -- a standing instruction to the
-   * machine in front of you. Picking *which* road is still the player's call
-   * every time they change it; what is automated is the retyping.
-   */
-  repeatRoute: string | null
+  /** How many levels a press of a shop row buys. */
+  buyAmount: number | 'max'
   set: (patch: Partial<Omit<UiSettings, 'set'>>) => void
 }
 
@@ -959,7 +903,7 @@ export const useUi = create<UiSettings>()(
       layout: 'stage',
       soundEnabled: true,
       soundVolume: 0.6,
-      repeatRoute: null,
+      buyAmount: 1,
       set: (patch) => set(patch),
     }),
     { name: 'anico-ui' },

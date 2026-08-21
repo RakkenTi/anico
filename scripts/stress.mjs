@@ -146,6 +146,14 @@ function findChromium() {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/** A number the way the game prints it, for the report's own read-outs. */
+function fmtBig(n) {
+  if (!Number.isFinite(n)) return String(n)
+  if (Math.abs(n) < 10_000) return Math.round(n).toLocaleString()
+  const exp = Math.floor(Math.log10(Math.abs(n)))
+  return `${(n / Math.pow(10, exp)).toFixed(2)}e${exp}`
+}
+
 /*
  * AniList's real favourites curve, sampled by rank and interpolated log-log.
  *
@@ -244,12 +252,10 @@ function stock(dbPath, n, copies = 4096) {
   /*
    * Two thirds of it merged deep, and how deep is the rung's business.
    *
-   * A copy sheds as much scrap as the stack it lands on (ADR 0013), so a
-   * collection of singles is a collection with the second economy nearly
-   * switched off -- which is not what a rung this deep looks like, and would
-   * mean the harness never tested any of it. The `mid` rung deliberately sits
-   * *below* the star cap, because the yield used to be all or nothing at the
-   * cap and a hundred and thirty-six hours of nothing is what that cost.
+   * The contract board asks for a breadth of a series at a depth of stars, so
+   * a collection of singles answers nothing and the harness would never once
+   * render a payable row. The `mid` rung deliberately sits *below* the star
+   * cap, which is where a real collection spends most of its life.
    */
   const stars = Math.floor(Math.log2(copies))
   db.transaction(() => {
@@ -275,13 +281,10 @@ function climb(dbPath, rung) {
     haste: rung.haste,
     appraisal: 40,
     fortune: 10,
-    // The works, so their views have something to draw.
-    mill: 3,
-    foundry: 8,
-    belt: 4,
-    outfit: 3,
-    caravan: 1,
-    aim: 1,
+    // The board, so its view has something to draw.
+    aim: 3,
+    focus: 2,
+    autoaim: 1,
     table: rung.table ?? 2,
     hands: 2,
     depth: 1,
@@ -294,28 +297,21 @@ function climb(dbPath, rung) {
   // so the Automaton switched on at the end of one rung would be pulling
   // before the next rung's first press and would open its own packs over the
   // top of whatever was being measured.
-  /*
-   * Scrip on the slab as well as credits.
-   *
-   * The Press mills a few hundred spares over a run and an expedition costs
-   * thousands of scrap, so a rung that started at zero could never send one --
-   * and the caravan, the one part of the works a player actually watches,
-   * would never once be rendered by the harness.
-   */
   db.prepare(
-    `UPDATE player_state SET badges_json = ?, upgrades_json = ?, credits = ?, auto_spin = 0,
-            scrap = MAX(scrap, 60000)
+    `UPDATE player_state SET badges_json = ?, upgrades_json = ?, credits = ?, auto_spin = 0
       WHERE player_id = ?`,
   ).run(JSON.stringify(badges), JSON.stringify(upgrades), Number.MAX_SAFE_INTEGER, player.id)
   /*
-   * An empty road.
+   * A fresh board.
    *
-   * Every rung sends a caravan so the route map has something on it, and the
-   * caravans a rung sends are still out when the next one starts. Three rungs
-   * in, every slot is taken and the rung after that quietly shoots an empty
-   * road instead of a journey. Putting a player on a rung means the road too.
+   * The rungs share one database, and a contract is posted against the
+   * collection as it stood when it was posted -- so a board written on the
+   * first rung stays on the wall for every rung after it, one step out of
+   * reach of a collection that has since quadrupled. Nothing was ever
+   * answerable, so the muster -- the only ritual this page has -- was never
+   * once played, and the assertion that covers it passed on an empty hand.
    */
-  db.prepare('DELETE FROM expeditions WHERE player_id = ?').run(player.id)
+  db.prepare('DELETE FROM raids WHERE player_id = ?').run(player.id)
   db.close()
 }
 
@@ -533,71 +529,30 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
   )
 
   /*
-   * The second economy (ADR 0013).
+   * The board (ADR 0013).
    *
-   * Spares are milled as cards land, so a rung this deep should have Scrip
-   * moving and a board posted within a few presses. Read from the API rather
-   * than the screen for the same reason the guarantee is: what is being
-   * checked is the rule, not whether a row is scrolled into view.
+   * A rung this deep should have five contracts posted and Auto Aim pointing
+   * at them within a few presses. Read from the API rather than the screen for
+   * the same reason the guarantee is: what is being checked is the rule, not
+   * whether a row is scrolled into view.
    */
   const second = await page.evaluate(() =>
     fetch('/api/state')
       .then((r) => r.json())
       .then((d) => ({
-        scrap: d.works.scrap,
-        spares: d.works.spares,
-        rate: d.works.sparesPerPull,
-        belt: d.works.belt,
         perCard: d.creditsPerCard,
-        heat: d.works.heat,
+        aimed: d.aimSeries.length,
         raids: d.board.length,
         answerable: d.board.filter((r) => r.held >= r.breadth).length,
+        reward: Math.max(0, ...d.board.map((r) => r.reward)),
         cast: d.board.map((r) => r.breadth).join('/'),
       })),
   )
 
-  /*
-   * The works, one tab each (ADR 0014).
-   *
-   * Shot rather than only asserted: three of these four views exist to be a
-   * machine you can watch, and a machine that renders as an empty box passes
-   * every assertion anybody would think to write.
-   */
-  for (const [tab, root] of [
-    ['press', '.press-view'],
-    ['factory', '.factory-view'],
-    ['expeditions', '.expeditions-view'],
-    ['contracts', '.contracts-view'],
-  ]) {
-    await page.locator('.tab', { hasText: new RegExp(tab, 'i') }).click({ force: true })
-    await page.waitForSelector(root)
-    /*
-     * A caravan on the road, so the road gets drawn.
-     *
-     * The route map is the whole of this view and an empty one renders as a
-     * paragraph, so the rung sends the cheapest route before it shoots. Sent
-     * through the UI rather than the API for the same reason the muster is
-     * pressed rather than asserted: what is being checked is that the button
-     * works and the map appears, not that the row exists.
-     */
-    if (tab === 'expeditions') {
-      const send = page.locator('.exp-route .btn-primary:not([disabled])').first()
-      if (await send.count()) {
-        await send.click()
-        await page.waitForSelector('.exp-run', { timeout: 8000 })
-      } else {
-        /* Every rung is given the scrap and the roster for the cheapest route,
-           so nothing sendable means the button moved or the gate broke. The
-           guard used to swallow that and shoot an empty road. */
-        failures.push(`${rung.name}: no route could be sent`)
-      }
-    }
-    // Long enough for one cycle of whatever the view animates.
-    await page.waitForTimeout(1200)
-    await page.screenshot({ path: join(OUT, `${rung.name}-${tab}.png`), fullPage: true })
-  }
   await page.locator('.tab', { hasText: /contracts/i }).click({ force: true })
   await page.waitForSelector('.contracts-view')
+  await page.waitForTimeout(600)
+  await page.screenshot({ path: join(OUT, `${rung.name}-contracts.png`), fullPage: true })
 
   /*
    * The muster.
@@ -751,10 +706,9 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('guarantee kept', promise.kept === promise.wrappers),
       `board ${second.raids} raids, ${second.answerable} answerable`.padStart(33) +
         ok('board posted', second.raids === BOARD_SIZE),
-      `press ${second.rate.toFixed(1)} spares a press`.padStart(30) +
-        ok('press milling', second.rate > 0),
-      `factory ${second.scrap} scrap, belt ${second.belt}`.padStart(33) +
-        ok('factory fed', second.perCard > 0),
+      `aim on ${second.aimed} series`.padStart(24) + ok('auto aim points', second.aimed > 0),
+      `contract pays ${fmtBig(second.reward)}`.padStart(30) +
+        ok('board priced', second.perCard > 0 && second.reward > 0),
       `muster ${muster ? `${muster.faces} faces in ${muster.ms}ms` : 'nothing answerable'}`.padStart(33) +
         ok('muster plays', !muster || (muster.faces > 0 && muster.ms < MUSTER_MS)),
       `holding ${held.after.toLocaleString()} characters`.padStart(31),

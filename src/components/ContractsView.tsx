@@ -8,8 +8,10 @@
  * is a rulebook nobody reads.
  *
  * Called Shot (the Shop's `aim` upgrade) routes a share of every pull toward
- * one series, so each row carries an Aim control for its own series and the
- * header carries a picker over everything held.
+ * the series it names, so each row carries an Aim control for its own series
+ * and the header carries a picker over everything held. Split Aim buys more
+ * than one target at a time and Auto Aim hands the choosing to the machine, so
+ * the header is a list of chips rather than one name.
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -132,6 +134,8 @@ export default function ContractsView() {
   const upgrades = useGame((s) => s.upgrades)
   const effects = useGame((s) => s.effects)
   const aimSeries = useGame((s) => s.aimSeries)
+  const autoAimOn = useGame((s) => s.settings.autoAim)
+  const updateSettings = useGame((s) => s.updateSettings)
   const muster = useGame((s) => s.muster)
   const dismissMuster = useGame((s) => s.dismissMuster)
   const raid = useGame((s) => s.raid)
@@ -210,26 +214,40 @@ export default function ContractsView() {
     return hits.slice(0, PICKER_MAX)
   }, [allSeries, aimQuery])
 
-  const aimShare = effects().aimShare
+  const fx = effects()
   const aimOwned = upgrades.aim > 0
+  const slots = fx.aimSlots
+  /* Split Aim divides the aimed share between the targets rather than adding
+     to it, so the header can say what each one is actually worth. */
+  const each = aimSeries.length > 0 ? fx.aimShare / aimSeries.length : fx.aimShare
+  const auto = fx.autoAim && autoAimOn
+  const full = aimSeries.length >= slots
 
-  const aim = (series: string | null) => {
-    void setAim(series)
+  const aim = (list: string[]) => {
+    void setAim(list)
     sfx.tap()
+  }
+
+  /* Toggling a series on a full list drops the oldest target rather than
+     refusing: the crosshair is a thing you point, not a form you fill in. */
+  const toggleAim = (series: string) => {
+    if (aimSeries.includes(series)) aim(aimSeries.filter((n) => n !== series))
+    else aim([...aimSeries, series].slice(-slots))
   }
 
   /* A row offers exactly what you can do with it: fulfil it, or aim at it. */
   const action = (row: Row) => {
     const c = row.contract
-    const on = aimSeries === c.series
+    const on = aimSeries.includes(c.series)
     return (
       <>
         {aimOwned && (
           <button
             className={`contract-aim-btn ${on ? 'on' : ''}`}
-            title="Aim pulls at this series"
+            disabled={auto}
+            title={auto ? 'Auto Aim is pointing the crosshair' : 'Aim pulls at this series'}
             aria-pressed={on}
-            onClick={() => aim(on ? null : c.series)}
+            onClick={() => toggleAim(c.series)}
           >
             <Crosshair filled={on} />
           </button>
@@ -258,41 +276,73 @@ export default function ContractsView() {
         </h2>
 
         {aimOwned ? (
-          <div className={`contract-aim ${aimSeries ? 'live' : ''}`}>
+          <div className={`contract-aim ${aimSeries.length > 0 ? 'live' : ''}`}>
             <div className="contract-aim-main">
               <span className="contract-aim-label">
-                <Crosshair filled={!!aimSeries} /> Called Shot
+                <Crosshair filled={aimSeries.length > 0} /> Called Shot
+                <em className="contract-aim-slots">
+                  {aimSeries.length}/{slots}
+                </em>
               </span>
-              {aimSeries ? (
-                <>
-                  <b className="contract-aim-target" title={aimSeries}>
-                    {aimSeries}
-                  </b>
-                  <span className="contract-aim-share">
-                    {Math.round(aimShare * 100)}% of every pull
-                  </span>
-                </>
+              {aimSeries.length > 0 ? (
+                <span className="contract-aim-chips">
+                  {aimSeries.map((name) => (
+                    <button
+                      key={name}
+                      className="contract-aim-chip"
+                      title={auto ? name : `${name} — click to drop`}
+                      disabled={auto}
+                      onClick={() => toggleAim(name)}
+                    >
+                      <span>{name}</span>
+                      <em>{Math.round(each * 100)}%</em>
+                    </button>
+                  ))}
+                </span>
               ) : (
-                <span className="contract-aim-target idle">No target set.</span>
+                <span className="contract-aim-target idle">
+                  {fx.aimShare > 0
+                    ? `No target set. ${Math.round(fx.aimShare * 100)}% of every pull is going spare.`
+                    : 'No target set.'}
+                </span>
               )}
             </div>
             <div className="contract-aim-controls">
-              <button
-                className="btn btn-ghost"
-                onClick={() => {
-                  setPickingAim(!pickingAim)
-                  sfx.tap()
-                }}
-              >
-                {pickingAim ? 'Close' : aimSeries ? 'Change' : 'Set target'}
-              </button>
-              {aimSeries && (
-                <button className="btn btn-quiet" onClick={() => aim(null)}>
+              {fx.autoAim && (
+                <button
+                  className={`btn ${auto ? 'btn-primary' : 'btn-quiet'}`}
+                  onClick={() => {
+                    sfx.tap()
+                    void updateSettings({ autoAim: !autoAimOn })
+                  }}
+                  title="Point Called Shot at the contracts you are nearest to finishing"
+                >
+                  {auto ? 'Auto Aim on' : 'Auto Aim off'}
+                </button>
+              )}
+              {!auto && (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setPickingAim(!pickingAim)
+                    sfx.tap()
+                  }}
+                  title={
+                    full
+                      ? 'Every slot is taken. Picking another drops the oldest; Split Aim buys more.'
+                      : 'Aim a share of every pull at a series you hold'
+                  }
+                >
+                  {pickingAim ? 'Close' : full ? 'Swap target' : 'Add target'}
+                </button>
+              )}
+              {!auto && aimSeries.length > 0 && (
+                <button className="btn btn-quiet" onClick={() => aim([])}>
                   Clear
                 </button>
               )}
             </div>
-            {pickingAim && (
+            {pickingAim && !auto && (
               <div className="contract-aim-picker">
                 <input
                   className="contract-aim-search"
@@ -309,9 +359,9 @@ export default function ContractsView() {
                   {aimMatches.map(([name, n]) => (
                     <button
                       key={name}
-                      className={`contract-aim-option ${aimSeries === name ? 'active' : ''}`}
+                      className={`contract-aim-option ${aimSeries.includes(name) ? 'active' : ''}`}
                       onClick={() => {
-                        aim(name)
+                        toggleAim(name)
                         setPickingAim(false)
                       }}
                     >
@@ -325,7 +375,7 @@ export default function ContractsView() {
           </div>
         ) : (
           <p className="contract-note contract-aim-locked">
-            Called Shot, in the Shop, aims your pulls at one series.
+            Called Shot, in the Shop, aims your pulls at the series you are chasing.
           </p>
         )}
 
@@ -341,7 +391,7 @@ export default function ContractsView() {
                 key={row.contract.id}
                 row={row}
                 nearest={false}
-                aimedAt={aimOwned && aimSeries === row.contract.series}
+                aimedAt={aimOwned && aimSeries.includes(row.contract.series)}
               >
                 {action(row)}
               </Demand>
@@ -352,7 +402,7 @@ export default function ContractsView() {
                 key={row.contract.id}
                 row={row}
                 nearest={row.contract.id === nearestId}
-                aimedAt={aimOwned && aimSeries === row.contract.series}
+                aimedAt={aimOwned && aimSeries.includes(row.contract.series)}
               >
                 {action(row)}
               </Demand>

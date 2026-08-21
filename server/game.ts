@@ -25,7 +25,6 @@ import {
   packCost,
   rarityOf,
   rollCoinDrop,
-  MAX_STARS,
   stackValue,
   starsFor,
 } from '../src/game/economy.js'
@@ -41,9 +40,9 @@ import {
 } from '../src/game/badges.js'
 import {
   EMPTY_UPGRADES,
+  bulkCost,
   dealtFor,
   UPGRADE_DEFS,
-  upgradeCost,
   upgradeMaxed,
   type UpgradeKey,
   type Upgrades,
@@ -55,18 +54,6 @@ import {
   getCharacter,
   type PoolPick,
 } from './catalog.js'
-import {
-  HAND_MULT,
-  HEAT_PER_TAP,
-  ROUTES,
-  WAYPOINTS,
-  heatMult,
-  heatNow,
-  routePay,
-  waypointsPassed,
-  type Expedition,
-  type Works,
-} from '../src/game/industry.js'
 import {
   DEPTH_BY_TIER,
   MAX_CAST,
@@ -80,7 +67,14 @@ import {
   type Contract,
   type Musterer,
 } from '../src/game/contracts.js'
-import { autoSellFloor, instancePool, sanitizeSettings, type ServerSettings } from './rules.js'
+import {
+  DEFAULT_SETTINGS,
+  autoSellFloor,
+  instancePool,
+  sanitizeSettings,
+  type ServerSettings,
+} from './rules.js'
+import { NUMBER_CEILING, fmt, safe } from '../src/game/format.js'
 import { streamsFor } from './bus.js'
 import type { Player } from './auth.js'
 
@@ -122,35 +116,6 @@ const fail = (msg: string): never => {
  * be five figures of cards and most updates do not touch it -- so this is how
  * one that happens to be looking at the collection knows to fetch it again.
  */
-/**
- * How many distinct characters a player holds.
- *
- * Cached against `collection_rev`, which is bumped by `touchCollection`
- * whenever a claim is written or sold -- so the cache is exactly as fresh as
- * the collection it counts, and it costs one map lookup on the hot path.
- *
- * Worth caching because the hot path is `snapshot`, which the Automaton
- * reaches several times a second, and counting is not free at end-game size:
- * `COUNT(*)` over sixty-five thousand claims measures 2.33ms, against a
- * snapshot the previous release got down to 0.5ms. Expeditions gate on roster
- * size, so the number has to be in every snapshot; it does not have to be
- * counted in every snapshot.
- *
- * One process per instance (ADR 0001), so a module-level map is the whole
- * cache. Nothing else writes this database.
- */
-const reachCache = new Map<number, { rev: number; n: number }>()
-
-function reachOf(db: DB, playerId: number, rev: number): number {
-  const hit = reachCache.get(playerId)
-  if (hit && hit.rev === rev) return hit.n
-  const n = (
-    db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(playerId) as { n: number }
-  ).n
-  reachCache.set(playerId, { rev, n })
-  return n
-}
-
 function touchCollection(db: DB, playerId: number): void {
   db.prepare('UPDATE player_state SET collection_rev = collection_rev + 1 WHERE player_id = ?').run(
     playerId,
@@ -166,6 +131,27 @@ function touchCollection(db: DB, playerId: number): void {
  * forever, and two devices pressing buy at the same moment is now an ordinary
  * thing rather than a curiosity.
  */
+/**
+ * Hand credits over, and never past the end of the double.
+ *
+ * A balance is a SQLite REAL, which gives up at about 1.8e308 by turning into
+ * `Infinity` -- and an infinite balance is not a big number but a poison: it
+ * survives every subtraction, makes every price affordable, and comes back out
+ * of the database as `null`. Nothing in the game should ever get near the cap
+ * (see the note on R in `src/game/upgrades.ts`); this is here so that if
+ * something ever does, the save is rich rather than broken.
+ */
+function pay(db: DB, playerId: number, amount: number): number {
+  const n = safe(Math.max(0, amount))
+  if (!(n > 0)) return 0
+  db.prepare('UPDATE player_state SET credits = MIN(credits + ?, ?) WHERE player_id = ?').run(
+    n,
+    NUMBER_CEILING,
+    playerId,
+  )
+  return n
+}
+
 function spend(db: DB, playerId: number, amount: number): boolean {
   if (amount <= 0) return true
   return (
@@ -196,20 +182,8 @@ interface StateRow {
   pending_sell_json: string | null
   /** Bumped whenever this player's claims change, so other devices can tell. */
   collection_rev: number
-  /** Spare fractions waiting to become scrap: see ADR 0014. */
-  spares: number
-  scrip: number
-  renown: number
-  renown_json: string
-  /** Scrap in the yard, waiting for the Factory's belt. */
-  scrap: number
-  /** The series Called Shot is pointed at. */
-  aim_series: string | null
-  /** Smoothed spares one pull is worth, so time away fills the tank too. */
-  auto_spares: number
-  /** Heat as it stood when it was last raised, and when that was. */
-  heat: number
-  heat_at: number
+  /** The series Called Shot is pointed at, as a JSON array of names. */
+  aim_json: string
 }
 
 interface RollSessionEntry {
@@ -233,6 +207,22 @@ interface RollSessionEntry {
 interface RollSession {
   at: number
   results: RollSessionEntry[]
+}
+
+/**
+ * A player's settings, with anything a newer build added filled in.
+ *
+ * Rows are written once and read forever, so a settings column is always one
+ * release behind the interface it is parsed into. Merging over the defaults is
+ * the difference between a new switch being off for everybody who already had
+ * an account and being on, as it says on the tin.
+ */
+function settingsOf(row: StateRow): ServerSettings {
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(row.settings_json) }
+  } catch {
+    return { ...DEFAULT_SETTINGS }
+  }
 }
 
 function loadState(db: DB, playerId: number): StateRow {
@@ -288,7 +278,7 @@ export interface OwnedCharacter extends PoolPick {
   stackValue: number
 }
 
-function collectionOf(db: DB, playerId: number, sellMult: number, mergeMult: number): OwnedCharacter[] {
+function collectionOf(db: DB, playerId: number, sellMult: number, stackMult: number): OwnedCharacter[] {
   const rows = db
     .prepare(
       `SELECT c.*, cl.claimed_at, cl.credit_value AS claimed_value, cl.copies, cl.stars, cl.locked
@@ -312,7 +302,7 @@ function collectionOf(db: DB, playerId: number, sellMult: number, mergeMult: num
     locked: !!r.locked,
     copies: r.copies,
     stars: r.stars,
-    stackValue: Math.round(stackValue(r.claimed_value, r.copies, r.stars, mergeMult) * sellMult),
+    stackValue: Math.round(stackValue(r.claimed_value, r.copies, r.stars, stackMult) * sellMult),
   }))
 }
 
@@ -328,49 +318,18 @@ function addCopy(
   playerId: number,
   characterId: number,
   maxStars: number,
-): { stars: number; merged: boolean; spare: number } {
+): { stars: number; merged: boolean } {
   const row = db
     .prepare('SELECT copies, stars FROM claims WHERE player_id = ? AND character_id = ?')
     .get(playerId, characterId) as { copies: number; stars: number } | undefined
-  if (!row) return { stars: 0, merged: false, spare: 0 }
-  /*
-   * A **spare** is what a deep stack sheds, and how much it sheds is how deep
-   * it is: a copy is worth as much scrap as the stack it lands on is full.
-   *
-   * This used to be all or nothing at twelve merges, and all or nothing was
-   * the wrong shape by a wide margin. Every card in a pull is a *distinct*
-   * character -- `roll` deals against a `used` set -- so one press adds at
-   * most one copy to any one stack, and four thousand copies of one character
-   * means four thousand presses that happened to include them. Against a warm
-   * catalog and a thousand dealt cards that is 4096 x 80,000 / 1,000 =
-   * 327,680 presses, about a hundred and thirty-six hours, before the first
-   * spare ever fell. And because every character in the pool grows at exactly
-   * the same rate, a whole collection crossed the line within a few hundred
-   * presses of itself: a hundred and thirty-six hours of nothing followed by a
-   * thousand spares a press. A cliff, not a curve, and the flat part of it is
-   * where a player sits looking at 0 / 900 wondering what they did wrong.
-   *
-   * Fractional yield fixes the shape without moving either end of it. A stack
-   * at the cap still sheds a whole spare per copy, so the end-game rate --
-   * about one Scrip a press -- is exactly what it was. Below that the rate
-   * doubles every star and every star takes twice as long as the last, so
-   * Scrip earned grows with the square of time spent: accelerating, always
-   * paying something, never paying for nothing.
-   *
-   * The line is fixed at twelve rather than at the player's own cap. Tying it
-   * to the cap meant buying Deeper Merges cut the yield until every stack had
-   * doubled again -- a hundred hours at end-game rates -- so the strongest
-   * line in the tree throttled the economy that pays for it. A stack still
-   * stops growing at its own cap; it just keeps shedding.
-   */
-  const spare = Math.min(1, row.copies / Math.pow(2, MAX_STARS))
-  if (row.copies >= Math.pow(2, maxStars)) return { stars: row.stars, merged: false, spare }
+  if (!row) return { stars: 0, merged: false }
+  if (row.copies >= Math.pow(2, maxStars)) return { stars: row.stars, merged: false }
   const copies = row.copies + 1
   const stars = starsFor(copies, maxStars)
   db.prepare(
     'UPDATE claims SET copies = ?, stars = ? WHERE player_id = ? AND character_id = ?',
   ).run(copies, stars, playerId, characterId)
-  return { stars, merged: stars > row.stars, spare }
+  return { stars, merged: stars > row.stars }
 }
 
 function wishesOf(db: DB, playerId: number): PoolPick[] {
@@ -429,12 +388,10 @@ export interface Snapshot {
   upgrades: Upgrades
   settings: ServerSettings
   wishes: PoolPick[]
-  /** Everything the works are doing right now (ADR 0014). */
-  works: Works
   /** What one card is worth to this player: every payout is quoted against it. */
   creditsPerCard: number
-  /** The series Called Shot is pointed at. */
-  aimSeries: string | null
+  /** The series Called Shot is pointed at, newest first. */
+  aimSeries: string[]
   /** The contract board. */
   board: Contract[]
   collection?: OwnedCharacter[]
@@ -445,11 +402,10 @@ export interface Snapshot {
 
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
   const row = loadState(db, player.id)
-  const settings: ServerSettings = JSON.parse(row.settings_json)
+  const settings = settingsOf(row)
   const { badges, upgrades, fx } = loadoutOf(row)
   const size = packSizeFor(fx, !!player.sandbox_of)
   const perCard = creditsPerCard(row, fx)
-  const heat = heatNow(row.heat, row.heat_at, Date.now())
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
@@ -473,28 +429,13 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     upgrades,
     settings,
     wishes: wishesOf(db, player.id),
-    works: {
-      spares: Math.floor(row.spares),
-      sparesPerScrap: fx.sparesPerScrap,
-      sparesPerPull: row.auto_spares,
-      scrap: Math.floor(row.scrap),
-      belt: fx.belt,
-      scrapWorth: fx.scrapWorth,
-      /* Heat, as it stands right now. The client draws the flame from it and
-         prices a scrap with it; the server applies it inside `runFactory`, so
-         a payout and the number quoting it are the same arithmetic. */
-      heat,
-      reach: reachOf(db, player.id, row.collection_rev),
-      caravans: fx.caravans,
-      out: expeditionsOf(db, player.id),
-    },
     creditsPerCard: perCard,
-    aimSeries: row.aim_series,
+    aimSeries: aimOf(row, fx.aimSlots),
     // Read rather than filled: `snapshot` is reached several times a second by
     // the Automaton, and topping the board up is a random pick over a
     // collection. The board only changes when somebody acts on it.
     board: boardOf(db, player.id, perCard, fx.cardsPerPull),
-    collection: withCollection ? collectionOf(db, player.id, fx.sellMult, fx.mergeMult) : undefined,
+    collection: withCollection ? collectionOf(db, player.id, fx.sellMult, fx.stackMult) : undefined,
     serverNow: Date.now(),
   }
 }
@@ -559,26 +500,9 @@ export function settleOffline(
     return null
   }
   db.prepare(
-    `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?, auto_at = ?
+    `UPDATE player_state SET credits = MIN(credits + ?, 1e300), total_rolls = total_rolls + ?, auto_at = ?
       WHERE player_id = ?`,
   ).run(credits, pulls, now, player.id)
-  /*
-   * The tank fills while nobody is watching.
-   *
-   * Spares accrue away at the same rate they accrue present, so being away
-   * never costs anything -- what it costs is the board, which only the player
-   * or a machine on an open device ever plays (ADR 0013).
-   */
-  /*
-   * The works run out there too, at the rate they run in here.
-   *
-   * Being away has never cost anything in this game and it does not start now:
-   * spares accrue, the Press mills them, and the Factory's belt melts what it
-   * can reach. The one thing that does not happen is a caravan moving, because
-   * a caravan moves when you press and nobody was pressing.
-   */
-  press(db, player.id, pulls * row.auto_spares, fx, false)
-  runFactory(db, player.id, pulls, fx, creditsPerCard(row, fx))
   return { pulls, credits, minutes: Math.round(elapsed / 60_000) }
 }
 
@@ -677,12 +601,6 @@ export function roll(
   merged: number
   /** Anything worth saying out loud about what was granted. */
   notes: string[]
-  /** Copies past what a stack can still merge, milled on arrival. */
-  spares: number
-  /** Scrap the Press got out of them. */
-  scrap: number
-  /** Credits the Factory and the caravans paid on the back of this press. */
-  melted: number
   /** Cards the pull held beyond what it dealt: opened by the machine, not seen. */
   hidden: number
   /** What those cards were appraised for. */
@@ -690,7 +608,7 @@ export function roll(
   snapshot: Snapshot
 } {
   const row = loadState(db, player.id)
-  const settings: ServerSettings = JSON.parse(row.settings_json)
+  const settings = settingsOf(row)
   const { fx } = loadoutOf(row)
   const sandbox = !!player.sandbox_of
   const wanted = Math.max(0, Math.floor(packsWanted))
@@ -714,7 +632,7 @@ export function roll(
       // A pack is what credits are for. The single summon is always free, so an
       // empty purse is never a dead end -- it just means selling something first.
       if (row.credits < price) {
-        fail(`This pull costs ${price.toLocaleString()} credits. Sell something first.`)
+        fail(`This pull costs ${fmt(price)} credits. Sell something first.`)
       }
     }
   }
@@ -762,9 +680,34 @@ export function roll(
    * purpose, and it exists because a raid asks for a series by name -- without
    * it the answer to "go and get more Frieren" is "keep pressing and hope".
    */
-  if (fx.aimShare > 0 && row.aim_series) {
-    const aimed = drawFromSeries(db, row.aim_series, Math.floor(dealt * fx.aimShare))
-    if (aimed.length > 0) pool.unshift(...aimed)
+  const aimed = runAutoAim(db, player.id, row, fx, settings)
+  if (fx.aimShare > 0 && aimed.length > 0) {
+    const want = Math.floor(dealt * fx.aimShare)
+    const each = Math.floor(want / aimed.length)
+    const drawn: PoolPick[] = []
+    for (let i = 0; i < aimed.length; i++) {
+      // The remainder goes to the first target rather than being dropped: at a
+      // thousand dealt cards and six targets that is a card, and at forty it
+      // is the difference between an aim and a rounding error.
+      const n = each + (i === 0 ? want - each * aimed.length : 0)
+      drawn.push(...drawFromSeries(db, aimed[i], n))
+    }
+    if (drawn.length > 0) {
+      /*
+       * Shuffled in, not stacked on the front.
+       *
+       * The pool is drawn in order, so pushing the aimed cards to the head of
+       * it meant the aimed series came out *first* -- a pull with Called Shot
+       * on opened as a solid block of one show followed by everything else,
+       * which reads as a bug even though the totals are right. A pull is the
+       * same cards either way; this is only what order they arrive in.
+       */
+      pool.unshift(...drawn)
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[pool[i], pool[j]] = [pool[j], pool[i]]
+      }
+    }
   }
   if (pool.length === 0) {
     fail('The catalog has no characters matching your filters yet. Give the first crawl a minute.')
@@ -833,7 +776,7 @@ export function roll(
    */
   const avgValue =
     results.length > 0 ? results.reduce((n, r) => n + r.char.creditValue, 0) / results.length : 0
-  const hiddenFor = Math.floor(overflow * avgValue * fx.sellMult)
+  const hiddenFor = Math.floor(safe(overflow * avgValue * fx.sellMult))
   if (overflow > 0) {
     coinFound += Math.floor(
       overflow *
@@ -857,8 +800,8 @@ export function roll(
    * Automaton's night shift is paid at this player's actual rate: every badge,
    * every upgrade and the size of their own pool are already in the number.
    */
-  const grossIfSold = total * avgValue * fx.sellMult
-  const pullYield = Math.max(0, grossIfSold + coinFound - price)
+  const grossIfSold = safe(total * avgValue * fx.sellMult)
+  const pullYield = safe(Math.max(0, grossIfSold + coinFound - price))
   const now = Date.now()
 
   const opened = db.transaction(() => {
@@ -868,10 +811,10 @@ export function roll(
     // The price comes off first and on its own terms: another device may have
     // spent the balance between this request being read and this line running.
     if (!spend(db, player.id, price)) {
-      fail(`This pull costs ${price.toLocaleString()} credits. Sell something first.`)
+      fail(`This pull costs ${fmt(price)} credits. Sell something first.`)
     }
     db.prepare(
-      `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?
+      `UPDATE player_state SET credits = MIN(credits + ?, 1e300), total_rolls = total_rolls + ?
         WHERE player_id = ?`,
     ).run(totalComp + coinFound + hiddenFor, results.length, player.id)
     if (pack) {
@@ -899,23 +842,12 @@ export function roll(
       if (!wasOwned[i]) entry.fresh = true
     })
     db.prepare(
-      `UPDATE player_state SET credits = credits + ?, total_claims = total_claims + ?,
+      `UPDATE player_state SET credits = MIN(credits + ?, 1e300), total_claims = total_claims + ?,
               series_paid_json = ? WHERE player_id = ?`,
     ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), player.id)
     const queued = queueAutoSell(db, player, settings, session)
-    /*
-     * The works, on the back of the press that fed them.
-     *
-     * All three in one transaction and in this order: the Press mills what the
-     * pull just shed, the Factory melts what the belt can reach, and every
-     * caravan takes one step. A press is the unit the whole industry is
-     * denominated in, so a press is where all of it happens.
-     */
-    const { scrap } = press(db, player.id, r.spares, fx, pack)
-    const melt = runFactory(db, player.id, 1, fx, creditsPerCard(row, fx))
-    const walked = walkCaravans(db, player.id, 1)
     touchCollection(db, player.id)
-    return { ...r, ...swept, queued, scrap, melted: melt.paid + walked }
+    return { ...r, ...swept, queued }
   })()
 
   return {
@@ -934,12 +866,6 @@ export function roll(
     // Wishes fulfilled, series sets completed, the Emerald dowry. A handful at
     // most: a pack of a hundred should not arrive with a hundred toasts.
     notes: opened.notes.slice(0, 4),
-    /** Spare fractions this pull shed, milled on arrival (ADR 0014). */
-    spares: opened.spares,
-    /** Scrap the Press got out of them. */
-    scrap: opened.scrap,
-    /** Credits the Factory and the caravans paid on the back of this press. */
-    melted: opened.melted,
     hidden: overflow,
     hiddenFor,
     /*
@@ -1107,12 +1033,12 @@ function payClaimBonuses(
   const notes: string[] = []
   if (wished && fx.wishClaimBonus > 0) {
     bonus += fx.wishClaimBonus
-    notes.push(`Wish fulfilled! +${fx.wishClaimBonus} credits (Bronze IV)`)
+    notes.push(`Wish fulfilled! +${fmt(fx.wishClaimBonus)} credits (Bronze IV)`)
   }
   if (fx.claimPayback > 0) {
     const paid = Math.max(1, Math.round(char.creditValue * fx.claimPayback))
     bonus += paid
-    notes.push(`Emerald IV pays the dowry: +${paid} credits`)
+    notes.push(`Emerald IV pays the dowry: +${fmt(paid)} credits`)
   }
   const paid = seriesPaid[char.series] ?? 0
   let seriesBonus = 0
@@ -1124,150 +1050,9 @@ function payClaimBonuses(
   }
   if (seriesBonus > 0) {
     bonus += seriesBonus
-    notes.push(`Series set: ${collectionSeriesCount}x ${char.series}, +${seriesBonus} credits!`)
+    notes.push(`Series set: ${collectionSeriesCount}x ${char.series}, +${fmt(seriesBonus)} credits!`)
   }
   return { bonus, notes }
-}
-
-/**
- * The Press.
- *
- * Flat per spare, and never by credit value. Paying by value would make
- * feeding spare Mythics the optimal play and a player would shred their best
- * stacks to feed a machine, which is the "send the Mythics" failure wearing an
- * apron. A flat rate denominates the works in *presses*, and a press deals a
- * bounded number of cards however large the pull is, so nothing the credit
- * curve does can inflate the stream the Factory runs on (ADR 0014).
- *
- * The remainder is kept rather than rounded away: a spare that fell short of a
- * whole scrap is still a spare, and losing it would make the rate a lie. That
- * goes for fractions of one too, since a copy sheds as much scrap as its stack
- * is deep -- a collection turning up a third of a spare a press has to be able
- * to reach its first scrap, and rounding every press to nothing would leave it
- * there forever. The snapshot quotes whole spares; the tank keeps what is left.
- */
-function press(
-  db: DB,
-  playerId: number,
-  spares: number,
-  fx: ReturnType<typeof computeEffects>,
-  smooth: boolean,
-): { scrap: number } {
-  if (spares <= 0 && !smooth) return { scrap: 0 }
-  const row = db
-    .prepare('SELECT spares FROM player_state WHERE player_id = ?')
-    .get(playerId) as { spares: number }
-  const pot = row.spares + Math.max(0, spares)
-  const scrap = Math.floor(pot / fx.sparesPerScrap)
-  db.prepare(
-    `UPDATE player_state SET spares = ?, scrap = scrap + ?,
-            auto_spares = CASE WHEN ? THEN auto_spares * ? + ? * ? ELSE auto_spares END
-      WHERE player_id = ?`,
-  ).run(
-    pot - scrap * fx.sparesPerScrap,
-    scrap,
-    smooth ? 1 : 0,
-    1 - YIELD_SMOOTHING,
-    Math.max(0, spares),
-    YIELD_SMOOTHING,
-    playerId,
-  )
-  return { scrap }
-}
-
-/**
- * The Factory.
- *
- * Eats scrap off the yard at the belt's rate and pays credits for it. Runs on
- * every press and, through `settleOffline`, on every hour nobody was here --
- * it is the faucet that does not need a hand on the button, which is the whole
- * of how it differs from the summon.
- *
- * Its input is flat and its rate is exponential: the belt can only pull what
- * the Press made, and what a scrap is *worth* is an endless shop line. So the
- * Factory can never outrun the collection that feeds it, and it can always be
- * made worth pouring credits into. That is the shape the second currency was
- * invented to get, reached without inventing one (ADR 0014).
- */
-function runFactory(
-  db: DB,
-  playerId: number,
-  presses: number,
-  fx: ReturnType<typeof computeEffects>,
-  perCard: number,
-): { melted: number; paid: number } {
-  if (presses <= 0) return { melted: 0, paid: 0 }
-  const row = db
-    .prepare('SELECT scrap, heat, heat_at FROM player_state WHERE player_id = ?')
-    .get(playerId) as { scrap: number; heat: number; heat_at: number }
-  const melted = Math.min(row.scrap, fx.belt * presses)
-  if (melted <= 0) return { melted: 0, paid: 0 }
-  // `fx.scrapWorth` is already the Foundry's multiple, so the level is spent.
-  // Heat is read here rather than passed in so that every path into the
-  // Factory -- a pull, a slam, an hour of settling -- prices a melt the same
-  // way, and so an hour away prices it cold, which is what it was.
-  const hot = heatMult(heatNow(row.heat, row.heat_at, Date.now()))
-  const paid = Math.floor(melted * perCard * fx.scrapWorth * hot)
-  db.prepare(
-    'UPDATE player_state SET scrap = scrap - ?, credits = credits + ? WHERE player_id = ?',
-  ).run(melted, paid, playerId)
-  return { melted, paid }
-}
-
-/**
- * Walk every caravan on the road, and pay the waypoints they passed.
- *
- * Distance is counted in presses, not minutes: ADR 0004 took every clock out
- * of this game, and an expedition on a timer is that mistake wearing a hat. A
- * player who closes the tab for a week comes back to a caravan exactly where
- * they left it, and it moves the moment they press again.
- *
- * Waypoints pay themselves along the way so a long route is not five thousand
- * presses of nothing; the last one waits for a hand, because arriving is the
- * part worth watching.
- */
-function walkCaravans(db: DB, playerId: number, presses: number): number {
-  if (presses <= 0) return 0
-  const rows = db
-    .prepare('SELECT * FROM expeditions WHERE player_id = ?')
-    .all(playerId) as ExpeditionRow[]
-  let paid = 0
-  for (const e of rows) {
-    const route = ROUTES.find((r) => r.key === e.route)
-    if (!route) continue
-    const walked = Math.min(route.distance, e.walked + presses)
-    // The final waypoint is the arrival, and the arrival is collected by hand.
-    const passed = Math.min(WAYPOINTS - 1, waypointsPassed(route, walked))
-    const owed = passed > e.paid ? Math.floor((e.bounty / WAYPOINTS) * (passed - e.paid)) : 0
-    if (walked === e.walked && owed <= 0) continue
-    db.prepare('UPDATE expeditions SET walked = ?, paid = ? WHERE id = ?').run(
-      walked,
-      Math.max(e.paid, passed),
-      e.id,
-    )
-    if (owed > 0) {
-      db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(
-        owed,
-        playerId,
-      )
-      paid += owed
-    }
-  }
-  return paid
-}
-
-type ExpeditionRow = {
-  id: number
-  route: string
-  walked: number
-  paid: number
-  bounty: number
-}
-
-function expeditionsOf(db: DB, playerId: number): Expedition[] {
-  return db
-    .prepare('SELECT id, route, walked, paid, bounty FROM expeditions WHERE player_id = ? ORDER BY id')
-    .all(playerId) as Expedition[]
 }
 
 /** The last series milestone. Past it a series has nothing left to pay. */
@@ -1297,12 +1082,11 @@ function takeAll(
   session: RollSession,
   fx: ReturnType<typeof computeEffects>,
   seriesPaid: Record<string, number>,
-): { claimed: number; bonus: number; merged: number; spares: number; notes: string[] } {
+): { claimed: number; bonus: number; merged: number; notes: string[] } {
   const now = Date.now()
   let claimed = 0
   let bonus = 0
   let merged = 0
-  let spares = 0
   const notes: string[] = []
   /*
    * How many of each series the player already holds.
@@ -1331,7 +1115,6 @@ function takeAll(
       // that doubles the stack it merges a star higher.
       const r = addCopy(db, player.id, entry.char.id, fx.maxStars)
       if (r.merged) merged++
-      spares += r.spare
       entry.stars = r.stars
       continue
     }
@@ -1351,7 +1134,7 @@ function takeAll(
     entry.owned = true
     entry.compensation = 0
   }
-  return { claimed, bonus, merged, spares, notes }
+  return { claimed, bonus, merged, notes }
 }
 
 /**
@@ -1430,7 +1213,7 @@ function sweepAutoSell(
     player.id,
     ...sold,
   )
-  db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
+  pay(db, player.id, total)
   return { swept: rows.length, sweptFor: total }
 }
 
@@ -1462,7 +1245,7 @@ export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount
     Math.floor(row.auto_yield * 30 * fx.dailyMult),
   )
   db.prepare(
-    'UPDATE player_state SET credits = credits + ?, last_daily_at = ?, daily_streak = ? WHERE player_id = ?',
+    'UPDATE player_state SET credits = MIN(credits + ?, 1e300), last_daily_at = ?, daily_streak = ? WHERE player_id = ?',
   ).run(amount, now, streak, player.id)
   return { snapshot: snapshot(db, player), amount, streak }
 }
@@ -1519,7 +1302,7 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
   // would mean un-merging it, and a star that can be taken apart again is a
   // currency rather than a keepsake.
   const total = rows.reduce(
-    (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars, fx.mergeMult) * fx.sellMult),
+    (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars, fx.stackMult) * fx.sellMult),
     0,
   )
   // The same bites, and the same `locked = 0`: what is deleted is exactly what
@@ -1529,7 +1312,7 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
   )
   db.transaction(() => {
     for (const part of parts) drop.run(player.id, ...part)
-    db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
+    pay(db, player.id, total)
     touchCollection(db, player.id)
   })()
   // Without the collection, for the same reason a summon answers without it:
@@ -1794,14 +1577,11 @@ export function attemptRaid(db: DB, player: Player, id: number): RaidPayout {
   }
   const state = loadState(db, player.id)
   const { fx } = loadoutOf(state)
-  const paid = Math.floor(row.reward * creditsPerCard(state, fx) * fx.cardsPerPull)
+  const paid = Math.floor(safe(row.reward * creditsPerCard(state, fx) * fx.cardsPerPull))
   // Read before the delete: after it, the contract has no series to muster from.
   const roster = rosterFor(db, player.id, row.series, row.depth)
   db.transaction(() => {
-    db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(
-      paid,
-      player.id,
-    )
+    pay(db, player.id, paid)
     db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
     fillBoard(db, player.id)
   })()
@@ -1815,143 +1595,106 @@ export function attemptRaid(db: DB, player: Player, id: number): RaidPayout {
   }
 }
 
-/** Point Called Shot at a series, or at nothing. */
-export function setAim(db: DB, player: Player, series: string | null): Snapshot {
-  const clean = series && series.trim().length > 0 ? series.trim().slice(0, 200) : null
-  if (clean && castOf(db, clean) === 0) fail('Nobody from that series is in the catalog.')
-  db.prepare('UPDATE player_state SET aim_series = ? WHERE player_id = ?').run(clean, player.id)
+/**
+ * Called Shot: the series a share of every pull is drawn from.
+ *
+ * A list rather than one name, because Split Aim buys width: the aimed share
+ * of a pull is fixed by Called Shot and divided evenly between whatever is on
+ * the list, so widening it never costs anything except focus. Stored as JSON
+ * and trimmed to what the shop has actually bought on the way out, so
+ * *selling* a level cannot leave a target quietly still in effect.
+ */
+function aimOf(row: StateRow, slots?: number): string[] {
+  let list: unknown
+  try {
+    list = JSON.parse(row.aim_json || '[]')
+  } catch {
+    return []
+  }
+  if (!Array.isArray(list)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const name of list) {
+    if (typeof name !== 'string') continue
+    const clean = name.trim().slice(0, 200)
+    if (!clean || seen.has(clean)) continue
+    seen.add(clean)
+    out.push(clean)
+  }
+  return slots === undefined ? out : out.slice(0, Math.max(0, slots))
+}
+
+function writeAim(db: DB, playerId: number, list: string[]): void {
+  db.prepare('UPDATE player_state SET aim_json = ? WHERE player_id = ?').run(
+    JSON.stringify(list),
+    playerId,
+  )
+}
+
+/** Point Called Shot at a list of series. Anything not in the catalog is refused. */
+export function setAim(db: DB, player: Player, series: string[]): Snapshot {
+  const row = loadState(db, player.id)
+  const { fx } = loadoutOf(row)
+  const clean: string[] = []
+  for (const name of series) {
+    const s = String(name ?? '').trim().slice(0, 200)
+    if (!s || clean.includes(s)) continue
+    if (castOf(db, s) === 0) fail(`Nobody from ${s} is in the catalog.`)
+    clean.push(s)
+    if (clean.length >= fx.aimSlots) break
+  }
+  writeAim(db, player.id, clean)
   return snapshot(db, player)
 }
 
 /**
- * Outfit a caravan and send it down a route.
+ * What Auto Aim would point at: the contracts the collection is nearest to.
  *
- * Costs scrap up front and pays credits at the far end, and the whole bounty
- * is fixed here rather than at arrival: a route quoted at a hundred million
- * that pays out at whatever the player's rate happens to be a week later is a
- * route nobody can price. What you were promised is what comes home.
+ * Nearest by what is *left*, not by percentage. A contract wanting three more
+ * characters is closer than one wanting forty however good the fraction looks,
+ * and "what can I finish next" is the question the crosshair exists to answer.
+ * Rows already answered are skipped -- they pay on a click, they do not need
+ * more cards -- and so are rows the collection has not touched at all, because
+ * aiming at a series you hold nothing of is aiming at the catalog.
  */
-export function sendExpedition(db: DB, player: Player, key: string): Snapshot {
-  const route = ROUTES.find((r) => r.key === key)
-  if (!route) fail('No such route.')
-  const row = loadState(db, player.id)
-  const { fx } = loadoutOf(row)
-  const out = (
-    db.prepare('SELECT COUNT(*) AS n FROM expeditions WHERE player_id = ?').get(player.id) as {
-      n: number
-    }
-  ).n
-  if (out >= fx.caravans) {
-    fail(`All ${fx.caravans} caravan${fx.caravans === 1 ? '' : 's'} are on the road.`)
+function autoAimTargets(db: DB, playerId: number, slots: number): string[] {
+  if (slots <= 0) return []
+  const rows = db
+    .prepare('SELECT series, breadth, depth FROM raids WHERE player_id = ?')
+    .all(playerId) as { series: string; breadth: number; depth: number }[]
+  const open = rows
+    .map((r) => ({ series: r.series, left: r.breadth - heldIn(db, playerId, r.series, r.depth) }))
+    .filter((r) => r.left > 0)
+    .sort((a, b) => a.left - b.left)
+  const out: string[] = []
+  for (const r of open) {
+    if (!out.includes(r.series)) out.push(r.series)
+    if (out.length >= slots) break
   }
-  const reach = reachOf(db, player.id, row.collection_rev)
-  if (reach < route!.reach) {
-    fail(`${route!.name} needs ${route!.reach.toLocaleString()} characters. You hold ${reach.toLocaleString()}.`)
-  }
-  if (row.scrap < route!.scrap) {
-    fail(`${route!.name} costs ${route!.scrap.toLocaleString()} scrap. You have ${Math.floor(row.scrap).toLocaleString()}.`)
-  }
-  const bounty = routePay(route!, creditsPerCard(row, fx), fx.scrapWorth, fx.outfit)
-  db.transaction(() => {
-    db.prepare('UPDATE player_state SET scrap = scrap - ? WHERE player_id = ?').run(
-      route!.scrap,
-      player.id,
-    )
-    db.prepare(
-      'INSERT INTO expeditions (player_id, route, walked, paid, bounty, created_at) VALUES (?, ?, 0, 0, ?, ?)',
-    ).run(player.id, route!.key, bounty, Date.now())
-  })()
-  return snapshot(db, player)
+  return out
 }
 
 /**
- * A hand on the machine.
+ * Re-point the crosshair before a pull, if the machine is doing the pointing.
  *
- * One tap does three things, in the order the machine does them:
- *
- *   1. It stokes the works. Heat multiplies what every scrap fetches and
- *      halves in seconds, so hammering is worth up to double while a hand is
- *      on it and nothing at all a minute later.
- *   2. It brings the ram down early. The automatic stroke waits for a whole
- *      scrap's worth of spares; a slam mills whatever is in the tank right
- *      now, at `HAND_MULT`, and does not round the remainder away.
- *   3. It runs the belt over what just landed.
- *
- * The first version of this only did (3), and it was right about the shape --
- * a tap must never outrun the collection that feeds it -- and wrong about
- * everything a player sees. The yard is empty almost always, so a tap paid
- * zero, said "yard empty", and read as a button that does nothing. Heat and
- * the hand mill are both bounded and neither needs a yard, so a tap now
- * always moves something.
- *
- * Rate-limited here rather than trusted to the client.
+ * Written only when it actually changes: this runs on every pull, and the
+ * Automaton pulls several times a second.
  */
-const SLAM_PRESSES = 3
-const SLAM_GAP_MS = 110
-const lastSlam = new Map<number, number>()
-
-export interface SlamResult {
-  snapshot: Snapshot
-  /** Scrap the hand mill made out of the tank. */
-  milled: number
-  /** Scrap the belt melted. */
-  melted: number
-  paid: number
-  heat: number
-}
-
-export function slamPress(db: DB, player: Player): SlamResult {
-  const now = Date.now()
-  if (now - (lastSlam.get(player.id) ?? 0) < SLAM_GAP_MS) {
-    const snap = snapshot(db, player)
-    return { snapshot: snap, milled: 0, melted: 0, paid: 0, heat: snap.works.heat }
-  }
-  lastSlam.set(player.id, now)
-  const row = loadState(db, player.id)
-  const { fx } = loadoutOf(row)
-
-  // (1) Stoke. Capped at one so a hold cannot bank a multiplier for later.
-  const heat = Math.min(1, heatNow(row.heat, row.heat_at, now) + HEAT_PER_TAP)
-  // (2) Mill the tank by hand. Fractional on purpose: the automatic stroke
-  //     keeps the remainder in spares, and a hand stroke on a tank holding a
-  //     fifth of a scrap has to be able to hand over a fifth of a scrap.
-  const milled = (row.spares * HAND_MULT) / fx.sparesPerScrap
-  db.prepare(
-    'UPDATE player_state SET spares = 0, scrap = scrap + ?, heat = ?, heat_at = ? WHERE player_id = ?',
-  ).run(milled, heat, now, player.id)
-
-  // (3) Run the belt, which reads the heat this tap just set.
-  const r = runFactory(db, player.id, SLAM_PRESSES, fx, creditsPerCard(row, fx))
-  return { snapshot: snapshot(db, player), milled, ...r, heat }
-}
-
-/** Bring a caravan home. Only the last waypoint waits for a hand. */
-export function collectExpedition(
+function runAutoAim(
   db: DB,
-  player: Player,
-  id: number,
-): { snapshot: Snapshot; paid: number; route: string } {
-  const e = db
-    .prepare('SELECT * FROM expeditions WHERE id = ? AND player_id = ?')
-    .get(id, player.id) as (ExpeditionRow & { player_id: number }) | undefined
-  if (!e) fail('That caravan is not on the road.')
-  const route = ROUTES.find((r) => r.key === e!.route)
-  if (!route) fail('That route no longer exists.')
-  if (e!.walked < route!.distance) {
-    fail(`${route!.name} still has ${Math.ceil(route!.distance - e!.walked).toLocaleString()} presses to go.`)
-  }
-  // Everything the waypoints have not already handed over.
-  const owed = Math.max(0, Math.floor(e!.bounty - (e!.bounty / WAYPOINTS) * e!.paid))
-  db.transaction(() => {
-    db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(
-      owed,
-      player.id,
-    )
-    db.prepare('DELETE FROM expeditions WHERE id = ?').run(e!.id)
-  })()
-  return { snapshot: snapshot(db, player), paid: owed, route: route!.name }
+  playerId: number,
+  row: StateRow,
+  fx: ReturnType<typeof computeEffects>,
+  settings: ServerSettings,
+): string[] {
+  const current = aimOf(row, fx.aimSlots)
+  if (!fx.autoAim || !settings.autoAim || fx.aimShare <= 0) return current
+  const want = autoAimTargets(db, playerId, fx.aimSlots)
+  if (want.length === 0) return current
+  if (want.length === current.length && want.every((n, i) => n === current[i])) return current
+  writeAim(db, playerId, want)
+  return want
 }
-
 
 export function addWish(db: DB, player: Player, characterId: number): Snapshot {
   const row = loadState(db, player.id)
@@ -1993,22 +1736,38 @@ export function buyBadge(db: DB, player: Player, key: BadgeKey): Snapshot {
 }
 
 /**
- * Buy the next level of an upgrade line.
+ * Buy levels of an upgrade line.
  *
  * Unlike a badge there is no prerequisite chart and no top level worth
- * mentioning: the price is the gate, and it triples-ish every time.
+ * mentioning: the price is the gate, and it roughly doubles every time.
+ *
+ * `want` is how many levels to try for, or 'max' for as many as the balance
+ * covers. Priced by `bulkCost` -- the same function the shop row prints from,
+ * so the button and the charge can never disagree -- which walks the levels one
+ * at a time, because every level costs more than the last and a bulk price is a
+ * sum rather than a multiplication. Settled as one charge, so two devices
+ * holding Max cannot both be told yes.
  */
-export function buyUpgrade(db: DB, player: Player, key: UpgradeKey): Snapshot {
+export function buyUpgrade(
+  db: DB,
+  player: Player,
+  key: UpgradeKey,
+  want: number | 'max' = 1,
+): Snapshot {
   const row = loadState(db, player.id)
   const { upgrades, fx } = loadoutOf(row)
   const def = UPGRADE_DEFS.find((d) => d.key === key)
   if (!def) fail('No such upgrade.')
   const level = upgrades[key] ?? 0
   if (upgradeMaxed(def!, level)) fail('That upgrade is already at its last level.')
-  const cost = upgradeCost(def!, level, fx.priceMult)
-  const next: Upgrades = { ...upgrades, [key]: level + 1 }
+
+  const asked = want === 'max' || Number.isFinite(want) ? want : 1
+  const { levels: bought, cost: total } = bulkCost(def!, level, row.credits, asked, fx.priceMult)
+  if (bought === 0) fail('Not enough credits.')
+
+  const next: Upgrades = { ...upgrades, [key]: level + bought }
   db.transaction(() => {
-    if (!spend(db, player.id, cost)) fail('Not enough credits.')
+    if (!spend(db, player.id, total)) fail('Not enough credits.')
     db.prepare('UPDATE player_state SET upgrades_json = ? WHERE player_id = ?').run(
       JSON.stringify(next),
       player.id,
@@ -2020,7 +1779,7 @@ export function buyUpgrade(db: DB, player: Player, key: UpgradeKey): Snapshot {
 /** Preferences only: who shows up in a roll, and how deep the pool goes. */
 export function updateSettings(db: DB, player: Player, patch: unknown): Snapshot {
   const row = loadState(db, player.id)
-  const current: ServerSettings = JSON.parse(row.settings_json)
+  const current = settingsOf(row)
   const next = sanitizeSettings(patch, current)
   db.prepare('UPDATE player_state SET settings_json = ? WHERE player_id = ?').run(
     JSON.stringify(next),
@@ -2033,7 +1792,7 @@ export function updateSettings(db: DB, player: Player, patch: unknown): Snapshot
 export function grantCredits(db: DB, player: Player, amount: number): Snapshot {
   if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
   const n = Math.max(0, Math.min(100_000, Math.round(amount)))
-  db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(n, player.id)
+  pay(db, player.id, n)
   return snapshot(db, player)
 }
 
@@ -2046,7 +1805,7 @@ export function resetPlayer(db: DB, player: Player): Snapshot {
       `UPDATE player_state SET credits = 0, last_daily_at = 0, daily_streak = 0,
               total_rolls = 0, total_claims = 0, badges_json = ?, upgrades_json = ?,
               series_paid_json = '{}', auto_spin = 0, auto_at = 0, auto_yield = 0,
-              pending_sell_json = NULL, collection_rev = collection_rev + 1
+              pending_sell_json = NULL, aim_json = '[]', collection_rev = collection_rev + 1
         WHERE player_id = ?`,
     ).run(JSON.stringify(EMPTY_BADGES), JSON.stringify(EMPTY_UPGRADES), player.id)
   })()

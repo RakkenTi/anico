@@ -271,36 +271,17 @@ export function createApp(db: DB, config: Config) {
     return sync(c, { state: snapshot, total, sold })
   })
 
-  /* --------------------------------------------------- the board and the works */
+  /* ------------------------------------------------------------- the board */
 
   api.post('/raid/:id', (c) => {
     const { snapshot, ...paid } = game.attemptRaid(db, c.get('player'), Number(c.req.param('id')))
     return sync(c, { state: snapshot, ...paid })
   })
 
-  api.post('/works/slam', (c) => {
-    const { snapshot, ...paid } = game.slamPress(db, c.get('player'))
-    return sync(c, { state: snapshot, ...paid })
-  })
-
-  api.post('/expedition', async (c) => {
-    const b = await body(c)
-    return sync(c, { state: game.sendExpedition(db, c.get('player'), String(b.route)) })
-  })
-
-  api.post('/expedition/:id/collect', (c) => {
-    const { snapshot, ...paid } = game.collectExpedition(
-      db,
-      c.get('player'),
-      Number(c.req.param('id')),
-    )
-    return sync(c, { state: snapshot, ...paid })
-  })
-
   api.post('/aim', async (c) => {
     const b = await body(c)
-    const series = b.series === null || b.series === undefined ? null : String(b.series)
-    return sync(c, { state: game.setAim(db, c.get('player'), series) })
+    const list = Array.isArray(b.series) ? b.series.map((x: unknown) => String(x)) : []
+    return sync(c, { state: game.setAim(db, c.get('player'), list) })
   })
 
   api.post('/wish', async (c) => {
@@ -332,7 +313,10 @@ export function createApp(db: DB, config: Config) {
 
   api.post('/upgrade', async (c) => {
     const b = await body(c)
-    return sync(c, { state: game.buyUpgrade(db, c.get('player'), b.key) })
+    // `count` is a number of levels or the string 'max'. Absent means one,
+    // which is what every client sent before the shop grew bulk buttons.
+    const count = b.count === 'max' ? 'max' : Number(b.count ?? 1)
+    return sync(c, { state: game.buyUpgrade(db, c.get('player'), b.key, count) })
   })
 
   api.patch('/settings', async (c) => {

@@ -208,69 +208,29 @@ purchase).
 lines of six levels, each level five times the price of the one below it. Badges change
 what the loop *is* — whether packs exist, how many wishes may be pinned, what a pack
 promises — rather than how fast it runs, which is why they end and upgrades do not. The
-whole tree costs 63.9M credits, which is why **the works** exist above it: past that
-price the shop had nothing left to sell (ADR 0014).
+whole tree costs 63.9M credits, which is why the endless upgrade lines exist above it:
+past that price the badge shelf has nothing left to sell.
 
-**Upgrade** — the other half of the shop: eighteen lines, nine of them the summon's and
-nine the works'. Nine have no last level (Sell Value, Open Speed, Pack Size, Coin Drops,
-Extra Packs, Merge Value, Foundry, Belt Speed, Outfitters) and the rest
-buy a shape and finish (Auto Summon, Offline Earnings, Wish Odds, Caravans, and the five
-ceilings the summon runs into: Finer Mill, Called Shot, Longer Table, Wider Deal, Deeper
-Merges). Every level costs a
+**Upgrade** — the other half of the shop: fifteen lines. Six have no last level (Sell
+Value, Open Speed, Pack Size, Coin Drops, Extra Packs, Merge Value) and the rest buy a
+shape and finish (Auto Summon, Offline Earnings, Wish Odds, and **the long game**: Called
+Shot, Split Aim, Auto Aim, Longer Table, Wider Deal, Deeper Merges). Every level costs a
 fixed multiple of the last, and always more than the effect it buys. Badges give the game
 its shape; upgrades give it its curve, and the curve has no end (ADR 0007).
 
-**Spare** — the scrap a duplicate sheds, in proportion to how deep the stack it lands on
-already is. A copy landing on a stack halfway to ★12 is worth half a spare; one landing
-on a stack at the cap is worth a whole one. It was all or nothing at ★12 once, which
-meant a hundred and thirty-six hours of no spares at all followed by a thousand a press —
-every card in a pull is a *distinct* character, so a stack gains at most one copy a press
-whatever the pull holds, and the whole collection therefore crosses the line at the same
-moment (ADR 0013).
+**R** — what the endless lines add up to, and the one number that decides whether the
+curve is a curve. A line whose effect multiplies by `g` a level against a price that
+multiplies by `c` contributes `ln g / ln c`; the sum across the shop is the exponent
+relating income to money spent. Below one, the balance grows like a polynomial in time and
+every order of magnitude costs more play than the last. Above one, it reaches infinity in
+*finite* time — spend everything, come back richer than you spent, repeat. The Factory
+put it at about 1.5 and a save was over in ten minutes (ADR 0015); it sits near 0.74 now.
+Any new endless line is a change to R, and that is the whole review.
 
-**The works** — the Press, the Factory and Expeditions, together with the contract board.
-Three faucets and a goal board, all paying **credits**, all bought from the one shop.
-There was a second currency here once; what it cost was the summon's own ceilings sitting
-behind a mechanic you had to play to reach them, and no mechanic locks another one's
-upgrades now (ADR 0014). What chains between them is material, not permission.
-
-**Press** — what mills spares into **scrap**, flat per spare and never by credit value.
-Paying by value would make feeding spare Mythics the optimal play and a collection would
-be shredded to feed a machine. It runs while nobody is watching at the rate it runs while
-somebody is.
-
-**Slam** — a hand on the works, taken from the Press by tapping the machine and from the
-Factory by stoking the fire. One tap does three things: it raises **heat**, it brings the
-ram down early on whatever spares are in the tank (at a bonus, and without waiting for a
-whole scrap), and it runs the belt over what that made. Its first version only did the
-last of those, and since the yard is empty almost all of the time by design, a tap paid
-zero and read as a button that does nothing.
-
-**Heat** — the only number in the works a hand moves and a collection does not. It
-multiplies what every scrap fetches, up to double, and it halves every seven seconds. So
-it is worth a great deal to somebody stood at the machine and nothing whatever to the
-away rate, which is the only way to put a clicker in an idle game without making idling
-the wrong move. Nothing is gated behind it and nothing is lost by never touching it.
-
-**Scrap** — what the Press pays and the Factory eats. A flat stream: a press deals a
-bounded number of real cards however large the pull is, so about one scrap arrives per
-press whatever the credit curve is doing. That flatness is what stops the works becoming
-free money.
-
-**Factory** — the furnace that melts scrap into credits, every press and every hour away.
-Steady throughput, and the faucet that runs without a hand on the button. What one scrap is
-worth is a fraction of a whole *press* rather than a fixed number of credits — priced
-against a card it was 0.1% of the summon by a quadrillion, and priced against a press it
-tracks whatever the summon has become (ADR 0014).
-
-**Expedition** — a lump of scrap spent now for a much larger lump of credits later. Worth
-about thirteen times what that scrap would have earned on the belt, in exchange for
-locking it up for the length of a road. Paced in **presses**, not minutes: a caravan
-moves one step per summon and a week away leaves it exactly where it stood, because
-ADR 0004 took every clock out of this game. Scarcity is caravans.
-
-**Route** — one expedition's road: a distance in presses, a price in scrap, a bounty, and
-the size of roster it needs. Five of them, longest last.
+**Buy amount** — how many levels one press of a shop row buys: one, ten, twenty-five, or
+as many as the balance covers. Priced level by level, never per-level times a count,
+because every level costs more than the last. Late on a level is a fraction of a second's
+income, and buying them one at a time is a repetitive strain injury with a progress bar.
 
 **Contract** — a demand for a breadth of one **series** at a depth of stars. Free to
 enter, pays credits, and reads nothing else about a character: not credit value, and
@@ -292,11 +252,21 @@ already settled by the time it plays. It exists because summoning has a wrapper 
 and the board shipped without anything at all, which is how a mechanic ends up reading as
 a spreadsheet with buttons.
 
-**Called Shot** — the shop line that points a share of every pull at one series. The only
-way in the game to collect on purpose rather than by waiting, and it exists because a
-contract asks for a series by name. Aimed from the contract it is meant to finish: every
-row on the board carries a crosshair, and the picker searches the whole collection rather
-than offering a shortlist of it.
+**Called Shot** — the shop line that points a share of every pull at the series you name.
+The only way in the game to collect on purpose rather than by waiting, and it exists
+because a contract asks for a series by name. Aimed from the contract it is meant to
+finish: every row on the board carries a crosshair, and the picker searches the whole
+collection rather than offering a shortlist of it.
+
+**Split Aim** — how many series Called Shot may point at once, one to six. The aimed share
+is *divided* between the targets rather than added to, so width costs focus and nothing
+else.
+
+**Auto Aim** — the machine holding the crosshair. Once bought, every pull re-points Called
+Shot at the contracts the collection is nearest to finishing — nearest by how many
+characters are *left*, not by percentage, because "what can I finish next" is the question
+the crosshair exists to answer. A setting rather than a second purchase: it can be switched
+off, and then the targets are yours again.
 
 **Opening discount** — the first five rungs of the endless lines, sold at a fraction of
 list price that fades out by the sixth. The ramp on to the curve: an exponential ladder
