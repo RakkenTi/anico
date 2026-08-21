@@ -239,5 +239,8 @@ bus catches whatever still lands together. What was heard before was mostly clip
 four rungs and a phone and fails on anything over budget: the press-to-wrappers delay,
 the frame gap while a pull empties, the opening against the promised rate, voices in the
 same tenth of a second, whether the spread fills its pane, whether the button that opens
-a pack is reachable, and whether the shop answers with the Automaton running. Every
-problem it checks for is one that shipped.
+a pack is reachable, whether the shop answers with the Automaton running, and whether a
+collection of sixty-five thousand characters can be sold at all. Every rung plays
+against a collection the size a rung that deep would have, because what a player owns is
+its own axis of end game (ADR 0011) and a harness that only grew the pull missed both of
+the faults that cost the most. Every problem it checks for is one that shipped.

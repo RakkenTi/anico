@@ -601,19 +601,33 @@ export function roll(
   // promises its own floor, because a promise that only covers the first of
   // four packs is not the promise the badge printed.
   if (pack && fx.guaranteeValue > 0 && fx.guaranteeCount > 0) {
-    for (let g = 0; g < packCount; g++) {
-      totalComp += guarantee(
-        db,
-        results,
-        g * perPack,
-        Math.min(results.length, (g + 1) * perPack),
-        fx,
-        settings,
-        poolSize,
-        owner,
-        ownedIds,
-        wishes,
-      )
+    const walls = Array.from({ length: packCount }, (_, g) => [
+      g * perPack,
+      Math.min(results.length, (g + 1) * perPack),
+    ])
+    /*
+     * Every wrapper's top-up, drawn in one query.
+     *
+     * The draw shuffles the catalog against every id already dealt, which is
+     * not cheap, and this used to run once per wrapper: twenty-four of them
+     * was three quarters of a second of the summon. Asked for only what the
+     * wrappers are actually short, so a lucky pull still costs nothing.
+     */
+    const short = walls.reduce((n, [from, to]) => n + shortfall(results, from, to, fx), 0)
+    const lucky =
+      short > 0
+        ? drawAboveValue(
+            db,
+            fx.guaranteeValue,
+            settings.rollGender,
+            poolSize,
+            results.map((r) => r.char.id),
+            owner,
+            short,
+          )
+        : []
+    for (const [from, to] of walls) {
+      totalComp += guarantee(results, lucky, from, to, fx, ownedIds, wishes)
     }
   }
 
@@ -733,6 +747,18 @@ export function roll(
   }
 }
 
+/** How many cards a wrapper is short of the floor its badge printed. */
+function shortfall(
+  results: RollResult[],
+  from: number,
+  to: number,
+  fx: ReturnType<typeof computeEffects>,
+): number {
+  let good = 0
+  for (let i = from; i < to; i++) if (results[i].char.creditValue >= fx.guaranteeValue) good++
+  return Math.max(0, Math.min(fx.guaranteeCount, to - from) - good)
+}
+
 /**
  * Make one pack keep its promise.
  *
@@ -748,23 +774,17 @@ export function roll(
  * Returns the change in duplicate compensation the swaps caused.
  */
 function guarantee(
-  db: DB,
   results: RollResult[],
+  /** The pull's guaranteed cards, drawn together. Taken from as needed. */
+  lucky: PoolPick[],
   from: number,
   to: number,
   fx: ReturnType<typeof computeEffects>,
-  settings: ServerSettings,
-  poolSize: number,
-  owner: number | null,
   ownedIds: Set<number>,
   wishes: PoolPick[],
 ): number {
   let delta = 0
-  const need = Math.min(fx.guaranteeCount, to - from)
-  for (let n = 0; n < need; n++) {
-    const good = []
-    for (let i = from; i < to; i++) if (results[i].char.creditValue >= fx.guaranteeValue) good.push(i)
-    if (good.length > n) continue
+  for (let n = shortfall(results, from, to, fx); n > 0; n--) {
     let worst = -1
     for (let i = from; i < to; i++) {
       if (results[i].wished) continue
@@ -772,22 +792,15 @@ function guarantee(
       if (worst < 0 || results[i].char.creditValue < results[worst].char.creditValue) worst = i
     }
     if (worst < 0) return delta
-    const lucky = drawAboveValue(
-      db,
-      fx.guaranteeValue,
-      settings.rollGender,
-      poolSize,
-      results.map((r) => r.char.id),
-      owner,
-    )
-    if (!lucky) return delta
-    const owned = ownedIds.has(lucky.id)
-    const compensation = owned ? duplicateCompensation(lucky.creditValue, fx.dupCompMult) : 0
+    const pick = lucky.pop()
+    if (!pick) return delta
+    const owned = ownedIds.has(pick.id)
+    const compensation = owned ? duplicateCompensation(pick.creditValue, fx.dupCompMult) : 0
     delta += compensation - results[worst].compensation
     results[worst] = {
-      char: lucky,
+      char: pick,
       owned,
-      wished: wishes.some((w) => w.id === lucky.id),
+      wished: wishes.some((w) => w.id === pick.id),
       compensation,
     }
   }
@@ -829,6 +842,21 @@ function payClaimBonuses(
   return { bonus, notes }
 }
 
+/** The last series milestone. Past it a series has nothing left to pay. */
+const LAST_SERIES_MILESTONE = SERIES_MILESTONES.reduce((n, m) => Math.max(n, m.count), 0)
+
+/** How many of each series a player holds, in one pass over their claims. */
+function seriesCounts(db: DB, playerId: number): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT c.series AS series, COUNT(*) AS n FROM claims cl
+         JOIN characters c ON c.id = cl.character_id
+        WHERE cl.player_id = ? GROUP BY c.series`,
+    )
+    .all(playerId) as { series: string; n: number }[]
+  return new Map(rows.map((r) => [r.series, r.n]))
+}
+
 /**
  * Take every unowned card of a summon at once.
  *
@@ -847,6 +875,24 @@ function takeAll(
   let bonus = 0
   let merged = 0
   const notes: string[] = []
+  /*
+   * How many of each series the player already holds.
+   *
+   * A series pays out at three, five and ten of it, and stops. Past the last
+   * milestone the count cannot change what anybody is owed, so a collection
+   * deep enough to have finished every series it touches never asks -- and
+   * when it does ask, it asks once for the whole pull and counts the rest of
+   * it in memory.
+   *
+   * This was a join per new card: claims joined to the catalog, filtered to
+   * one series, for every card of the pull that was not already owned. At a
+   * pull of a thousand cards against a collection of sixty-five thousand it
+   * was eight seconds of a nine-second summon.
+   */
+  const open = session.results.some(
+    (e) => (seriesPaid[e.char.series] ?? 0) < LAST_SERIES_MILESTONE,
+  )
+  const held = open ? seriesCounts(db, player.id) : null
   for (const entry of session.results) {
     const owns = db
       .prepare('SELECT 1 FROM claims WHERE player_id = ? AND character_id = ?')
@@ -863,14 +909,12 @@ function takeAll(
       'INSERT INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?, ?, ?, ?)',
     ).run(player.id, entry.char.id, now, entry.char.creditValue)
     claimed++
-    const inSeries = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM claims cl JOIN characters c ON c.id = cl.character_id
-            WHERE cl.player_id = ? AND c.series = ?`,
-        )
-        .get(player.id, entry.char.series) as { n: number }
-    ).n
+    // The row just written counts, same as the query it replaced counted it.
+    let inSeries = 0
+    if (held) {
+      inSeries = (held.get(entry.char.series) ?? 0) + 1
+      held.set(entry.char.series, inSeries)
+    }
     const paid = payClaimBonuses(entry.char, entry.wished, fx, seriesPaid, inSeries)
     bonus += paid.bonus
     notes.push(...paid.notes)
@@ -994,6 +1038,30 @@ export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount
 }
 
 /**
+ * Ids a statement may name at once.
+ *
+ * SQLite compiles at most 32766 bound parameters into one statement, and a
+ * collection outgrows that: selling sixty-five thousand characters asked for a
+ * statement SQLite refuses to compile, and because nothing on the way back up
+ * distinguished that from any other server error, the answer to "sell my
+ * collection" was that nothing happened at all.
+ *
+ * The last bite is padded with an id no character has, so every bite is the
+ * same statement and the query is compiled once instead of once a bite.
+ */
+const SELL_BITE = 900
+
+function bites(ids: number[]): number[][] {
+  const parts: number[][] = []
+  for (let i = 0; i < ids.length; i += SELL_BITE) {
+    const part = ids.slice(i, i + SELL_BITE)
+    while (part.length < SELL_BITE) part.push(-1)
+    parts.push(part)
+  }
+  return parts
+}
+
+/**
  * Sell characters back at the value they were claimed at.
  *
  * Any number at once, for anybody. Selling in bulk used to be a sandbox
@@ -1003,14 +1071,18 @@ export function claimDaily(db: DB, player: Player): { snapshot: Snapshot; amount
  */
 export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapshot; total: number; sold: number } {
   if (ids.length === 0) fail('Nothing to sell.')
-  const placeholders = ids.map(() => '?').join(',')
-  const rows = db
-    .prepare(
-      `SELECT character_id, credit_value, copies, stars FROM claims
-        WHERE player_id = ? AND locked = 0 AND character_id IN (${placeholders})`,
-    )
-    .all(player.id, ...ids) as
-    | { character_id: number; credit_value: number; copies: number; stars: number }[]
+  const parts = bites(ids)
+  const holes = Array(SELL_BITE).fill('?').join(',')
+  const find = db.prepare(
+    `SELECT character_id, credit_value, copies, stars FROM claims
+      WHERE player_id = ? AND locked = 0 AND character_id IN (${holes})`,
+  )
+  const rows = parts.flatMap((part) => find.all(player.id, ...part)) as {
+    character_id: number
+    credit_value: number
+    copies: number
+    stars: number
+  }[]
   if (rows.length === 0) fail('Nothing there to sell — locked, or not yours.')
   const { fx } = loadoutOf(loadState(db, player.id))
   // A stack sells whole, at what the merge made it worth. Selling half a stack
@@ -1020,17 +1092,20 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
     (n, r) => n + Math.round(stackValue(r.credit_value, r.copies, r.stars, fx.mergeMult) * fx.sellMult),
     0,
   )
-  const sold = rows.map((r) => r.character_id)
-  const soldHoles = sold.map(() => '?').join(',')
+  // The same bites, and the same `locked = 0`: what is deleted is exactly what
+  // was priced, and a locked card that happened to be in the list survives.
+  const drop = db.prepare(
+    `DELETE FROM claims WHERE player_id = ? AND locked = 0 AND character_id IN (${holes})`,
+  )
   db.transaction(() => {
-    db.prepare(`DELETE FROM claims WHERE player_id = ? AND character_id IN (${soldHoles})`).run(
-      player.id,
-      ...sold,
-    )
+    for (const part of parts) drop.run(player.id, ...part)
     db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(total, player.id)
     touchCollection(db, player.id)
   })()
-  return { snapshot: snapshot(db, player, true), total, sold: rows.length }
+  // Without the collection, for the same reason a summon answers without it:
+  // what is left of sixty-five thousand characters is megabytes, the revision
+  // counter moved, and the collection screen is already asking for a fresh copy.
+  return { snapshot: snapshot(db, player), total, sold: rows.length }
 }
 
 export function addWish(db: DB, player: Player, characterId: number): Snapshot {

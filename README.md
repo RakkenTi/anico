@@ -316,12 +316,15 @@ already on the machine (`npx playwright install chromium` provides one, or point
 project has had turned up. It stands up its own throwaway instance, seeds a catalog the
 size a real crawl reaches, and walks a player up four rungs of the shop — ten thousand
 cards a pull, a hundred and ninety-four thousand, seven hundred and eighty-two thousand,
-ten million — plus a phone, pulling at each one with a real browser. It measures the
-press-to-wrappers delay, the frame gap while a pull empties, the opening against what
-Open Speed promised, sound voices landing in the same tenth of a second, whether the
-spread uses its pane, whether the button that opens a pack is reachable, and whether the
-shop still answers with the Automaton running. It exits non-zero on anything over
-budget. `ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
+ten million — plus a phone, pulling at each one with a real browser. Each rung is played
+against a collection the size a rung that deep would have, up to sixty-five thousand
+characters, because how much a player already owns is its own axis of the end game. It
+measures the press-to-wrappers delay, the frame gap while a pull empties, the opening
+against what Open Speed promised, sound voices landing in the same tenth of a second,
+whether the spread uses its pane, whether the button that opens a pack is reachable,
+whether the shop still answers with the Automaton running, and whether a whole
+collection can be sold. It exits non-zero on anything over budget.
+`ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
 
 ## How it fits together
 
