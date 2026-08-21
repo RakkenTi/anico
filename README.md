@@ -260,6 +260,11 @@ Both need a Chromium on the machine: `npx playwright install chromium`, or point
 The vocabulary is in [`CONTEXT.md`](./CONTEXT.md); the decisions worth not re-litigating
 are in [`docs/adr/`](./docs/adr/).
 
+## Licence
+
+[AGPL-3.0](./LICENSE). Run it, change it, host it for your friends. If you run a modified
+version as a service for other people, publish your changes.
+
 *This is an unaffiliated fan project. Character data © their respective owners, served by
 AniList. Icons and sound effects (CC0) by [Kenney](https://kenney.nl/assets); the icons are
 vendored in [`src/assets/icons`](./src/assets/icons) with their licence.*
