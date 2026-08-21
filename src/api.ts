@@ -8,7 +8,7 @@ import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
 import type { Renown, RenownEffects, RenownKey } from './game/renown'
-import type { Commission, Raid } from './game/raids'
+import type { Commission, Musterer, Raid } from './game/raids'
 
 export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
@@ -17,6 +17,15 @@ export interface ServerSettings {
   /** Sell every pull below this rarity as it lands. */
   autoSell: AutoSell
   skipOwned: boolean
+}
+
+/** What a demand paid, and who the instance says went out to earn it. */
+export interface RaidPayout {
+  reward: number
+  series: string
+  breadth: number
+  depth: number
+  roster: Musterer[]
 }
 
 export interface Snapshot {
@@ -201,11 +210,10 @@ export const api = {
   buyBadge: (key: string) => post<{ state: Snapshot }>('/badge', { key }),
 
   /* The board (ADR 0013). */
-  raid: (id: number) =>
-    post<{ state: Snapshot; reward: number; series: string }>(`/raid/${id}`),
+  raid: (id: number) => post<{ state: Snapshot } & RaidPayout>(`/raid/${id}`),
   accept: (id: number) => post<{ state: Snapshot }>(`/commission/${id}`),
   claimCommission: (id: number) =>
-    post<{ state: Snapshot; reward: number; series: string }>(`/commission/${id}/claim`),
+    post<{ state: Snapshot } & RaidPayout>(`/commission/${id}/claim`),
   abandon: (id: number) => request<{ state: Snapshot }>(`/commission/${id}`, { method: 'DELETE' }),
   buyRenown: (key: RenownKey) => post<{ state: Snapshot }>('/renown', { key }),
   setAim: (series: string | null) => post<{ state: Snapshot }>('/aim', { series }),

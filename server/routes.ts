@@ -274,8 +274,8 @@ export function createApp(db: DB, config: Config) {
   /* ------------------------------------------------------------- the board */
 
   api.post('/raid/:id', (c) => {
-    const { snapshot, reward, series } = game.attemptRaid(db, c.get('player'), Number(c.req.param('id')))
-    return sync(c, { state: snapshot, reward, series })
+    const { snapshot, ...paid } = game.attemptRaid(db, c.get('player'), Number(c.req.param('id')))
+    return sync(c, { state: snapshot, ...paid })
   })
 
   api.post('/commission/:id', (c) =>
@@ -283,12 +283,12 @@ export function createApp(db: DB, config: Config) {
   )
 
   api.post('/commission/:id/claim', (c) => {
-    const { snapshot, reward, series } = game.claimCommission(
+    const { snapshot, ...paid } = game.claimCommission(
       db,
       c.get('player'),
       Number(c.req.param('id')),
     )
-    return sync(c, { state: snapshot, reward, series })
+    return sync(c, { state: snapshot, ...paid })
   })
 
   api.delete('/commission/:id', (c) =>

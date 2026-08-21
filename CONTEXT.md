@@ -243,13 +243,23 @@ would always be "send the eleven Mythics" (ADR 0013). Nothing is gambled — a r
 cannot answer is refused, not lost.
 
 **Board** — the five raids posted at once. Answering one generates its replacement, so
-there is no refresh and no daily reset: ADR 0004 took every clock out of this game.
+there is no refresh and no daily reset: ADR 0004 took every clock out of this game. Each
+row is posted at the rung the collection is standing on rather than at a rung drawn
+blind: a board of five demands nobody can meet is a wall, not a mechanic (ADR 0013).
 
 **Commission** — a raid taken on rather than answered. Only ever one you *cannot*
 currently answer, which is what makes the two different: a raid tests what you hold and a
 commission is what you go and get. It costs no Scrip, pays two and a half times as much,
 and waits as long as you like. What it costs is one of three slots — scarcity here is
-slots, not time.
+slots, not time. Called a **pin** on screen, and shown in place on the board rather than
+in a panel of its own: it is a state a demand is in, not a second kind of thing.
+
+**Muster** — answering a demand, watched rather than read. A rank of the player's own
+cards — the ones that satisfy the demand, at the stars they merged to — deals in, the
+demand stamps answered, and the Renown lands. It reads no rule and changes none; the
+payout has already settled by the time it plays. It exists because summoning has a
+wrapper to tear and the board shipped without anything at all, which is how a mechanic
+ends up reading as a spreadsheet with buttons.
 
 **Renown** — what raids pay and the second tree costs. Not convertible to credits in
 either direction, and still the strongest progression in the game, because what it buys
@@ -291,8 +301,9 @@ four rungs and a phone and fails on anything over budget: the press-to-wrappers 
 the frame gap while a pull empties, the opening against the promised rate, voices in the
 same tenth of a second, whether the spread fills its pane, whether the button that opens
 a pack is reachable, whether the shop answers with the Automaton running, whether every
-wrapper's guarantee was kept, and whether a collection of sixty-five thousand
-characters can be sold at all. Every rung plays
+wrapper's guarantee was kept, whether a collection of sixty-five thousand
+characters can be sold at all, and whether the **muster** puts a rank of portraits on
+screen when a demand is answered. Every rung plays
 against a collection the size a rung that deep would have, because what a player owns is
 its own axis of end game (ADR 0011) and a harness that only grew the pull missed both of
 the faults that cost the most. Every problem it checks for is one that shipped.

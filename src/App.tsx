@@ -31,6 +31,26 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: 'settings', label: 'Settings', icon: 'gear' },
 ]
 
+/**
+ * Whether the second economy has started for this account.
+ *
+ * The board is what comes *after* the credit curve, and shipping it as a
+ * seventh tab from the first summon meant a new player's first look at it was
+ * five demands they could not pay for and a shelf they could not afford --
+ * which is a tutorial in being stuck. It opens on the first spare, which is
+ * the first copy of a stack already merged to ★12: exactly the moment the
+ * summon stops being the whole game.
+ */
+function boardOpen(s: ReturnType<typeof useGame.getState>): boolean {
+  return (
+    s.spares > 0 ||
+    s.scrip > 0 ||
+    s.renown > 0 ||
+    Object.values(s.renownLevels).some((n) => n > 0) ||
+    s.board.commissions.length > 0
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('roll')
   const credits = useGame((s) => s.credits)
@@ -68,7 +88,18 @@ export default function App() {
 
   // The machine keeps pressing whatever screen you are on. It only waits for a
   // wrapper to be torn while there is somebody watching it happen.
-  useAutomaton(tab === 'roll')
+  useAutomaton(tab)
+
+  /* Sticky for the session, so a board spent back down to nothing mid-visit
+     does not take its own tab away underneath the player. Not persisted: the
+     snapshot answers this correctly on every load, and a flag on the device
+     would show the board to the next account to sign in here. */
+  const opened = useGame(boardOpen)
+  const [everOpen, setEverOpen] = useState(false)
+  // Adjusted during render rather than in an effect: it is derived from what
+  // this render already knows, and an effect would paint the tab away and back.
+  if (opened && !everOpen) setEverOpen(true)
+  const tabs = opened || everOpen ? TABS : TABS.filter((t) => t.key !== 'raids')
 
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt
@@ -125,7 +156,7 @@ export default function App() {
       </header>
 
       <nav className="tabs">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             className={`tab ${tab === t.key ? 'active' : ''}`}
