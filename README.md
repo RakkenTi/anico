@@ -80,6 +80,20 @@ finishing.
 
 ![Contracts](./docs/img/contracts.jpg)
 
+### See where everybody is
+
+Six boards, ranked across the instance: credits in hand, characters claimed, cards held,
+the brightest stack anybody has merged, the best card anybody has pulled, and summons
+pressed. Your own row is marked wherever it lands, and it is appended below the top ten if
+you did not make it.
+
+The dot matters more than the ranking. No rule in Anico is competitive: nobody can take a
+card off you, and nobody's collection changes anybody else's draws. So the point of this
+page is not the race. It is knowing that the other accounts are being played, and that
+somebody else is summoning right now. Sandbox profiles are left off every board.
+
+![The leaderboard](./docs/img/ranks.jpg)
+
 ### The rest
 
 - **Two devices at once**: the server owns every rule and pushes the result to every open
@@ -89,7 +103,12 @@ finishing.
 - **Coins**: drop on about one summon in fifty
 - **Series sets**: 3, 5 and 10 characters from one show pay a bonus
 - **Daily bonus**, **stats charts**, **three themes**, and a PWA install
-- **Admin**: the character pool, the catalog crawl, invites and accounts, in Settings
+- **Change your name** whenever you like, in Settings, confirmed with your password. The
+  boards and the admin's invite list follow it
+- **Nothing shouts on a phone**: receipts, meaning what a pull earned and what a stack
+  merged to, are desktop only. Four at once cover the bottom of a small screen and the
+  numbers are all in the header anyway. Refusals still arrive, at any size
+- **Admin**: the character pool, the catalog crawl, invite links and accounts, in Settings
 
 ![Collection](./docs/img/collection.jpg)
 
@@ -156,8 +175,12 @@ Once it is up:
 2. The catalog fills in the background: four sweeps of AniList, 800 requests 15s apart, so
    a complete catalog takes about 3½ hours and resumes if you restart. You can play
    immediately, because the first sweep is most-popular-first.
-3. Invite the others: **Settings, Instance, Create an invite link.** Registration is
-   closed to anyone without one.
+3. Invite the others: **Settings, Instance, Create an invite link.** A link carries a seat
+   count: one use, five, twenty-five, or no limit, which is the one to paste into a group
+   chat. Each row shows the URL, how many seats are spent and who came through it.
+   Withdrawing a link nobody used deletes it; withdrawing one people joined through keeps
+   the row, because it is the record of how those accounts exist. Registration is closed to
+   anyone without a link.
 
 ### Behind a reverse proxy
 
@@ -210,6 +233,11 @@ by label, so neither touches anything else on the box. Two things to know: both 
 `/var/run/docker.sock`, which is equivalent to root on the host, and watchtower following
 `:latest` means **migrations run unattended**. Pin a tag if you would rather approve each
 upgrade, or drop either service from the file.
+
+Open tabs take care of themselves. The instance hashes the client it is serving and
+announces that on every live connection, so a container that comes back on a new image is
+noticed by every browser still pointed at it: they say so and reload, once nothing is
+mid-pull. Nobody is left on last week's bundle talking to this week's API.
 
 ## Development
 
