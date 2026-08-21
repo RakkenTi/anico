@@ -208,73 +208,85 @@ purchase).
 lines of six levels, each level five times the price of the one below it. Badges change
 what the loop *is* — whether packs exist, how many wishes may be pinned, what a pack
 promises — rather than how fast it runs, which is why they end and upgrades do not. The
-whole tree costs 63.9M credits, which is why there is a second one bought with **Renown**
-(ADR 0013).
+whole tree costs 63.9M credits, which is why **the works** exist above it: past that
+price the shop had nothing left to sell (ADR 0014).
 
-**Upgrade** — the other half of the shop: nine lines, six of them with no last level
-(Sell Value, Open Speed, Pack Size, Coin Drops, Extra Packs, Merge Value) and three that
-buy a shape and finish (Auto Summon, Offline Earnings, Wish Odds). Every level costs a
+**Upgrade** — the other half of the shop: eighteen lines, nine of them the summon's and
+nine the works'. Nine have no last level (Sell Value, Open Speed, Pack Size, Coin Drops,
+Extra Packs, Merge Value, Foundry, Belt Speed, Outfitters) and the rest
+buy a shape and finish (Auto Summon, Offline Earnings, Wish Odds, Caravans, and the five
+ceilings the summon runs into: Finer Mill, Called Shot, Longer Table, Wider Deal, Deeper
+Merges). Every level costs a
 fixed multiple of the last, and always more than the effect it buys. Badges give the game
 its shape; upgrades give it its curve, and the curve has no end (ADR 0007).
 
 **Spare** — the scrap a duplicate sheds, in proportion to how deep the stack it lands on
 already is. A copy landing on a stack halfway to ★12 is worth half a spare; one landing
-on a stack at the cap is worth a whole one, because at four thousand copies its face
-value against the merged core is arithmetically nothing. It was all or nothing at ★12
-once, which meant a hundred and thirty-six hours of no spares at all followed by a
-thousand a press — every card in a pull is a *distinct* character, so a stack gains at
-most one copy a press whatever the pull holds, and the whole collection therefore crosses
-the line at the same moment. The line is fixed at twelve rather than at the player's own
-star cap: tying it to the cap meant buying **Deeper Merges** throttled the **Refinery**
-until every stack had doubled again (ADR 0013).
+on a stack at the cap is worth a whole one. It was all or nothing at ★12 once, which
+meant a hundred and thirty-six hours of no spares at all followed by a thousand a press —
+every card in a pull is a *distinct* character, so a stack gains at most one copy a press
+whatever the pull holds, and the whole collection therefore crosses the line at the same
+moment (ADR 0013).
 
-**Refinery** — what turns spares into **Scrip**, flat per spare and never by credit
-value. Its rate — spares a press — is quoted on the board, because a tank that only fills
-answers nothing about whether the player is getting anywhere. Paying by value would make feeding spare Mythics the optimal play and a collection
-would be shredded to feed a machine. It runs while nobody is watching, at the same rate
-it runs while somebody is; what being away costs is the **board**, not the tank.
+**The works** — the Press, the Factory and Expeditions, together with the contract board.
+Three faucets and a goal board, all paying **credits**, all bought from the one shop.
+There was a second currency here once; what it cost was the summon's own ceilings sitting
+behind a mechanic you had to play to reach them, and no mechanic locks another one's
+upgrades now (ADR 0014). What chains between them is material, not permission.
 
-**Scrip** — what the Refinery pays and raids cost. Denominated in *presses* rather than
-credits: a press deals a bounded number of real cards however large the pull is, so
-copies arrive at a flat rate that no upgrade can multiply. That is the whole reason the
-second economy exists — anything paid in credits joins a river already flowing at a
-quadrillion a second and is irrelevant on arrival.
+**Press** — what mills spares into **scrap**, flat per spare and never by credit value.
+Paying by value would make feeding spare Mythics the optimal play and a collection would
+be shredded to feed a machine. It runs while nobody is watching at the rate it runs while
+somebody is.
 
-**Raid** — a demand for a breadth of one **series** at a depth of stars. Costs Scrip,
-pays **Renown**, and reads nothing else about a character: not credit value, and
+**Scrap** — what the Press pays and the Factory eats. A flat stream: a press deals a
+bounded number of real cards however large the pull is, so about one scrap arrives per
+press whatever the credit curve is doing. That flatness is what stops the works becoming
+free money.
+
+**Factory** — the belt that melts scrap into credits, every press and every hour away.
+Steady throughput, and the faucet that needs no hand on the button. What one scrap is
+worth is a fraction of a whole *press* rather than a fixed number of credits — priced
+against a card it was 0.1% of the summon by a quadrillion, and priced against a press it
+tracks whatever the summon has become (ADR 0014).
+
+**Expedition** — a lump of scrap spent now for a much larger lump of credits later. Worth
+about thirteen times what that scrap would have earned on the belt, in exchange for
+locking it up for the length of a road. Paced in **presses**, not minutes: a caravan
+moves one step per summon and a week away leaves it exactly where it stood, because
+ADR 0004 took every clock out of this game. Scarcity is caravans.
+
+**Route** — one expedition's road: a distance in presses, a price in scrap, a bounty, and
+the size of roster it needs. Five of them, longest last.
+
+**Contract** — a demand for a breadth of one **series** at a depth of stars. Free to
+enter, pays credits, and reads nothing else about a character: not credit value, and
 certainly not an invented stat. An earlier attempt gave characters numbers and the
 characters stopped mattering; scoring on credit value only renames rarity, so the answer
-would always be "send the eleven Mythics" (ADR 0013). Nothing is gambled — a raid you
-cannot answer is refused, not lost.
+would always be "send the eleven Mythics". Stored as a number of *presses* and multiplied
+out at payout time, so it is the same size of prize at ten thousand credits and at a
+quadrillion. Nothing is gambled — one you cannot fulfil is refused, not lost.
 
-**Board** — the five raids posted at once. Answering one generates its replacement, so
-there is no refresh and no daily reset: ADR 0004 took every clock out of this game. Each
-row is posted at the rung the collection is standing on rather than at a rung drawn
-blind: a board of five demands nobody can meet is a wall, not a mechanic (ADR 0013).
+**Board** — the five contracts posted at once. Fulfilling one posts its replacement, so
+there is no refresh and no daily reset. Each row is posted at the rung the collection is
+standing on rather than at a rung drawn blind: a board of five demands nobody can meet is
+a wall, not a mechanic (ADR 0013).
 
-**Commission** — a raid taken on rather than answered. Only ever one you *cannot*
-currently answer, which is what makes the two different: a raid tests what you hold and a
-commission is what you go and get. It costs no Scrip, pays two and a half times as much,
-and waits as long as you like. What it costs is one of three slots — scarcity here is
-slots, not time. Called a **pin** on screen, and shown in place on the board rather than
-in a panel of its own: it is a state a demand is in, not a second kind of thing.
+**Pin** — a contract taken on rather than fulfilled. Only ever one you *cannot* currently
+fulfil, which is what makes the two different: a contract tests what you hold and a pin
+is what you go and get. It pays two and a half times as much and waits as long as you
+like. What it costs is one of three slots — scarcity here is slots, not time.
 
-**Muster** — answering a demand, watched rather than read. A rank of the player's own
-cards — the ones that satisfy the demand, at the stars they merged to — deals in, the
-demand stamps answered, and the Renown lands. It reads no rule and changes none; the
-payout has already settled by the time it plays. It exists because summoning has a
-wrapper to tear and the board shipped without anything at all, which is how a mechanic
-ends up reading as a spreadsheet with buttons.
+**Muster** — fulfilling a contract, watched rather than read. A rank of the player's own
+cards — the ones that satisfy it, at the stars they merged to — deals in, the demand
+stamps answered, and the credits land. It reads no rule and changes none; the payout has
+already settled by the time it plays. It exists because summoning has a wrapper to tear
+and the board shipped without anything at all, which is how a mechanic ends up reading as
+a spreadsheet with buttons.
 
-**Renown** — what raids pay and the second tree costs. Not convertible to credits in
-either direction, and still the strongest progression in the game, because what it buys
-are the ceilings the credit engine runs into: how deep a stack may merge, how many cards
-a pull deals, how many wrappers fit on a screen. A faucet adds income to a river; this is
-a lever on the engine, so it is worth more the more has already been built.
-
-**Called Shot** — the Renown line that points a share of every pull at one series. The
-only way in the game to collect on purpose rather than by waiting, and it exists because
-a raid asks for a series by name.
+**Called Shot** — the shop line that points a share of every pull at one series. The only
+way in the game to collect on purpose rather than by waiting, and it exists because a
+contract asks for a series by name.
 
 **Opening discount** — the first five rungs of the endless lines, sold at a fraction of
 list price that fades out by the sixth. The ramp on to the curve: an exponential ladder

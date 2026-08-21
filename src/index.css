@@ -1241,6 +1241,21 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
    you. Used by the Renown shelf, where "stacks merge to ★13" is true and
    answers nothing. */
 .row-blurb { font-size: 11px; line-height: 1.45; color: var(--text-dim); }
+
+/* Where the summon's shop ends and the works' begins. Same shelf and the same
+   credits -- nothing here is locked behind anything (ADR 0014) -- but eighteen
+   rows in one run is a list nobody reads to the bottom of. */
+.shelf-split {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 16px 0 4px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+}
+.shelf-split b { font-family: var(--serif); font-size: 0.95rem; }
+.shelf-split span { font-size: 11px; line-height: 1.45; color: var(--text-dim); }
 .row-arrow { color: var(--value-soft); font-weight: 700; }
 .row-cost {
   font-variant-numeric: tabular-nums;
@@ -2452,44 +2467,12 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .version-line b { color: var(--value-soft); font-variant-numeric: tabular-nums; }
 
-/* ------------------------------------------------------------- the board */
+/* -------------------------------------------------------------- the works */
 
-/* The second economy (ADR 0013). The rows are the mechanic: a bar showing what
-   you hold against what a demand wants is the only thing in the game that
-   makes one particular character worth wanting. Everything else on this page
-   exists to get out of that bar's way -- it used to be four sibling panels of
-   prose, which is how a mechanic ends up reading as a settings screen. */
-.raids-view { display: flex; flex-direction: column; gap: 12px; }
-
-.raids-lede {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 2px solid var(--accent);
-  background: var(--surface);
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--text-dim);
-}
-.raids-lede b { color: var(--text); font-weight: 600; }
-
-/* A setting elsewhere has switched this page off. Louder than the lede on
-   purpose: nothing on the board will ever move until it is changed. */
-.raids-warn {
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  background: var(--accent-soft);
-  font-size: 13px;
-  line-height: 1.55;
-}
-.raids-warn b { color: var(--accent); }
-
-.refinery-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
-}
+/* Shared by the Press, the Factory and Expeditions: a labelled read-out with
+   a number, a note and sometimes a bar. Each of those three views owns its own
+   stylesheet for everything else it draws, because four people built them at
+   once and one shared file is one shared merge conflict. */
 .meter {
   display: flex;
   flex-direction: column;
@@ -2513,131 +2496,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   overflow: hidden;
 }
 .meter-bar > span { display: block; height: 100%; background: var(--value); }
-
-/* Called Shot sits with the raids rather than with the meters: it is not a
-   read-out, it is the lever that turns a row you cannot answer into one you
-   can, and it belongs next to the rows it moves. */
-.aim-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 4px;
-  background: var(--well);
-}
-.aim-state {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 260px;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-dim);
-}
-.aim-state b { color: var(--text); }
-.aim-state svg, .aim-state img { width: 18px; height: 18px; flex: none; }
-.aim-picker { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; margin-top: 6px; }
-
-.raid-list { display: flex; flex-direction: column; gap: 6px; }
-.raid-group {
-  margin: 8px 0 2px;
-  font-family: var(--sans);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.raid-group:first-child { margin-top: 0; }
-
-.raid-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--well);
-}
-.raid-row.answerable { border-color: var(--line-ok); background: rgba(95, 194, 126, 0.05); }
-.raid-row.pinned { border-left: 3px solid var(--value); }
-
-/* Faces, because "14 characters at ★5" is an inventory line and five portraits
-   of people you spent a week merging is a reason to press the button. */
-.raid-faces { display: flex; flex: none; }
-.raid-faces img,
-.raid-facehole {
-  width: 34px;
-  height: 44px;
-  object-fit: cover;
-  border-radius: 3px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface-2);
-  margin-left: -12px;
-  box-shadow: 2px 0 0 var(--well);
-}
-.raid-faces img:first-child, .raid-facehole { margin-left: 0; }
-/* Nothing held from this series yet, so the row wears the board's own mark
-   rather than five empty frames. */
-.raid-facehole { display: grid; place-items: center; opacity: 0.3; }
-.raid-facehole .icon { width: 18px; height: 18px; }
-
-.raid-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.raid-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.raid-tier { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
-.raid-series { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.raid-chip {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  border-radius: 2px;
-  border: 1px solid currentColor;
-}
-.raid-chip.go { color: var(--ok); }
-.raid-chip.pin { color: var(--value); }
-.raid-ask { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
-.raid-ask b { color: var(--text); }
-
-/* A bar rather than a number, because "seven of ten" is a thing you feel and
-   "70%" is a thing you read. */
-.raid-bar {
-  position: relative;
-  height: 18px;
-  border-radius: 3px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.raid-bar > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--accent-soft);
-  border-right: 2px solid var(--accent);
-}
-.raid-row.answerable .raid-bar > span { background: rgba(95, 194, 126, 0.18); border-right-color: var(--ok); }
-.raid-bar > em {
-  position: relative;
-  display: block;
-  text-align: center;
-  font-style: normal;
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--text);
-}
-.raid-actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.raid-reward { font-size: 12px; color: var(--value); white-space: nowrap; }
 
 /* --------------------------------------------------------- the muster */
 
@@ -2772,12 +2630,3 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .muster-close { animation: none; }
 }
 
-@media (max-width: 760px) {
-  /* Two columns and the buttons underneath: three columns of this is three
-     ellipses. Three faces rather than five, and the series title wraps rather
-     than truncating -- a raid you cannot read the name of is not a raid. */
-  .raid-row { grid-template-columns: auto minmax(0, 1fr); }
-  .raid-actions { grid-column: 1 / -1; justify-content: flex-start; }
-  .raid-faces img:nth-child(n + 4) { display: none; }
-  .raid-series { white-space: normal; }
-}

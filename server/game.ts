@@ -18,12 +18,14 @@ import {
   RARITY_MIN,
   SERIES_MILESTONES,
   COIN_BASE_MEAN,
+  PACK_COST_PER_CARD,
   coinAmount,
   dailyAmount,
   duplicateCompensation,
   packCost,
   rarityOf,
   rollCoinDrop,
+  MAX_STARS,
   stackValue,
   starsFor,
 } from '../src/game/economy.js'
@@ -54,17 +56,13 @@ import {
   type PoolPick,
 } from './catalog.js'
 import {
-  BASE_MAX_STARS,
-  EMPTY_RENOWN,
-  RENOWN_DEFS,
-  renownCost,
-  renownEffects,
-  renownMaxed,
-  sanitizeRenown,
-  type Renown,
-  type RenownEffects,
-  type RenownKey,
-} from '../src/game/renown.js'
+  ROUTES,
+  WAYPOINTS,
+  routePay,
+  waypointsPassed,
+  type Expedition,
+  type Works,
+} from '../src/game/industry.js'
 import {
   COMMISSION_BONUS,
   COMMISSION_SLOTS,
@@ -73,15 +71,14 @@ import {
   MIN_CAST,
   MUSTER_FACES,
   RAID_BOARD,
+  contractPresses,
+  contractWork,
   demandFor,
   fitTier,
-  raidCost,
-  raidReward,
-  raidWork,
-  type Commission,
+  type Contract,
   type Musterer,
-  type Raid,
-} from '../src/game/raids.js'
+  type Pinned,
+} from '../src/game/contracts.js'
 import { autoSellFloor, instancePool, sanitizeSettings, type ServerSettings } from './rules.js'
 import { streamsFor } from './bus.js'
 import type { Player } from './auth.js'
@@ -124,6 +121,35 @@ const fail = (msg: string): never => {
  * be five figures of cards and most updates do not touch it -- so this is how
  * one that happens to be looking at the collection knows to fetch it again.
  */
+/**
+ * How many distinct characters a player holds.
+ *
+ * Cached against `collection_rev`, which is bumped by `touchCollection`
+ * whenever a claim is written or sold -- so the cache is exactly as fresh as
+ * the collection it counts, and it costs one map lookup on the hot path.
+ *
+ * Worth caching because the hot path is `snapshot`, which the Automaton
+ * reaches several times a second, and counting is not free at end-game size:
+ * `COUNT(*)` over sixty-five thousand claims measures 2.33ms, against a
+ * snapshot the previous release got down to 0.5ms. Expeditions gate on roster
+ * size, so the number has to be in every snapshot; it does not have to be
+ * counted in every snapshot.
+ *
+ * One process per instance (ADR 0001), so a module-level map is the whole
+ * cache. Nothing else writes this database.
+ */
+const reachCache = new Map<number, { rev: number; n: number }>()
+
+function reachOf(db: DB, playerId: number, rev: number): number {
+  const hit = reachCache.get(playerId)
+  if (hit && hit.rev === rev) return hit.n
+  const n = (
+    db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(playerId) as { n: number }
+  ).n
+  reachCache.set(playerId, { rev, n })
+  return n
+}
+
 function touchCollection(db: DB, playerId: number): void {
   db.prepare('UPDATE player_state SET collection_rev = collection_rev + 1 WHERE player_id = ?').run(
     playerId,
@@ -169,11 +195,13 @@ interface StateRow {
   pending_sell_json: string | null
   /** Bumped whenever this player's claims change, so other devices can tell. */
   collection_rev: number
-  /** Milled copies waiting to become Scrip: see ADR 0013. */
+  /** Spare fractions waiting to become scrap: see ADR 0014. */
   spares: number
   scrip: number
   renown: number
   renown_json: string
+  /** Scrap in the yard, waiting for the Factory's belt. */
+  scrap: number
   /** The series Called Shot is pointed at. */
   aim_series: string | null
   /** Smoothed spares one pull is worth, so time away fills the tank too. */
@@ -216,15 +244,33 @@ function loadoutOf(row: StateRow): {
   badges: Badges
   upgrades: Upgrades
   fx: ReturnType<typeof computeEffects>
-  renown: Renown
-  /** What the second tree has raised: see ADR 0013. */
-  rx: RenownEffects
 } {
   const badges: Badges = { ...EMPTY_BADGES, ...JSON.parse(row.badges_json) }
   const upgrades: Upgrades = { ...EMPTY_UPGRADES, ...JSON.parse(row.upgrades_json || '{}') }
-  const renown = sanitizeRenown(JSON.parse(row.renown_json || '{}'))
-  return { badges, upgrades, fx: computeEffects(badges, upgrades), renown, rx: renownEffects(renown) }
+  return { badges, upgrades, fx: computeEffects(badges, upgrades) }
 }
+
+/**
+ * What one card is worth to this player, right now.
+ *
+ * Every faucet outside the summon is quoted against this rather than in flat
+ * credits, and it is the whole reason the works stay relevant across twenty
+ * orders of magnitude (ADR 0014): a contract worth "four thousand credits" is
+ * a fortune at ten thousand and invisible at a quadrillion, while one worth
+ * "eight hundred presses" is the same size of prize at either end.
+ *
+ * `auto_yield` is already a smoothed average of what a press nets this player,
+ * with every badge, every upgrade and the size of the instance's pool baked
+ * in. Per card is that over the pull it came from.
+ */
+function creditsPerCard(row: StateRow, fx: ReturnType<typeof computeEffects>): number {
+  const cards = Math.max(1, fx.cardsPerPull)
+  // Before the first pull there is no average yet, so fall back to what the
+  // shop itself prices a card at. Otherwise a new player's works read zero and
+  // look broken rather than empty.
+  return row.auto_yield > 0 ? row.auto_yield / cards : PACK_COST_PER_CARD
+}
+
 
 export interface OwnedCharacter extends PoolPick {
   claimedAt: number
@@ -313,7 +359,7 @@ function addCopy(
    * line in the tree throttled the economy that pays for it. A stack still
    * stops growing at its own cap; it just keeps shedding.
    */
-  const spare = Math.min(1, row.copies / Math.pow(2, BASE_MAX_STARS))
+  const spare = Math.min(1, row.copies / Math.pow(2, MAX_STARS))
   if (row.copies >= Math.pow(2, maxStars)) return { stars: row.stars, merged: false, spare }
   const copies = row.copies + 1
   const stars = starsFor(copies, maxStars)
@@ -379,24 +425,13 @@ export interface Snapshot {
   upgrades: Upgrades
   settings: ServerSettings
   wishes: PoolPick[]
-  /** Milled copies still short of a whole Scrip. */
-  spares: number
-  /**
-   * What a press has recently been worth in spares, smoothed.
-   *
-   * The Refinery's rate is the only honest answer to "am I getting anywhere",
-   * and the page could only show a tank filling with no idea how fast. Already
-   * kept, because time away is settled at this rate.
-   */
-  sparesPerPull: number
-  scrip: number
-  renown: number
-  renownLevels: Renown
-  /** The ceilings the second tree has raised: see ADR 0013. */
-  ceilings: RenownEffects
+  /** Everything the works are doing right now (ADR 0014). */
+  works: Works
+  /** What one card is worth to this player: every payout is quoted against it. */
+  creditsPerCard: number
   /** The series Called Shot is pointed at. */
   aimSeries: string | null
-  board: { raids: Raid[]; commissions: Commission[] }
+  board: { raids: Contract[]; commissions: Pinned[] }
   collection?: OwnedCharacter[]
   /** What the machine did while nobody was watching. Absent when it did nothing. */
   offline?: { pulls: number; credits: number; minutes: number }
@@ -406,8 +441,9 @@ export interface Snapshot {
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
-  const { badges, upgrades, fx, renown, rx } = loadoutOf(row)
+  const { badges, upgrades, fx } = loadoutOf(row)
   const size = packSizeFor(fx, !!player.sandbox_of)
+  const perCard = creditsPerCard(row, fx)
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
@@ -431,17 +467,28 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     upgrades,
     settings,
     wishes: wishesOf(db, player.id),
-    spares: Math.floor(row.spares),
-    sparesPerPull: row.auto_spares,
-    scrip: row.scrip,
-    renown: row.renown,
-    renownLevels: renown,
-    ceilings: rx,
+    works: {
+      spares: Math.floor(row.spares),
+      sparesPerScrap: fx.sparesPerScrap,
+      sparesPerPull: row.auto_spares,
+      scrap: Math.floor(row.scrap),
+      belt: fx.belt,
+      scrapWorth: fx.scrapWorth,
+      // What the belt paid over one press at the current rate, which is the
+      // number the Factory quotes. Derived rather than stored: it is a rate,
+      // and a rate read off the last press is a rate that lies after an
+      // upgrade is bought.
+      factoryRate: Math.floor(Math.min(row.scrap, fx.belt) * perCard * fx.scrapWorth),
+      reach: reachOf(db, player.id, row.collection_rev),
+      caravans: fx.caravans,
+      out: expeditionsOf(db, player.id),
+    },
+    creditsPerCard: perCard,
     aimSeries: row.aim_series,
     // Read rather than filled: `snapshot` is reached several times a second by
     // the Automaton, and topping the board up is a random pick over a
     // collection. The board only changes when somebody acts on it.
-    board: boardOf(db, player.id),
+    board: boardOf(db, player.id, perCard, fx.cardsPerPull),
     collection: withCollection ? collectionOf(db, player.id, fx.sellMult, fx.mergeMult) : undefined,
     serverNow: Date.now(),
   }
@@ -478,7 +525,7 @@ export function settleOffline(
 ): { pulls: number; credits: number; minutes: number } | null {
   if (player.sandbox_of) return null
   const row = loadState(db, player.id)
-  const { fx, rx } = loadoutOf(row)
+  const { fx } = loadoutOf(row)
   const now = Date.now()
   const stamp = () =>
     db.prepare('UPDATE player_state SET auto_at = ? WHERE player_id = ?').run(now, player.id)
@@ -517,7 +564,16 @@ export function settleOffline(
    * never costs anything -- what it costs is the board, which only the player
    * or a machine on an open device ever plays (ADR 0013).
    */
-  mill(db, player.id, pulls * row.auto_spares, rx, false)
+  /*
+   * The works run out there too, at the rate they run in here.
+   *
+   * Being away has never cost anything in this game and it does not start now:
+   * spares accrue, the Press mills them, and the Factory's belt melts what it
+   * can reach. The one thing that does not happen is a caravan moving, because
+   * a caravan moves when you press and nobody was pressing.
+   */
+  press(db, player.id, pulls * row.auto_spares, fx, false)
+  runFactory(db, player.id, pulls, fx, creditsPerCard(row, fx))
   return { pulls, credits, minutes: Math.round(elapsed / 60_000) }
 }
 
@@ -618,8 +674,10 @@ export function roll(
   notes: string[]
   /** Copies past what a stack can still merge, milled on arrival. */
   spares: number
-  /** What the Refinery got out of them. */
-  scrip: number
+  /** Scrap the Press got out of them. */
+  scrap: number
+  /** Credits the Factory and the caravans paid on the back of this press. */
+  melted: number
   /** Cards the pull held beyond what it dealt: opened by the machine, not seen. */
   hidden: number
   /** What those cards were appraised for. */
@@ -628,7 +686,7 @@ export function roll(
 } {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
-  const { fx, rx } = loadoutOf(row)
+  const { fx } = loadoutOf(row)
   const sandbox = !!player.sandbox_of
   const wanted = Math.max(0, Math.floor(packsWanted))
   const multi = wanted >= 1
@@ -671,8 +729,8 @@ export function roll(
    * pull of a million cards would be a million rows written, a million images
    * mounted, and the same answer.
    */
-  const budget = dealtFor(total, fx.cardRate, rx.maxDealt)
-  const packCount = pack ? Math.min(packs, rx.maxStacks) : 1
+  const budget = dealtFor(total, fx.cardRate, fx.maxDealt)
+  const packCount = pack ? Math.min(packs, fx.maxStacks) : 1
   const perPack = pack
     ? Math.max(1, Math.min(packSize, Math.floor(budget / packCount)))
     : Math.min(total, budget)
@@ -699,8 +757,8 @@ export function roll(
    * purpose, and it exists because a raid asks for a series by name -- without
    * it the answer to "go and get more Frieren" is "keep pressing and hope".
    */
-  if (rx.aimShare > 0 && row.aim_series) {
-    const aimed = drawFromSeries(db, row.aim_series, Math.floor(dealt * rx.aimShare))
+  if (fx.aimShare > 0 && row.aim_series) {
+    const aimed = drawFromSeries(db, row.aim_series, Math.floor(dealt * fx.aimShare))
     if (aimed.length > 0) pool.unshift(...aimed)
   }
   if (pool.length === 0) {
@@ -831,7 +889,7 @@ export function roll(
      * one summon that is free and unlimited was the one it ignored.
      */
     const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
-    const r = takeAll(db, player, session, fx, rx, seriesPaid)
+    const r = takeAll(db, player, session, fx, seriesPaid)
     results.forEach((entry, i) => {
       if (!wasOwned[i]) entry.fresh = true
     })
@@ -840,9 +898,19 @@ export function roll(
               series_paid_json = ? WHERE player_id = ?`,
     ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), player.id)
     const queued = queueAutoSell(db, player, settings, session)
-    const { scrip } = mill(db, player.id, r.spares, rx, pack)
+    /*
+     * The works, on the back of the press that fed them.
+     *
+     * All three in one transaction and in this order: the Press mills what the
+     * pull just shed, the Factory melts what the belt can reach, and every
+     * caravan takes one step. A press is the unit the whole industry is
+     * denominated in, so a press is where all of it happens.
+     */
+    const { scrap } = press(db, player.id, r.spares, fx, pack)
+    const melt = runFactory(db, player.id, 1, fx, creditsPerCard(row, fx))
+    const walked = walkCaravans(db, player.id, 1)
     touchCollection(db, player.id)
-    return { ...r, ...swept, queued, scrip }
+    return { ...r, ...swept, queued, scrap, melted: melt.paid + walked }
   })()
 
   return {
@@ -861,10 +929,12 @@ export function roll(
     // Wishes fulfilled, series sets completed, the Emerald dowry. A handful at
     // most: a pack of a hundred should not arrive with a hundred toasts.
     notes: opened.notes.slice(0, 4),
-    /** Copies past what a stack can still merge, milled on arrival (ADR 0013). */
+    /** Spare fractions this pull shed, milled on arrival (ADR 0014). */
     spares: opened.spares,
-    /** What the Refinery got out of them. */
-    scrip: opened.scrip,
+    /** Scrap the Press got out of them. */
+    scrap: opened.scrap,
+    /** Credits the Factory and the caravans paid on the back of this press. */
+    melted: opened.melted,
     hidden: overflow,
     hiddenFor,
     /*
@@ -1055,50 +1125,140 @@ function payClaimBonuses(
 }
 
 /**
- * The Refinery.
+ * The Press.
  *
  * Flat per spare, and never by credit value. Paying by value would make
  * feeding spare Mythics the optimal play and a player would shred their best
  * stacks to feed a machine, which is the "send the Mythics" failure wearing an
- * apron (ADR 0013). A flat rate denominates the second economy in *presses*,
- * and a press deals a bounded number of cards however large the pull is, so
- * nothing the credit curve does can inflate it.
+ * apron. A flat rate denominates the works in *presses*, and a press deals a
+ * bounded number of cards however large the pull is, so nothing the credit
+ * curve does can inflate the stream the Factory runs on (ADR 0014).
  *
  * The remainder is kept rather than rounded away: a spare that fell short of a
- * whole Scrip is still a spare, and losing it would make the rate a lie. That
- * goes for fractions of one too, now that a copy sheds as much scrap as its
- * stack is deep -- a collection turning up a third of a spare a press has to
- * be able to reach its first Scrip, and rounding every press to nothing would
- * leave it there forever. The snapshot quotes whole spares; the tank keeps
- * what is left over.
+ * whole scrap is still a spare, and losing it would make the rate a lie. That
+ * goes for fractions of one too, since a copy sheds as much scrap as its stack
+ * is deep -- a collection turning up a third of a spare a press has to be able
+ * to reach its first scrap, and rounding every press to nothing would leave it
+ * there forever. The snapshot quotes whole spares; the tank keeps what is left.
  */
-function mill(
+function press(
   db: DB,
   playerId: number,
   spares: number,
-  rx: RenownEffects,
+  fx: ReturnType<typeof computeEffects>,
   smooth: boolean,
-): { scrip: number } {
-  if (spares <= 0 && !smooth) return { scrip: 0 }
+): { scrap: number } {
+  if (spares <= 0 && !smooth) return { scrap: 0 }
   const row = db
     .prepare('SELECT spares FROM player_state WHERE player_id = ?')
     .get(playerId) as { spares: number }
   const pot = row.spares + Math.max(0, spares)
-  const scrip = Math.floor(pot / rx.sparesPerScrip)
+  const scrap = Math.floor(pot / fx.sparesPerScrap)
   db.prepare(
-    `UPDATE player_state SET spares = ?, scrip = scrip + ?,
+    `UPDATE player_state SET spares = ?, scrap = scrap + ?,
             auto_spares = CASE WHEN ? THEN auto_spares * ? + ? * ? ELSE auto_spares END
       WHERE player_id = ?`,
   ).run(
-    pot - scrip * rx.sparesPerScrip,
-    scrip,
+    pot - scrap * fx.sparesPerScrap,
+    scrap,
     smooth ? 1 : 0,
     1 - YIELD_SMOOTHING,
     Math.max(0, spares),
     YIELD_SMOOTHING,
     playerId,
   )
-  return { scrip }
+  return { scrap }
+}
+
+/**
+ * The Factory.
+ *
+ * Eats scrap off the yard at the belt's rate and pays credits for it. Runs on
+ * every press and, through `settleOffline`, on every hour nobody was here --
+ * it is the faucet that does not need a hand on the button, which is the whole
+ * of how it differs from the summon.
+ *
+ * Its input is flat and its rate is exponential: the belt can only pull what
+ * the Press made, and what a scrap is *worth* is an endless shop line. So the
+ * Factory can never outrun the collection that feeds it, and it can always be
+ * made worth pouring credits into. That is the shape the second currency was
+ * invented to get, reached without inventing one (ADR 0014).
+ */
+function runFactory(
+  db: DB,
+  playerId: number,
+  presses: number,
+  fx: ReturnType<typeof computeEffects>,
+  perCard: number,
+): { melted: number; paid: number } {
+  if (presses <= 0) return { melted: 0, paid: 0 }
+  const row = db
+    .prepare('SELECT scrap FROM player_state WHERE player_id = ?')
+    .get(playerId) as { scrap: number }
+  const melted = Math.min(row.scrap, fx.belt * presses)
+  if (melted <= 0) return { melted: 0, paid: 0 }
+  // `fx.scrapWorth` is already the Foundry's multiple, so the level is spent.
+  const paid = Math.floor(melted * perCard * fx.scrapWorth)
+  db.prepare(
+    'UPDATE player_state SET scrap = scrap - ?, credits = credits + ? WHERE player_id = ?',
+  ).run(melted, paid, playerId)
+  return { melted, paid }
+}
+
+/**
+ * Walk every caravan on the road, and pay the waypoints they passed.
+ *
+ * Distance is counted in presses, not minutes: ADR 0004 took every clock out
+ * of this game, and an expedition on a timer is that mistake wearing a hat. A
+ * player who closes the tab for a week comes back to a caravan exactly where
+ * they left it, and it moves the moment they press again.
+ *
+ * Waypoints pay themselves along the way so a long route is not five thousand
+ * presses of nothing; the last one waits for a hand, because arriving is the
+ * part worth watching.
+ */
+function walkCaravans(db: DB, playerId: number, presses: number): number {
+  if (presses <= 0) return 0
+  const rows = db
+    .prepare('SELECT * FROM expeditions WHERE player_id = ?')
+    .all(playerId) as ExpeditionRow[]
+  let paid = 0
+  for (const e of rows) {
+    const route = ROUTES.find((r) => r.key === e.route)
+    if (!route) continue
+    const walked = Math.min(route.distance, e.walked + presses)
+    // The final waypoint is the arrival, and the arrival is collected by hand.
+    const passed = Math.min(WAYPOINTS - 1, waypointsPassed(route, walked))
+    const owed = passed > e.paid ? Math.floor((e.bounty / WAYPOINTS) * (passed - e.paid)) : 0
+    if (walked === e.walked && owed <= 0) continue
+    db.prepare('UPDATE expeditions SET walked = ?, paid = ? WHERE id = ?').run(
+      walked,
+      Math.max(e.paid, passed),
+      e.id,
+    )
+    if (owed > 0) {
+      db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(
+        owed,
+        playerId,
+      )
+      paid += owed
+    }
+  }
+  return paid
+}
+
+type ExpeditionRow = {
+  id: number
+  route: string
+  walked: number
+  paid: number
+  bounty: number
+}
+
+function expeditionsOf(db: DB, playerId: number): Expedition[] {
+  return db
+    .prepare('SELECT id, route, walked, paid, bounty FROM expeditions WHERE player_id = ? ORDER BY id')
+    .all(playerId) as Expedition[]
 }
 
 /** The last series milestone. Past it a series has nothing left to pay. */
@@ -1127,7 +1287,6 @@ function takeAll(
   player: Player,
   session: RollSession,
   fx: ReturnType<typeof computeEffects>,
-  rx: RenownEffects,
   seriesPaid: Record<string, number>,
 ): { claimed: number; bonus: number; merged: number; spares: number; notes: string[] } {
   const now = Date.now()
@@ -1161,7 +1320,7 @@ function takeAll(
     if (owns) {
       // A duplicate is a copy, not a consolation. It goes on the stack, and if
       // that doubles the stack it merges a star higher.
-      const r = addCopy(db, player.id, entry.char.id, rx.maxStars)
+      const r = addCopy(db, player.id, entry.char.id, fx.maxStars)
       if (r.merged) merged++
       spares += r.spare
       entry.stars = r.stars
@@ -1521,18 +1680,21 @@ function rosterFor(db: DB, playerId: number, series: string, depth: number): Mus
     .all({ player: playerId, series, depth, limit: MUSTER_FACES }) as Musterer[]
 }
 
-/** Put one new raid on the board. Returns false when the catalog cannot fill it. */
+/** Post one new contract. Returns false when the catalog cannot fill the board. */
 function postRaid(db: DB, playerId: number): boolean {
   const series = pickSeries(db, playerId)
   if (!series) return false
   const cast = castOf(db, series)
   const tier = fitTier(cast, depthProfile(db, playerId, series), Math.random())
   const { breadth, depth } = demandFor(cast, tier)
-  const work = raidWork(breadth, depth)
+  // Stored in presses, multiplied out at payout time. See `contractPresses`:
+  // a flat credit reward is a fortune at ten thousand and a rounding error at
+  // a quadrillion, and this board has to mean something at both ends.
+  const presses = contractPresses(contractWork(breadth, depth))
   db.prepare(
     `INSERT INTO raids (player_id, series, breadth, depth, cost, reward, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(playerId, series, breadth, depth, raidCost(work), raidReward(work), Date.now())
+     VALUES (?, ?, ?, ?, 0, ?, ?)`,
+  ).run(playerId, series, breadth, depth, presses, Date.now())
   return true
 }
 
@@ -1560,32 +1722,36 @@ type RaidRow = {
   series: string
   breadth: number
   depth: number
-  cost: number
+  /** Presses this is worth. Multiplied by the player's own rate on the way out. */
   reward: number
   accepted_at: number | null
 }
 
-function withHeld(db: DB, playerId: number, r: RaidRow): Raid {
+function withHeld(db: DB, playerId: number, r: RaidRow, perCard: number, cards: number): Contract {
   return {
     id: r.id,
     series: r.series,
     breadth: r.breadth,
     depth: r.depth,
-    cost: r.cost,
-    reward: r.reward,
+    reward: Math.floor(r.reward * perCard * cards),
     held: heldIn(db, playerId, r.series, r.depth),
   }
 }
 
-export function boardOf(db: DB, playerId: number): { raids: Raid[]; commissions: Commission[] } {
+export function boardOf(
+  db: DB,
+  playerId: number,
+  perCard: number,
+  cards: number,
+): { raids: Contract[]; commissions: Pinned[] } {
   const rows = db
     .prepare('SELECT * FROM raids WHERE player_id = ? ORDER BY id')
     .all(playerId) as RaidRow[]
-  const raids: Raid[] = []
-  const commissions: Commission[] = []
+  const raids: Contract[] = []
+  const commissions: Pinned[] = []
   for (const r of rows) {
-    if (r.accepted_at === null) raids.push(withHeld(db, playerId, r))
-    else commissions.push({ ...withHeld(db, playerId, r), acceptedAt: r.accepted_at })
+    if (r.accepted_at === null) raids.push(withHeld(db, playerId, r, perCard, cards))
+    else commissions.push({ ...withHeld(db, playerId, r, perCard, cards), acceptedAt: r.accepted_at })
   }
   return { raids, commissions }
 }
@@ -1615,33 +1781,37 @@ export interface RaidPayout {
 }
 
 /**
- * Answer a raid.
+ * Fulfil a contract.
  *
- * Nothing is gambled: the board shows what you hold against what it wants, so
- * a raid you cannot answer is refused rather than taken and lost. Scrip is a
- * price, not a stake.
+ * Nothing is gambled and nothing is spent: the board shows what you hold
+ * against what it wants, so one you cannot fulfil is refused rather than taken
+ * and lost. It used to cost Scrip, which made the board a toll gate on the
+ * upgrade tree; it is a goal board now and goals are free to attempt
+ * (ADR 0014). What it costs is having built the collection.
  */
 export function attemptRaid(db: DB, player: Player, id: number): RaidPayout {
   const row = raidRow(db, player.id, id)
-  if (row.accepted_at !== null) fail('That one is a commission. Claim it instead.')
+  if (row.accepted_at !== null) fail('That one is pinned. Collect it instead.')
   const held = heldIn(db, player.id, row.series, row.depth)
   if (held < row.breadth) {
     fail(`${row.series} needs ${row.breadth} at ★${row.depth}. You have ${held}.`)
   }
   const state = loadState(db, player.id)
-  if (state.scrip < row.cost) fail(`That raid costs ${row.cost} Scrip. You have ${state.scrip}.`)
-  // Read before the delete: after it, the raid has no series to muster from.
+  const { fx } = loadoutOf(state)
+  const paid = Math.floor(row.reward * creditsPerCard(state, fx) * fx.cardsPerPull)
+  // Read before the delete: after it, the contract has no series to muster from.
   const roster = rosterFor(db, player.id, row.series, row.depth)
   db.transaction(() => {
-    db.prepare(
-      'UPDATE player_state SET scrip = scrip - ?, renown = renown + ? WHERE player_id = ?',
-    ).run(row.cost, row.reward, player.id)
+    db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(
+      paid,
+      player.id,
+    )
     db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
     fillBoard(db, player.id)
   })()
   return {
     snapshot: snapshot(db, player),
-    reward: row.reward,
+    reward: paid,
     series: row.series,
     breadth: row.breadth,
     depth: row.depth,
@@ -1723,24 +1893,74 @@ export function setAim(db: DB, player: Player, series: string | null): Snapshot 
   return snapshot(db, player)
 }
 
-/** Buy the next level of a Renown line. */
-export function buyRenown(db: DB, player: Player, key: RenownKey): Snapshot {
-  const def = RENOWN_DEFS.find((d) => d.key === key)
-  if (!def) fail('No such line.')
+/**
+ * Outfit a caravan and send it down a route.
+ *
+ * Costs scrap up front and pays credits at the far end, and the whole bounty
+ * is fixed here rather than at arrival: a route quoted at a hundred million
+ * that pays out at whatever the player's rate happens to be a week later is a
+ * route nobody can price. What you were promised is what comes home.
+ */
+export function sendExpedition(db: DB, player: Player, key: string): Snapshot {
+  const route = ROUTES.find((r) => r.key === key)
+  if (!route) fail('No such route.')
   const row = loadState(db, player.id)
-  const levels = sanitizeRenown(JSON.parse(row.renown_json || '{}'))
-  const level = levels[key]
-  if (renownMaxed(level)) fail('That line is already finished.')
-  const cost = renownCost(def!, level)
-  if (row.renown < cost) fail(`That costs ${cost} Renown. You have ${row.renown}.`)
-  const next: Renown = { ...EMPTY_RENOWN, ...levels, [key]: level + 1 }
+  const { fx } = loadoutOf(row)
+  const out = (
+    db.prepare('SELECT COUNT(*) AS n FROM expeditions WHERE player_id = ?').get(player.id) as {
+      n: number
+    }
+  ).n
+  if (out >= fx.caravans) {
+    fail(`All ${fx.caravans} caravan${fx.caravans === 1 ? '' : 's'} are on the road.`)
+  }
+  const reach = reachOf(db, player.id, row.collection_rev)
+  if (reach < route!.reach) {
+    fail(`${route!.name} needs ${route!.reach.toLocaleString()} characters. You hold ${reach.toLocaleString()}.`)
+  }
+  if (row.scrap < route!.scrap) {
+    fail(`${route!.name} costs ${route!.scrap.toLocaleString()} scrap. You have ${Math.floor(row.scrap).toLocaleString()}.`)
+  }
+  const bounty = routePay(route!, creditsPerCard(row, fx), fx.scrapWorth, fx.outfit)
   db.transaction(() => {
+    db.prepare('UPDATE player_state SET scrap = scrap - ? WHERE player_id = ?').run(
+      route!.scrap,
+      player.id,
+    )
     db.prepare(
-      'UPDATE player_state SET renown = renown - ?, renown_json = ? WHERE player_id = ?',
-    ).run(cost, JSON.stringify(next), player.id)
+      'INSERT INTO expeditions (player_id, route, walked, paid, bounty, created_at) VALUES (?, ?, 0, 0, ?, ?)',
+    ).run(player.id, route!.key, bounty, Date.now())
   })()
   return snapshot(db, player)
 }
+
+/** Bring a caravan home. Only the last waypoint waits for a hand. */
+export function collectExpedition(
+  db: DB,
+  player: Player,
+  id: number,
+): { snapshot: Snapshot; paid: number; route: string } {
+  const e = db
+    .prepare('SELECT * FROM expeditions WHERE id = ? AND player_id = ?')
+    .get(id, player.id) as (ExpeditionRow & { player_id: number }) | undefined
+  if (!e) fail('That caravan is not on the road.')
+  const route = ROUTES.find((r) => r.key === e!.route)
+  if (!route) fail('That route no longer exists.')
+  if (e!.walked < route!.distance) {
+    fail(`${route!.name} still has ${Math.ceil(route!.distance - e!.walked).toLocaleString()} presses to go.`)
+  }
+  // Everything the waypoints have not already handed over.
+  const owed = Math.max(0, Math.floor(e!.bounty - (e!.bounty / WAYPOINTS) * e!.paid))
+  db.transaction(() => {
+    db.prepare('UPDATE player_state SET credits = credits + ? WHERE player_id = ?').run(
+      owed,
+      player.id,
+    )
+    db.prepare('DELETE FROM expeditions WHERE id = ?').run(e!.id)
+  })()
+  return { snapshot: snapshot(db, player), paid: owed, route: route!.name }
+}
+
 
 export function addWish(db: DB, player: Player, characterId: number): Snapshot {
   const row = loadState(db, player.id)

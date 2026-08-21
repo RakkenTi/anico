@@ -1,53 +1,57 @@
 /**
- * What a raid asks for, and what answering one is worth.
+ * What a contract asks for, and what fulfilling one pays.
  *
- * A raid names a series and asks for a breadth of its cast at a depth of
- * stars. That is the whole of it, and the restraint is the point (ADR 0013):
- * an earlier attempt at raiding gave every character a number and the
- * characters stopped mattering, so nothing here may invent a per-character
- * stat -- and, less obviously, nothing here may read credit value either.
- * Credit value *is* favourites and rarity *is* credit value, so a raid scored
- * on value is a raid whose answer is always "send the eleven Mythics", which
- * is a lookup wearing the costume of a decision.
+ * A contract names a series and asks for a breadth of its cast at a depth of
+ * stars. That is the whole of it, and the restraint is the point: an earlier
+ * attempt at raiding gave every character a number and the characters stopped
+ * mattering, so nothing here may invent a per-character stat -- and, less
+ * obviously, nothing here may read credit value either. Credit value *is*
+ * favourites and rarity *is* credit value, so a demand scored on value is one
+ * whose answer is always "send the eleven Mythics", which is a lookup wearing
+ * the costume of a decision.
  *
  * Series is the one attribute a character has with combinatorial structure. A
- * warm catalog holds up to ten thousand of them, and a raid on Frieren is not
- * satisfiable by Levi at any rarity.
+ * warm catalog holds up to ten thousand of them, and a contract on Frieren is
+ * not satisfiable by Levi at any rarity.
+ *
+ * This was the gateway to the whole upgrade tree once, bought and paid for in
+ * currencies of its own. It is a goal board now (ADR 0014): free to attempt,
+ * paying credits like everything else, and holding nobody's upgrades hostage.
+ * What it is *for* is being the only thing in the game that makes one
+ * particular character worth wanting.
  */
 
-export interface Raid {
+export interface Contract {
   id: number
   series: string
-  /** Distinct characters of that series the raid wants. */
+  /** Distinct characters of that series it wants. */
   breadth: number
   /** Stars each of them must have merged to. */
   depth: number
-  /** Scrip it costs to attempt. */
-  cost: number
-  /** Renown it pays. */
+  /** Credits it pays. */
   reward: number
   /** How many of the breadth the player currently has at that depth. */
   held: number
 }
 
 /**
- * A commission is a raid you accept rather than answer.
+ * A pinned contract: one you take on rather than fulfil.
  *
  * It names something just past your reach and pays when the collection gets
- * there, so it is the first to-do list this game has had since the shop ran
- * out. Slots are few and nothing expires: scarcity is the slot, not a clock,
- * because ADR 0004 removed every timer in the game on the grounds that pacing
- * makes an app you cannot play when you happen to open it.
+ * there, so it is a to-do list rather than a test. Slots are few and nothing
+ * expires: scarcity is the slot, not a clock, because ADR 0004 removed every
+ * timer in the game on the grounds that pacing makes an app you cannot play
+ * when you happen to open it.
  */
-export interface Commission extends Raid {
+export interface Pinned extends Contract {
   acceptedAt: number
 }
 
-/** Commissions a player may hold at once. */
+/** Contracts a player may have pinned at once. */
 export const COMMISSION_SLOTS = 3
-/** Raids on the board at any moment. Answering one generates its replacement. */
+/** Contracts on the board at any moment. Fulfilling one posts its replacement. */
 export const RAID_BOARD = 5
-/** A commission pays this much more than the raid it was cut from. */
+/** A pinned contract pays this much more than the one it was cut from. */
 export const COMMISSION_BONUS = 2.5
 
 /**
@@ -67,7 +71,7 @@ export const DEPTH_BY_TIER = [0, 2, 5, 8, 11]
 export const RAID_TIERS = BREADTH_BY_TIER.length
 
 /** What the board calls a rung, so a row can say how hard it is out loud. */
-export const TIER_NAMES = ['Sortie', 'Raid', 'Siege', 'Vigil', 'Reckoning']
+export const TIER_NAMES = ['Errand', 'Commission', 'Charter', 'Warrant', 'Grand Charter']
 
 /**
  * How much a demand is worth.
@@ -76,25 +80,24 @@ export const TIER_NAMES = ['Sortie', 'Raid', 'Siege', 'Vigil', 'Reckoning']
  * join: breadth is what a collection of sixty-five thousand characters bought,
  * depth is what the millions of spare copies bought, and a raid needs both.
  */
-export function raidWork(breadth: number, depth: number): number {
+export function contractWork(breadth: number, depth: number): number {
   return Math.max(1, breadth * (depth + 1))
 }
 
 /**
- * Scrip to attempt, Renown to answer.
+ * What fulfilling one is worth, in *presses*.
  *
- * Cost is linear in the work and the reward is very slightly steeper, so a
- * harder raid pays a little better per Scrip than an easy one -- about 1.7x
- * across the whole ladder. Enough to make growing a collection the better
- * play, not enough to make the easy rungs pointless.
+ * Not in credits: a flat credit number is a fortune at ten thousand and a
+ * rounding error at a quadrillion, and this board has to still mean something
+ * at both ends. So a contract pays a multiple of what the player's own summon
+ * is worth, and the server multiplies it out at payout time against their
+ * smoothed credits-per-card. The exponent is above one, so the hard rungs pay
+ * better per unit of collection than the easy ones -- about 1.7x across the
+ * ladder -- which is enough to make growing a collection the better play
+ * without making the easy rungs pointless.
  */
-export function raidCost(work: number): number {
-  const raw = 3 * work
-  return raw < 100 ? Math.max(10, Math.round(raw / 5) * 5) : Math.round(raw / 10) * 10
-}
-
-export function raidReward(work: number): number {
-  return Math.max(1, Math.round(Math.pow(work, 1.15) / 12))
+export function contractPresses(work: number): number {
+  return Math.max(1, Math.pow(work, 1.15) / 3)
 }
 
 /** The demand one rung of difficulty makes of a series with this much cast. */
@@ -107,18 +110,18 @@ export function demandFor(cast: number, tier: number): { breadth: number; depth:
 }
 
 /** Which rung a demand reads as, for the row's label. */
-export function tierOf(raid: Pick<Raid, 'depth'>): number {
-  for (let t = RAID_TIERS - 1; t > 0; t--) if (raid.depth >= DEPTH_BY_TIER[t]) return t
+export function tierOf(c: Pick<Contract, 'depth'>): number {
+  for (let t = RAID_TIERS - 1; t > 0; t--) if (c.depth >= DEPTH_BY_TIER[t]) return t
   return 0
 }
 
-export function tierName(raid: Pick<Raid, 'depth'>): string {
-  return TIER_NAMES[tierOf(raid)]
+export function tierName(c: Pick<Contract, 'depth'>): string {
+  return TIER_NAMES[tierOf(c)]
 }
 
-/** Whether the collection answers this raid as it stands. */
-export function answered(raid: Pick<Raid, 'breadth' | 'held'>): boolean {
-  return raid.held >= raid.breadth
+/** Whether the collection answers this contract as it stands. */
+export function answered(c: Pick<Contract, 'breadth' | 'held'>): boolean {
+  return c.held >= c.breadth
 }
 
 /**

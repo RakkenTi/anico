@@ -15,6 +15,9 @@
  * exponential prices is a treadmill that grinds to a halt by construction.
  */
 
+import { MAX_STARS } from './economy.js'
+import { beltRate, caravans, foundryMult, outfitMult, sparesPerScrap } from './industry.js'
+
 export type UpgradeKey =
   | 'packs'
   | 'multipack'
@@ -25,6 +28,16 @@ export type UpgradeKey =
   | 'nightshift'
   | 'alchemy'
   | 'divination'
+  /* The works, and the ceilings they used to be locked behind (ADR 0014). */
+  | 'depth'
+  | 'hands'
+  | 'table'
+  | 'aim'
+  | 'mill'
+  | 'foundry'
+  | 'belt'
+  | 'outfit'
+  | 'caravan'
 
 export type Upgrades = Record<UpgradeKey, number>
 
@@ -38,6 +51,15 @@ export const EMPTY_UPGRADES: Upgrades = {
   nightshift: 0,
   alchemy: 0,
   divination: 0,
+  depth: 0,
+  hands: 0,
+  table: 0,
+  aim: 0,
+  mill: 0,
+  foundry: 0,
+  belt: 0,
+  outfit: 0,
+  caravan: 0,
 }
 
 /* --------------------------------------------------------------- ceilings */
@@ -95,6 +117,27 @@ export function stackDepth(stacks: number): number {
 
 /* ------------------------------------------------------------ the ladders */
 
+/**
+ * Keys that belong to the works rather than to the summon.
+ *
+ * Only used to draw a divider in the shop: eighteen rows in one flat list is a
+ * list nobody reads, and these nine arrive together with four new tabs. The
+ * point of the divider is that they are *in the same shop* -- the whole
+ * complaint that started this was one mechanic's upgrades being locked behind
+ * another's (ADR 0014).
+ */
+export const WORKS_KEYS = new Set<UpgradeKey>([
+  'mill',
+  'foundry',
+  'belt',
+  'outfit',
+  'caravan',
+  'aim',
+  'table',
+  'hands',
+  'depth',
+])
+
 export interface UpgradeDef {
   key: UpgradeKey
   name: string
@@ -135,7 +178,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     blurb: 'Cards come out faster, and six seconds of them is how much of a pull you open.',
     baseCost: 8_000,
     growth: 1.9,
-    effect: (l) => `${cardRate(l)} cards/sec, ${fmtCount(dealtFor(MAX_DEALT, cardRate(l)))} dealt`,
+    effect: (l) => `${fmtCount(cardRate(l))} cards/sec, ${fmtCount(dealtFor(MAX_DEALT, cardRate(l)))} dealt`,
   },
   {
     key: 'packs',
@@ -207,23 +250,175 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     maxLevel: 10,
     effect: (l) => (l > 0 ? `${fmtX(wishMult(l))} wish chance` : 'base wish chance'),
   },
+
+  /* ------------------------------------------------------------- the works
+   *
+   * These five used to be a second currency's shopping list, bought with
+   * Renown, which meant the summon's own ceilings -- how deep a stack merges,
+   * how many cards a press deals, how many wrappers fit on screen -- were
+   * locked behind a different mechanic entirely. One shop, one currency, and
+   * no mechanic holds another one's upgrades hostage (ADR 0014).
+   *
+   * They are priced for the player who needs them. A quadrillion credits is a
+   * player who has bought everything above this line twice over, so these do
+   * not compete with the early shop; they are what the late shop is *for*, and
+   * that was the real complaint behind the second economy.
+   */
+  {
+    key: 'mill',
+    name: 'Finer Mill',
+    icon: 'gear',
+    blurb: 'The Press gets more scrap out of the same spare copies.',
+    baseCost: 3_000_000,
+    growth: 3.4,
+    maxLevel: 6,
+    effect: (l) => `${sparesPerScrap(l)} spares a scrap`,
+  },
+  {
+    key: 'foundry',
+    name: 'Foundry',
+    icon: 'flask_full',
+    blurb: 'The Factory pays more for every scrap it melts. Never stops mattering.',
+    baseCost: 2_000_000,
+    growth: 2.2,
+    effect: (l) => `a scrap is worth ${(foundryMult(l) * 100).toFixed(1)}% of a press`,
+  },
+  {
+    key: 'belt',
+    name: 'Belt Speed',
+    icon: 'cards_stack_high',
+    blurb: 'The Factory pulls more scrap through per press. Clears a backlog.',
+    baseCost: 5_000_000,
+    growth: 2.35,
+    effect: (l) => `${fmtCount(Math.round(beltRate(l)))} scrap a press`,
+  },
+  {
+    key: 'outfit',
+    name: 'Outfitters',
+    icon: 'pouch',
+    blurb: 'Every expedition comes home with more.',
+    baseCost: 25_000_000,
+    growth: 1.9,
+    effect: (l) => `${fmtX(outfitMult(l))} bounty`,
+  },
+  {
+    key: 'caravan',
+    name: 'Caravans',
+    icon: 'campfire',
+    blurb: 'More expeditions on the road at the same time.',
+    baseCost: 400_000_000,
+    growth: 14,
+    maxLevel: 3,
+    effect: (l) => `${caravans(l)} on the road`,
+  },
+  {
+    key: 'aim',
+    name: 'Called Shot',
+    icon: 'cards_seek',
+    blurb: 'Name a series and a share of every pull is drawn from it.',
+    baseCost: 50_000_000,
+    growth: 6,
+    maxLevel: 6,
+    effect: (l) => (l > 0 ? `${Math.round(aimShare(l) * 100)}% of a pull, aimed` : 'no target'),
+  },
+  {
+    key: 'table',
+    name: 'Longer Table',
+    icon: 'cards_stack',
+    blurb: 'More wrappers fit side by side, so Extra Packs starts mattering again.',
+    baseCost: 250_000_000,
+    growth: 8,
+    maxLevel: 6,
+    effect: (l) => `${maxStacksFor(l)} wrappers on screen`,
+  },
+  {
+    key: 'hands',
+    name: 'Wider Deal',
+    icon: 'cards_fan',
+    blurb: 'A press deals more real cards, so more of it becomes copies instead of credits.',
+    baseCost: 1_000_000_000,
+    growth: 12,
+    maxLevel: 6,
+    effect: (l) => `${fmtCount(maxDealtFor(l))} cards dealt`,
+  },
+  {
+    key: 'depth',
+    name: 'Deeper Merges',
+    icon: 'd20',
+    blurb: 'Stacks merge past ★12. Each star multiplies what the whole stack is worth.',
+    baseCost: 10_000_000_000,
+    growth: 20,
+    maxLevel: 6,
+    effect: (l) => `stacks merge to ★${maxStarsFor(l)}`,
+  },
 ]
+
+/* -------------------------------------------------------- the works' maths
+ *
+ * The ceilings the summon runs into. All five were a separate tree once; what
+ * they do is unchanged, only what pays for them.
+ */
+
+/** Stars a stack may merge to. */
+export function maxStarsFor(level: number): number {
+  return MAX_STARS + lv6(level)
+}
+
+/**
+ * Cards a press deals.
+ *
+ * Every dealt card is a claim written, so this is the one line here the server
+ * pays for: four hundred more cards a level, not a doubling. It also very
+ * slightly lowers credit income -- a dealt duplicate pays 16% of sell value
+ * where an appraised card pays 100% -- for three and a half times the spares,
+ * which is the trade the Press exists to make.
+ */
+export function maxDealtFor(level: number): number {
+  return MAX_DEALT + 400 * lv6(level)
+}
+
+export function maxStacksFor(level: number): number {
+  return MAX_STACKS + 4 * lv6(level)
+}
+
+export function aimShare(level: number): number {
+  return lv6(level) === 0 ? 0 : Math.min(0.6, 0.1 * lv6(level))
+}
+
+const lv6 = (n: number) => Math.max(0, Math.min(6, Math.floor(n || 0)))
 
 /* ------------------------------------------------------------ the numbers */
 
-/** Local, because this module is shared with the server and imports nothing. */
-function fmtCount(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}K` : String(n)
+/**
+ * Short scale, shared by both local formatters.
+ *
+ * Local because this module is shared with the server and imports nothing.
+ * It is the same ladder `src/game/format.ts` uses, kept in step by hand: Open
+ * Speed compounds at 1.45 a level and never stops, and the K-only version this
+ * replaced printed "91293213913.1K" on the shop row.
+ */
+const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'UDc', 'DDc', 'TDc']
+
+function scaled(n: number, plainBelow: number): string {
+  if (!Number.isFinite(n)) return '\u221e'
+  const v = Math.abs(n)
+  if (v < plainBelow) return Math.round(v).toLocaleString()
+  const tier = Math.floor(Math.log10(v) / 3)
+  if (tier >= SUFFIXES.length) {
+    const exp = Math.floor(Math.log10(v))
+    return `${(v / Math.pow(10, exp)).toFixed(2)}e${exp}`
+  }
+  const x = v / Math.pow(1000, tier)
+  return `${x.toFixed(x >= 100 ? 0 : x >= 10 ? 1 : 2)}${SUFFIXES[tier]}`
 }
 
-/** Local, because this module is shared with the server and imports nothing. */
+function fmtCount(n: number): string {
+  return scaled(n, 10_000)
+}
+
 function fmtX(n: number): string {
-  if (n < 10) return `×${Number(n.toFixed(2))}`
-  if (n < 10_000) return `×${Math.round(n).toLocaleString()}`
-  const tier = Math.floor(Math.log10(n) / 3)
-  const names = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc']
-  if (tier >= names.length) return `×1e${Math.floor(Math.log10(n))}`
-  return `×${(n / Math.pow(1000, tier)).toFixed(1)}${names[tier]}`
+  if (n < 10) return `\u00d7${Number(n.toFixed(2))}`
+  return `\u00d7${scaled(n, 10_000)}`
 }
 
 const lv = (level: number) => Math.max(0, Math.floor(level))

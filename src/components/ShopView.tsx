@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useGame } from '../game/store'
 import { BADGE_DEFS, BADGE_MAX, ROMAN, badgeCost, badgeUnlocked } from '../game/badges'
-import { UPGRADE_DEFS, upgradeCost, upgradeMaxed } from '../game/upgrades'
+import { UPGRADE_DEFS, WORKS_KEYS, upgradeCost, upgradeMaxed } from '../game/upgrades'
 import { RARITY_NAMES, packCost } from '../game/economy'
 import { fmt, fmtCount } from '../game/format'
 import Icon from './Icon'
@@ -87,7 +87,7 @@ export default function ShopView() {
         <div>
           <dt>Open speed</dt>
           <dd>
-            <b>{fx.cardRate}</b> cards/sec
+            <b>{fmtCount(fx.cardRate)}</b> cards/sec
           </dd>
         </div>
         <div>
@@ -134,14 +134,26 @@ export default function ShopView() {
             </p>
           </header>
           <ul className="shop-rows">
-            {UPGRADE_DEFS.map((def) => {
+            {UPGRADE_DEFS.map((def, i) => {
               const level = s.upgrades[def.key] ?? 0
               const maxed = upgradeMaxed(def, level)
               const cost = upgradeCost(def, level, priceMult)
               const affordable = !maxed && s.credits >= cost
               const id = `u:${def.key}`
+              // Where the summon's lines end and the works' begin. Same shop,
+              // same credits -- the rule is only that nothing is locked behind
+              // anything (ADR 0014) -- but eighteen rows in one run is a list
+              // nobody reads to the bottom of.
+              const opensWorks = WORKS_KEYS.has(def.key) && !WORKS_KEYS.has(UPGRADE_DEFS[i - 1]?.key)
               return (
-                <li key={def.key} className={`shop-row ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}>
+                <Fragment key={def.key}>
+                {opensWorks && (
+                  <li className="shelf-split">
+                    <b>The works</b>
+                    <span>The Press, the Factory, expeditions, and the ceilings your summon runs into.</span>
+                  </li>
+                )}
+                <li className={`shop-row ${maxed ? 'maxed' : ''} ${affordable ? 'affordable' : ''}`}>
                   <button
                     className="row-buy"
                     disabled={maxed || !affordable}
@@ -186,6 +198,7 @@ export default function ShopView() {
                     </p>
                   )}
                 </li>
+                </Fragment>
               )
             })}
           </ul>

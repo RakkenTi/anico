@@ -18,14 +18,8 @@ import { DAILY_INTERVAL_H, rarityOf } from './economy'
 import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects } from './badges'
 import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
 import { POOL_EVERYTHING } from './pool'
-import {
-  EMPTY_RENOWN,
-  renownEffects,
-  type Renown,
-  type RenownEffects,
-  type RenownKey,
-} from './renown'
-import type { Commission, Musterer, Raid } from './raids'
+import type { Works } from './industry'
+import type { Contract, Musterer, Pinned } from './contracts'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { fmt, fmtCount } from './format'
 import {
@@ -147,14 +141,12 @@ interface GameState {
   collectionRev: number
   collectionAt: number
   /* The second economy (ADR 0013). */
-  spares: number
-  sparesPerPull: number
-  scrip: number
-  renown: number
-  renownLevels: Renown
-  ceilings: RenownEffects
+  /** Everything the works are doing right now (ADR 0014). */
+  works: Works
+  /** What one card is worth to this player: every payout is quoted against it. */
+  creditsPerCard: number
   aimSeries: string | null
-  board: { raids: Raid[]; commissions: Commission[] }
+  board: { raids: Contract[]; commissions: Pinned[] }
   wishes: RolledCharacter[]
   badges: Badges
   upgrades: Upgrades
@@ -265,7 +257,9 @@ interface GameState {
   claimCommission: (id: number, quiet?: boolean) => Promise<void>
   dismissMuster: () => void
   abandonCommission: (id: number) => Promise<void>
-  buyRenown: (key: RenownKey) => Promise<void>
+  /** The works (ADR 0014). */
+  sendExpedition: (route: string) => Promise<void>
+  collectExpedition: (id: number) => Promise<void>
   setAim: (series: string | null) => Promise<void>
   buyUpgrade: (key: UpgradeKey) => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
@@ -302,12 +296,8 @@ export const useGame = create<GameState>()((set, get) => {
       poolSize: s.poolSize,
       collection: s.collection ?? prev.collection,
       collectionRev: s.collectionRev,
-      spares: s.spares,
-      sparesPerPull: s.sparesPerPull,
-      scrip: s.scrip,
-      renown: s.renown,
-      renownLevels: s.renownLevels,
-      ceilings: s.ceilings,
+      works: s.works,
+      creditsPerCard: s.creditsPerCard,
       aimSeries: s.aimSeries,
       board: s.board,
       // A pushed snapshot carries no collection, so the copy we hold keeps the
@@ -403,12 +393,19 @@ export const useGame = create<GameState>()((set, get) => {
     collection: [],
     collectionRev: 0,
     collectionAt: 0,
-    spares: 0,
-    sparesPerPull: 0,
-    scrip: 0,
-    renown: 0,
-    renownLevels: { ...EMPTY_RENOWN },
-    ceilings: renownEffects(EMPTY_RENOWN),
+    works: {
+      spares: 0,
+      sparesPerScrap: 900,
+      sparesPerPull: 0,
+      scrap: 0,
+      belt: 2,
+      scrapWorth: 0,
+      factoryRate: 0,
+      reach: 0,
+      caravans: 1,
+      out: [],
+    },
+    creditsPerCard: 0,
     aimSeries: null,
     board: { raids: [], commissions: [] },
     wishes: [],
@@ -843,7 +840,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.reveal('legendary')
       apply(res.state)
       if (quiet) {
-        get().pushToast(`${res.series} answered: +${fmtCount(res.reward)} Renown`, 'credits')
+        get().pushToast(`${res.series} fulfilled: +${fmt(res.reward)} credits`, 'credits')
         return
       }
       set({ muster: { id, commission: false, ...payout(res) } })
@@ -867,7 +864,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.reveal('mythic')
       apply(res.state)
       if (quiet) {
-        get().pushToast(`${res.series} delivered: +${fmtCount(res.reward)} Renown`, 'credits')
+        get().pushToast(`${res.series} delivered: +${fmt(res.reward)} credits`, 'credits')
         return
       }
       set({ muster: { id, commission: true, ...payout(res) } })
@@ -884,13 +881,25 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    buyRenown: async (key) => {
+    sendExpedition: async (route) => {
       sfx.buy()
       const res = await guard(
-        () => api.buyRenown(key),
+        () => api.sendExpedition(route),
         (m) => get().pushToast(m, 'info'),
       )
       if (res) apply(res.state)
+    },
+
+    collectExpedition: async (id) => {
+      const res = await guard(
+        () => api.collectExpedition(id),
+        (m) => get().pushToast(m, 'info'),
+      )
+      if (!res) return
+      sfx.reveal('mythic')
+      apply(res.state)
+      get().popCoins(res.paid)
+      get().pushToast(`${res.route} came home: +${fmt(res.paid)} credits`, 'credits')
     },
 
     setAim: async (series) => {
@@ -957,6 +966,15 @@ interface UiSettings {
   layout: LayoutKey
   soundEnabled: boolean
   soundVolume: number
+  /**
+   * A route the Automaton re-outfits whenever a caravan comes home.
+   *
+   * On the device rather than the account, and deliberately: it is the same
+   * kind of thing as Auto Summon's own switch -- a standing instruction to the
+   * machine in front of you. Picking *which* road is still the player's call
+   * every time they change it; what is automated is the retyping.
+   */
+  repeatRoute: string | null
   set: (patch: Partial<Omit<UiSettings, 'set'>>) => void
 }
 
@@ -967,6 +985,7 @@ export const useUi = create<UiSettings>()(
       layout: 'stage',
       soundEnabled: true,
       soundVolume: 0.6,
+      repeatRoute: null,
       set: (patch) => set(patch),
     }),
     { name: 'anico-ui' },

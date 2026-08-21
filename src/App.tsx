@@ -14,9 +14,22 @@ import type { IconName } from './game/icons'
 import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
 import { useAutomaton } from './components/useAutomaton'
-import RaidsView from './components/RaidsView'
+import PressView from './components/PressView'
+import FactoryView from './components/FactoryView'
+import ExpeditionsView from './components/ExpeditionsView'
+import ContractsView from './components/ContractsView'
 
-type Tab = 'roll' | 'collection' | 'raids' | 'wishes' | 'shop' | 'stats' | 'settings'
+type Tab =
+  | 'roll'
+  | 'collection'
+  | 'press'
+  | 'factory'
+  | 'expeditions'
+  | 'contracts'
+  | 'wishes'
+  | 'shop'
+  | 'stats'
+  | 'settings'
 
 /* Icons are Kenney's CC0 art (see src/assets/icons/LICENSE.txt). The tabs
    used to carry typographic glyphs -- ✦ ▦ ★ ⚙ -- which every platform draws
@@ -24,7 +37,10 @@ type Tab = 'roll' | 'collection' | 'raids' | 'wishes' | 'shop' | 'stats' | 'sett
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: 'roll', label: 'Summon', icon: 'cards_fan' },
   { key: 'collection', label: 'Collection', icon: 'cards_collection' },
-  { key: 'raids', label: 'Raids', icon: 'crown_a' },
+  { key: 'press', label: 'Press', icon: 'flask_full' },
+  { key: 'factory', label: 'Factory', icon: 'gear' },
+  { key: 'expeditions', label: 'Expeditions', icon: 'campfire' },
+  { key: 'contracts', label: 'Contracts', icon: 'crown_a' },
   { key: 'wishes', label: 'Wishes', icon: 'star' },
   { key: 'shop', label: 'Shop', icon: 'pouch' },
   { key: 'stats', label: 'Stats', icon: 'chart' },
@@ -32,25 +48,32 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 ]
 
 /**
- * Whether the second economy has started for this account.
+ * Whether the works have started for this account.
  *
- * The board is what comes *after* the credit curve, and shipping it as a
- * seventh tab from the first summon meant a new player's first look at it was
- * five demands they could not pay for and a shelf they could not afford --
- * which is a tutorial in being stuck. It opens on the first spare, which is
- * the first copy of a stack already merged to ★12: exactly the moment the
- * summon stops being the whole game.
+ * All four tabs arrive together, because they are one system: the Press mills
+ * duplicates into scrap, the Factory melts scrap into credits, expeditions
+ * spend a lump of it for a bigger payout later, and contracts are the goal
+ * board that pays for having built a collection at all.
+ *
+ * Shipping them from the first summon meant a new player's first look was four
+ * empty machines and a shelf they could not afford, which is a tutorial in
+ * being stuck. They open on the first spare -- the first copy landing on a
+ * stack with any depth to it -- which is exactly when the summon stops being
+ * the whole game.
  */
-function boardOpen(s: ReturnType<typeof useGame.getState>): boolean {
+function worksOpen(s: ReturnType<typeof useGame.getState>): boolean {
+  const w = s.works
   return (
-    s.spares > 0 ||
-    s.sparesPerPull > 0 ||
-    s.scrip > 0 ||
-    s.renown > 0 ||
-    Object.values(s.renownLevels).some((n) => n > 0) ||
+    w.spares > 0 ||
+    w.scrap > 0 ||
+    w.sparesPerPull > 0 ||
+    w.out.length > 0 ||
     s.board.commissions.length > 0
   )
 }
+
+/** The four tabs that arrive together when the works open. */
+const WORKS = new Set<Tab>(['press', 'factory', 'expeditions', 'contracts'])
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('roll')
@@ -95,12 +118,12 @@ export default function App() {
      does not take its own tab away underneath the player. Not persisted: the
      snapshot answers this correctly on every load, and a flag on the device
      would show the board to the next account to sign in here. */
-  const opened = useGame(boardOpen)
+  const opened = useGame(worksOpen)
   const [everOpen, setEverOpen] = useState(false)
   // Adjusted during render rather than in an effect: it is derived from what
-  // this render already knows, and an effect would paint the tab away and back.
+  // this render already knows, and an effect would paint the tabs away and back.
   if (opened && !everOpen) setEverOpen(true)
-  const tabs = opened || everOpen ? TABS : TABS.filter((t) => t.key !== 'raids')
+  const tabs = opened || everOpen ? TABS : TABS.filter((t) => !WORKS.has(t.key))
 
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt
@@ -175,7 +198,10 @@ export default function App() {
       <main className="main">
         {tab === 'roll' && <RollView />}
         {tab === 'collection' && <CollectionView />}
-        {tab === 'raids' && <RaidsView />}
+        {tab === 'press' && <PressView />}
+        {tab === 'factory' && <FactoryView />}
+        {tab === 'expeditions' && <ExpeditionsView />}
+        {tab === 'contracts' && <ContractsView />}
         {tab === 'wishes' && <WishesView />}
         {tab === 'shop' && <ShopView />}
         {tab === 'stats' && <StatsView />}

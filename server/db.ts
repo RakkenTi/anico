@@ -364,6 +364,55 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ANALYZE;
     `,
   },
+  {
+    name: '015_the_works',
+    sql: `
+    -- One currency, three faucets (ADR 0014).
+    --
+    -- The second economy is deleted. Scrip and Renown were a way to make new
+    -- mechanics matter without competing with a credit river flowing at a
+    -- quadrillion a second, and the price of that was locking the summon's own
+    -- ceilings -- how deep a stack merges, how many cards a press deals -- behind
+    -- a mechanic you had to play to reach them. One shop, one currency, and what
+    -- chains between mechanics is material rather than permission.
+    ALTER TABLE player_state ADD COLUMN scrap REAL NOT NULL DEFAULT 0;
+
+    -- An expedition: a lump of scrap spent now for a much larger credit bounty
+    -- later, where "later" is counted in presses. ADR 0004 took every clock out
+    -- of this game, so a caravan advances when the player summons and a week
+    -- away leaves it exactly where it stood.
+    CREATE TABLE expeditions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id  INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      route      TEXT NOT NULL,
+      walked     REAL NOT NULL DEFAULT 0,
+      paid       INTEGER NOT NULL DEFAULT 0,
+      bounty     REAL NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_expeditions_player ON expeditions(player_id);
+
+    -- Renown levels become the shop lines they always were. Nobody pays twice
+    -- for a ceiling they already bought, and the five keys did not change.
+    UPDATE player_state SET upgrades_json = json_set(
+      CASE WHEN json_valid(upgrades_json) THEN upgrades_json ELSE '{}' END,
+      '$.depth', COALESCE(json_extract(renown_json, '$.depth'), 0),
+      '$.hands', COALESCE(json_extract(renown_json, '$.hands'), 0),
+      '$.table', COALESCE(json_extract(renown_json, '$.table'), 0),
+      '$.aim',   COALESCE(json_extract(renown_json, '$.aim'), 0),
+      '$.mill',  COALESCE(json_extract(renown_json, '$.mill'), 0)
+    ) WHERE json_valid(renown_json);
+
+    -- Scrip was the Press's output under another name, so it comes across as
+    -- scrap one for one rather than evaporating.
+    UPDATE player_state SET scrap = scrip WHERE scrip > 0;
+
+    -- The board's rewards were denominated in Renown and are now denominated in
+    -- presses, so every posted row is stale. Cleared rather than converted: the
+    -- board reposts itself on the next snapshot.
+    DELETE FROM raids;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

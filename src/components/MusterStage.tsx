@@ -16,8 +16,8 @@
 
 import { useEffect } from 'react'
 import type { Muster } from '../game/store'
-import { fmtCount } from '../game/format'
-import { tierName } from '../game/raids'
+import { fmt, fmtCount } from '../game/format'
+import { tierName } from '../game/contracts'
 
 /** How long each card waits behind the one before it. */
 const DEAL_STEP_MS = 70
@@ -84,7 +84,7 @@ export default function MusterStage({ muster, onClose }: { muster: Muster; onClo
 
         <div className="muster-stamp">{muster.commission ? 'Delivered' : 'Answered'}</div>
         <div className="muster-pay">
-          +{fmtCount(muster.reward)} <em>Renown</em>
+          +{fmt(muster.reward)} <em>credits</em>
         </div>
         <button className="btn btn-quiet muster-close" onClick={onClose}>
           Return to the board
