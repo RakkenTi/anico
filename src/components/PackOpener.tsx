@@ -39,8 +39,18 @@ const MAX_OPEN_S = 8
  */
 const TICKS_PER_SECOND = 6
 const MIN_STEP_MS = 28
-/** Cards allowed to be mid-flight at once. They are decoration. */
-const MAX_IN_FLIGHT = 16
+/**
+ * Cards each stack may have in the air, and how many of a batch actually fly.
+ *
+ * The budget used to be sixteen for the whole pull, which with thirteen stacks
+ * meant the last three threw cards and the other ten simply went quiet: the
+ * count dropped and nothing moved. It is per stack now, so every pile visibly
+ * throws, and a batch of five sends two of them on their way rather than five,
+ * because nobody can tell two apart from five at six ticks a second and the
+ * browser certainly can.
+ */
+const IN_FLIGHT_PER_STACK = 4
+const FLY_PER_TICK = 2
 
 /**
  * Columns for a given number of wrappers.
@@ -237,7 +247,20 @@ export default function PackOpener({ pack, cards }: Props) {
   /** Send some cards on their way, and clear them up once they have landed. */
   const depart = useCallback((going: Departing[]) => {
     if (going.length === 0) return 0
-    setDeparting((d) => [...d, ...going].slice(-MAX_IN_FLIGHT))
+    setDeparting((d) => {
+      const next = [...d, ...going]
+      // Newest first, keep a few per stack, then back into arrival order so
+      // the cards in the air keep their z-order.
+      const kept: Departing[] = []
+      const perStack = new Map<number, number>()
+      for (let i = next.length - 1; i >= 0; i--) {
+        const n = perStack.get(next[i].stack) ?? 0
+        if (n >= IN_FLIGHT_PER_STACK) continue
+        perStack.set(next[i].stack, n + 1)
+        kept.push(next[i])
+      }
+      return kept.reverse()
+    })
     window.setTimeout(
       () =>
         setDeparting((d) =>
@@ -256,13 +279,22 @@ export default function PackOpener({ pack, cards }: Props) {
       if (!stack || stack.state !== 'sliced') return 0
       const held = stackCards(st, i).length
       const going: Departing[] = []
+      let moved = 0
       for (let n = 0; n < count; n++) {
         const at = stack.revealed + n
         if (at >= held) break
-        going.push({ stack: i, key: at, dir: n % 2 === 0 ? dir : -dir, fromX: 0, fromY: 0, fromRot: 0 })
+        // Only the first couple of a batch are given an animation; the rest
+        // leave with them. At this speed it reads the same and costs a tenth.
+        if (n < FLY_PER_TICK) {
+          // The second of a pair drifts rather than reversing, so a batch
+          // leaves as a small fan going the same way.
+          going.push({ stack: i, key: at, dir, fromX: 0, fromY: n * -10, fromRot: n * 4 })
+        }
         st.revealNext(i)
+        moved++
       }
-      return depart(going)
+      depart(going)
+      return moved
     },
     [depart],
   )
@@ -294,10 +326,26 @@ export default function PackOpener({ pack, cards }: Props) {
   useEffect(() => {
     if (!running) return
     const hold = timers.current
+    /*
+     * Cards leave a grid outwards, not across it.
+     *
+     * With one pack a card sailing right is a flourish; with thirteen it
+     * lands on the pack next door and the whole thing turns to soup. The
+     * left-hand columns throw left and the right-hand columns throw right, so
+     * everything travels away from the grid rather than through it.
+     */
+    const outward = (i: number, n: number) => {
+      const col = i % cols
+      const middle = (cols - 1) / 2
+      // A single column, or the middle of an odd grid, has no outside to aim
+      // at, so it fans both ways as it always did.
+      if (Math.abs(col - middle) < 0.4) return n % 2 === 0 ? 1 : -1
+      return col < middle ? -1 : 1
+    }
     const startStack = (i: number) => {
       let n = 0
       const loop = () => {
-        if (throwFrom(i, n % 2 === 0 ? 1 : -1, batch) === 0) return
+        if (throwFrom(i, outward(i, n), batch) === 0) return
         n++
         hold.push(window.setTimeout(loop, stepMs))
       }
@@ -320,7 +368,7 @@ export default function PackOpener({ pack, cards }: Props) {
       hold.forEach(clearTimeout)
       hold.length = 0
     }
-  }, [running, batch, stepMs, stacks, animateTear, slicePack, throwFrom])
+  }, [running, batch, stepMs, stacks, cols, animateTear, slicePack, throwFrom])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -444,6 +492,7 @@ export default function PackOpener({ pack, cards }: Props) {
             cards={cards.slice(i * pack.perPack, (i + 1) * pack.perPack)}
             held={heldIn(i).held}
             left={leftIn(i)}
+            pile={Math.max(0.12, leftIn(i) / Math.max(1, heldIn(i).held))}
             depth={depth}
             tear={tears[i] ?? 0}
             drag={drag}
@@ -488,6 +537,8 @@ interface StackProps {
   /** What the wrapper says it holds, and how much of that is left. */
   held: number
   left: number
+  /** How thick the pile still is, 0 to 1. The fan is scaled by it. */
+  pile: number
   /** Cards mounted behind the top one. A share of the pull's budget. */
   depth: number
   tear: number
@@ -496,7 +547,7 @@ interface StackProps {
 }
 
 /** One wrapper and its pile. Gestures belong to the grid, not to this. */
-function PackStack({ state, thrown, cards, held, left, depth, tear, drag, departing }: StackProps) {
+function PackStack({ state, thrown, cards, held, left, pile, depth, tear, drag, departing }: StackProps) {
   const sealed = state === 'sealed'
   // Foil takes its colour from the best card in the pack. It gives nothing
   // away that matters -- everything inside is already claimed -- but a pack
@@ -516,7 +567,9 @@ function PackStack({ state, thrown, cards, held, left, depth, tear, drag, depart
 
   return (
     <div className={`pack-area foil-${rarity} ${sealed ? 'is-sealed' : ''}`}>
-      <div className="pack-stack">
+      {/* `--pile` thins the fan as the pack empties: ten mounted cards cannot
+          show a stack of two thousand getting shorter, but the lean can. */}
+      <div className="pack-stack" style={{ ['--pile' as string]: pile.toFixed(3) }}>
         {behind
           .map((card, i) => (
             <div
@@ -532,6 +585,9 @@ function PackStack({ state, thrown, cards, held, left, depth, tear, drag, depart
 
         {top && (
           <div
+            /* Keyed by position, so every throw remounts the card underneath
+               and it settles into place rather than blinking. */
+            key={thrown}
             className="pack-card top"
             style={{ ['--depth' as string]: 0, zIndex: behind.length + 1, ...topStyle }}
           >
