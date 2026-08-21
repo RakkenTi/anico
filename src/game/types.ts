@@ -47,5 +47,13 @@ export interface PendingCoins {
 export interface Toast {
   id: number
   text: string
-  flavor?: 'credits' | 'wish' | 'info'
+  /**
+   * `alert` is the one that survives a phone.
+   *
+   * Everything else here is a receipt -- what a pull earned, what a stack
+   * merged to -- and on a small screen a stack of those covers the bottom of
+   * the game while saying nothing anybody reads twice. An alert is a refusal:
+   * the answer to something you just tapped, and there is no other copy of it.
+   */
+  flavor?: 'credits' | 'wish' | 'info' | 'alert'
 }

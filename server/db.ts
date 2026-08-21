@@ -491,6 +491,33 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     );
     `,
   },
+  {
+    name: '019_invite_links',
+    sql: `
+    -- An invite becomes a link somebody can hand to a room, not a code that
+    -- one person burns. \`max_uses\` of zero is unlimited; a revoked invite
+    -- stops working without taking the record of who joined through it away.
+    ALTER TABLE invites ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE invites ADD COLUMN uses INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE invites ADD COLUMN revoked_at INTEGER;
+
+    CREATE TABLE invite_uses (
+      code      TEXT NOT NULL REFERENCES invites(code) ON DELETE CASCADE,
+      player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      used_at   INTEGER NOT NULL,
+      PRIMARY KEY (code, player_id)
+    );
+
+    INSERT OR IGNORE INTO invite_uses (code, player_id, used_at)
+      SELECT code, used_by, COALESCE(used_at, created_at) FROM invites WHERE used_by IS NOT NULL;
+    UPDATE invites SET uses = 1 WHERE used_by IS NOT NULL;
+
+    -- Two columns that answered "who used this" for a code that could only be
+    -- used once. The table above answers it for one that can be used forty.
+    ALTER TABLE invites DROP COLUMN used_by;
+    ALTER TABLE invites DROP COLUMN used_at;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

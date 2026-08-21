@@ -40,6 +40,15 @@ const EMPTY_SETTINGS: ServerSettings = {
 
 let toastSeq = 1
 
+/**
+ * Whether this device only gets the receipts it cannot do without.
+ *
+ * Read once. A phone does not become a desktop, and re-reading it per toast
+ * would have the stack appear and disappear as somebody rotated the thing.
+ */
+const PHONE_ALERTS_ONLY =
+  typeof matchMedia !== 'undefined' && matchMedia('(max-width: 760px)').matches
+
 /** The live stream, if one is open. One per tab, whatever route opened it. */
 let liveOff: (() => void) | null = null
 
@@ -207,6 +216,16 @@ interface GameState {
   now: number
   error: string | null
   toasts: Toast[]
+  /**
+   * What the instance said it was running when this tab connected.
+   *
+   * The instance announces it on every stream it opens, and EventSource opens
+   * a fresh one by itself after a restart, so a deploy arrives here as a
+   * string that no longer matches.
+   */
+  build: string
+  /** A newer build is live. The page reloads the moment nothing is on screen. */
+  updateReady: boolean
 
   effects: () => Effects
   dailyReady: () => boolean
@@ -259,6 +278,10 @@ interface GameState {
   clearError: () => void
   pushToast: (text: string, flavor?: Toast['flavor']) => void
   dismissToast: (id: number) => void
+  /** Change the name on the account. Returns the refusal, or null. */
+  rename: (username: string, password: string) => Promise<string | null>
+  /** What the instance says it is running. A change means a deploy landed. */
+  noteBuild: (id: string) => void
 }
 
 export const useGame = create<GameState>()((set, get) => {
@@ -356,12 +379,15 @@ export const useGame = create<GameState>()((set, get) => {
    */
   const connectLive = () => {
     if (liveOff) return
-    liveOff = listenForState((live) => {
-      apply(live)
-      // The stream is also where an offline settlement arrives, when this
-      // device is the one that brought the account back.
-      reportOffline(live)
-    })
+    liveOff = listenForState(
+      (live) => {
+        apply(live)
+        // The stream is also where an offline settlement arrives, when this
+        // device is the one that brought the account back.
+        reportOffline(live)
+      },
+      (id) => get().noteBuild(id),
+    )
   }
 
   /** Run a call, surfacing the server's own message and never wedging the UI. */
@@ -427,6 +453,8 @@ export const useGame = create<GameState>()((set, get) => {
     now: Date.now(),
     error: null,
     toasts: [],
+    build: '',
+    updateReady: false,
 
     effects: () => computeEffects(get().badges, get().upgrades),
     canAffordPack: () => {
@@ -802,7 +830,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.tap()
       const res = await guard(
         () => api.addWish(char.id),
-        (m) => get().pushToast(m, 'info'),
+        (m) => get().pushToast(m, 'alert'),
       )
       if (res) apply(res.state)
     },
@@ -816,7 +844,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.buy()
       const res = await guard(
         () => api.buyBadge(key),
-        (m) => get().pushToast(m, 'info'),
+        (m) => get().pushToast(m, 'alert'),
       )
       if (res) apply(res.state)
     },
@@ -824,7 +852,7 @@ export const useGame = create<GameState>()((set, get) => {
     raid: async (id, quiet) => {
       const res = await guard(
         () => api.raid(id),
-        (m) => get().pushToast(m, 'info'),
+        (m) => get().pushToast(m, 'alert'),
       )
       if (!res) return
       sfx.reveal('legendary')
@@ -842,7 +870,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.tap()
       const res = await guard(
         () => api.setAim(series),
-        (m) => get().pushToast(m, 'info'),
+        (m) => get().pushToast(m, 'alert'),
       )
       if (res) apply(res.state)
     },
@@ -851,7 +879,7 @@ export const useGame = create<GameState>()((set, get) => {
       sfx.buy()
       const res = await guard(
         () => api.buyUpgrade(key, count),
-        (m) => get().pushToast(m, 'info'),
+        (m) => get().pushToast(m, 'alert'),
       )
       if (res) apply(res.state)
     },
@@ -882,10 +910,40 @@ export const useGame = create<GameState>()((set, get) => {
       return null
     },
 
+    rename: async (username, password) => {
+      let failure: string | null = null
+      const res = await guard(
+        () => api.rename(username, password),
+        (m) => {
+          failure = m
+        },
+      )
+      if (!res) return failure ?? 'Could not reach the instance.'
+      apply(res.state)
+      return null
+    },
+
+    /**
+     * The instance is running something else than it was when this tab loaded.
+     *
+     * Not acted on here: a pack halfway out of its wrapper is not a moment to
+     * throw the page away, so this only raises the flag and the app reloads
+     * when the table is clear.
+     */
+    noteBuild: (id) => {
+      if (!id) return
+      const s = get()
+      if (!s.build) set({ build: id })
+      else if (s.build !== id) set({ updateReady: true })
+    },
+
     clearError: () => set({ error: null }),
 
-    pushToast: (text, flavor) =>
-      set((prev) => ({ toasts: [...prev.toasts.slice(-3), { id: toastSeq++, text, flavor }] })),
+    pushToast: (text, flavor) => {
+      if (!PHONE_ALERTS_ONLY || flavor === 'alert') {
+        set((prev) => ({ toasts: [...prev.toasts.slice(-3), { id: toastSeq++, text, flavor }] }))
+      }
+    },
 
     dismissToast: (id) => set((prev) => ({ toasts: prev.toasts.filter((t) => t.id !== id) })),
   }

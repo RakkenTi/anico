@@ -34,6 +34,12 @@ export default function SettingsView() {
   const pushToast = useGame((s) => s.pushToast)
   const sandboxAllowed = useGame((s) => s.sandboxAllowed)
   const setSandbox = useGame((s) => s.setSandbox)
+  const rename = useGame((s) => s.rename)
+  const username = useGame((s) => s.username)
+  const [newName, setNewName] = useState('')
+  const [namePass, setNamePass] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetName, setResetName] = useState('')
   const [resetPass, setResetPass] = useState('')
@@ -206,8 +212,69 @@ export default function SettingsView() {
         </div>
       )}
 
-      {/* Both of these need an account: one is an admin privilege, the other
-          asks for credentials the demo never issued. */}
+      {/* Everything below needs an account: one is an admin privilege, the
+          others ask for credentials the demo never issued. */}
+      {!DEMO && (
+      <div className="panel">
+        <h2 className="section-title">Account</h2>
+        <p className="section-sub">
+          Signed in as <b>{sandbox ? 'the sandbox profile' : username}</b>.
+        </p>
+        <div className="setting-row">
+          <label>Change your name</label>
+          <form
+            className="rename-form"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (renaming) return
+              setRenaming(true)
+              setNameError(null)
+              const failure = await rename(newName, namePass)
+              setRenaming(false)
+              if (failure) setNameError(failure)
+              else {
+                setNewName('')
+                setNamePass('')
+                pushToast('Your name has been changed.', 'alert')
+              }
+            }}
+          >
+            <input
+              className="input"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New username"
+              autoComplete="username"
+              minLength={2}
+              maxLength={24}
+              required
+            />
+            {/* Asked for because a name is how everybody else on the instance
+                knows who you are, and an unlocked laptop should not be enough
+                to change it. */}
+            <input
+              className="input"
+              type="password"
+              value={namePass}
+              onChange={(e) => setNamePass(e.target.value)}
+              placeholder="Your password"
+              autoComplete="current-password"
+              required
+            />
+            <button className="btn btn-primary" disabled={renaming || !newName.trim() || !namePass}>
+              {renaming ? 'Changing…' : 'Change name'}
+            </button>
+          </form>
+          {nameError && <p className="reset-error">{nameError}</p>}
+          <p className="setting-hint">
+            Two to twenty-four characters: letters, numbers, dot, dash and underscore. It is
+            the name you sign in with and the one the leaderboard calls you, and it changes
+            in both places at once.
+          </p>
+        </div>
+      </div>
+      )}
+
       {!DEMO && (
       <div className="panel">
         <h2 className="section-title">Danger zone</h2>

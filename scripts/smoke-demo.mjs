@@ -190,6 +190,7 @@ for (const [tab, root] of [
   ['wishes', '.wishes-view'],
   ['shop', '.shop-view'],
   ['stats', '.stats-view'],
+  ['ranks', '.ranks-view'],
   ['settings', '.settings-view'],
 ]) {
   await page.locator('.tab', { hasText: new RegExp(tab, 'i') }).click()

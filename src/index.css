@@ -1472,18 +1472,16 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   pointer-events: none;
 }
 /*
- * On a phone, receipts do not get to stand in front of the game.
+ * On a phone, receipts do not get to stand in front of the game at all.
  *
- * A pull at end game arrives with four of them at once -- the dowry, the
- * series set, what the machine appraised -- and four toasts on a small screen
- * reach from the tab bar to the middle of the pack grid, which is where "Open
- * the rest" is. The button was not slow; it was underneath. Two at a time, and
- * a tap goes through to whatever is behind rather than dismissing a receipt
- * that was about to leave anyway.
+ * They used to be clamped to two, which was still two panels over the bottom
+ * of the pack grid saying what the last pull earned -- a number already on
+ * screen in the header. Nobody read the third one, let alone the fortieth.
+ * The store now refuses to raise anything but an alert on a small screen (see
+ * `PHONE_ALERTS_ONLY`); this is the belt to that pair of braces.
  */
 @media (max-width: 760px) {
-  .toast-stack .toast:nth-last-child(n + 3) { display: none; }
-  .toast-stack .toast { pointer-events: none; }
+  .toast-stack .toast:not(.toast-alert) { display: none; }
 }
 .toast {
   pointer-events: auto;
@@ -1500,6 +1498,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .toast-credits { border-color: var(--line-value); color: var(--value-soft); }
 .toast-wish { border-color: var(--value); color: var(--value-soft); }
+/* A refusal, not a receipt: the answer to something that was just tapped. */
+.toast-alert { border-color: var(--red); color: var(--text); }
 @keyframes toastIn {
   from { opacity: 0; transform: translate(14px, 6px); }
   to { opacity: 1; transform: none; }
@@ -1988,6 +1988,74 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 
 .stat-user em { font-style: normal; font-size: 0.86em; color: var(--text-dim); }
 
+/* ------------------------------------------------ leaderboard */
+.ranks-view { display: flex; flex-direction: column; gap: 18px; max-width: 760px; }
+.ranks-hero { display: flex; align-items: flex-start; gap: 16px; }
+.ranks-hero .section-sub { margin: 0; }
+.ranks-glyph { width: 34px; height: 34px; flex: none; color: var(--value); }
+.ranks-online { color: var(--ok); }
+.rank-board .section-sub { margin-bottom: 12px; }
+
+.rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rank-row {
+  display: grid;
+  grid-template-columns: 2.2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.88rem;
+}
+.rank-place {
+  font-family: var(--serif);
+  font-weight: 800;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+/* The top three carry the accent on the number alone. A medal palette would
+   be a second colour system on a page that already has one. */
+.rank-top .rank-place { color: var(--value); }
+.rank-1 .rank-place { font-size: 1.15rem; }
+.rank-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; }
+.rank-name > :not(.rank-dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Connected right now, which is the one fact on this page that is about the
+   instance being shared rather than about a number. */
+.rank-dot {
+  flex: none;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.rank-dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(95, 194, 126, 0.16); }
+.rank-tag {
+  font-size: 0.6rem; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase;
+  font-style: normal;
+  background: var(--accent); color: var(--on-accent);
+  border-radius: 2px; padding: 2px 6px;
+}
+.rank-note {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rank-value {
+  grid-row: 1 / -1;
+  grid-column: 3;
+  font-family: var(--serif);
+  font-weight: 800;
+  color: var(--value-soft);
+  font-variant-numeric: tabular-nums;
+}
+.rank-you { border-color: var(--accent); background: var(--accent-soft); }
+.rank-gap { text-align: center; color: var(--text-dim); letter-spacing: 0.3em; line-height: 1; }
+
+@media (max-width: 620px) {
+  .rank-row { grid-template-columns: 1.8rem minmax(0, 1fr) auto; gap: 8px; font-size: 0.82rem; }
+}
+
 /* ------------------------------------------------ admin */
 .admin-panel .setting-row { gap: 10px; }
 .admin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -2018,7 +2086,28 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 /* Per-player actions sit inside a dense list row, so they run smaller than a
    standalone button without shrinking to something nobody can tap. */
 .admin-action { min-height: 32px; padding: 5px 12px; font-size: 0.76rem; letter-spacing: 0.03em; }
-.invite-code { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--value-soft); }
+/*
+ * An invite row.
+ *
+ * The link is a field rather than a line of text: it is the thing being copied
+ * and it is too long to sit inline, and a field is selectable everywhere the
+ * clipboard API is not (a LAN instance on plain HTTP, most notably).
+ */
+.invite-list li { align-items: stretch; flex-direction: column; gap: 8px; }
+.invite-link {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.76rem;
+  color: var(--value-soft);
+  padding: 7px 10px;
+  cursor: text;
+}
+.invite-new { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.invite-new .input { width: auto; min-width: 8rem; }
+.invite-seats { font-weight: 700; }
+.invite-joined { color: var(--text-dim); }
+/* Spent or withdrawn: kept on the page as the record, dimmed out of the way. */
+.invite-spent { opacity: 0.55; }
+.invite-spent .invite-link { text-decoration: line-through; }
 
 .catalog-bar {
   position: relative;
@@ -2476,7 +2565,40 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .reset-warn { margin: 0; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
 .reset-error { margin: 0; font-size: 0.82rem; color: var(--red); font-weight: 700; }
 
-.invite-revoke { margin-left: auto; }
+.invite-revoke { color: var(--red); }
+
+/*
+ * A deploy landed under a page somebody is looking at.
+ *
+ * Along the top edge, full width, which is the one strip of this game nothing
+ * is docked to: the tab bar owns the bottom on every layout and a banner
+ * there would cover it. It is read once on the way past, and the page it
+ * describes is replaced a second later.
+ */
+.update-note {
+  position: fixed;
+  left: 0; right: 0;
+  top: 0;
+  z-index: 60;
+  padding: 9px 16px;
+  text-align: center;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-bottom: 1px solid var(--accent-down);
+  animation: updateIn 0.3s ease-out;
+}
+@keyframes updateIn {
+  from { transform: translateY(-100%); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-note { animation: none; }
+}
+
+/* ------------------------------------------------ rename */
+.rename-form { display: flex; flex-direction: column; gap: 10px; max-width: 380px; }
 
 /* A card the pack just handed over reads as a win, not as a duplicate. */
 .spread-tag.fresh { color: var(--on-accent); background: var(--accent); border-color: var(--accent-down); }

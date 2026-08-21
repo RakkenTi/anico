@@ -16,6 +16,8 @@ import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
 import { useAutomaton } from './components/useAutomaton'
 import ContractsView from './components/ContractsView'
+import LeaderboardView from './components/LeaderboardView'
+import { api } from './api'
 
 type Tab =
   | 'roll'
@@ -24,6 +26,7 @@ type Tab =
   | 'wishes'
   | 'shop'
   | 'stats'
+  | 'ranks'
   | 'settings'
 
 /* Icons are Kenney's CC0 art (see src/assets/icons/LICENSE.txt). The tabs
@@ -35,7 +38,8 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: 'contracts', label: 'Contracts', icon: 'crown_a' },
   { key: 'wishes', label: 'Wishes', icon: 'star' },
   { key: 'shop', label: 'Shop', icon: 'pouch' },
-  { key: 'stats', label: 'Stats', icon: 'chart' },
+  { key: 'stats', label: 'Stats', icon: 'cards_seek' },
+  { key: 'ranks', label: 'Ranks', icon: 'podium' },
   { key: 'settings', label: 'Settings', icon: 'gear' },
 ]
 
@@ -80,6 +84,11 @@ export default function App() {
   const authed = useGame((s) => s.authed)
   const boot = useGame((s) => s.boot)
   const signOut = useGame((s) => s.signOut)
+  const noteBuild = useGame((s) => s.noteBuild)
+  const updateReady = useGame((s) => s.updateReady)
+  // Anything on screen that would be thrown away by a reload: a pull in
+  // flight, a wrapper not torn, a muster still being read out.
+  const midHand = useGame((s) => s.rolling || s.packBusy() || s.muster !== null)
   const theme = useUi((s) => s.theme)
   const tick = useGame((s) => s.tick)
 
@@ -94,6 +103,33 @@ export default function App() {
   useEffect(() => {
     void boot()
   }, [boot])
+
+  /*
+   * Come back to a tab that has been in the background for a week and the
+   * stream may well have died somewhere in a proxy without saying so. Asking
+   * once on the way back costs a header and covers the case the stream misses.
+   */
+  useEffect(() => {
+    const ask = () => {
+      if (document.visibilityState === 'visible') {
+        void api.version().then((v) => noteBuild(v.build)).catch(() => {})
+      }
+    }
+    ask()
+    document.addEventListener('visibilitychange', ask)
+    return () => document.removeEventListener('visibilitychange', ask)
+  }, [noteBuild])
+
+  /*
+   * A new build is live, so this page is last week's. It goes as soon as there
+   * is nothing on the table -- with a beat first, so the line below is read
+   * rather than glimpsed.
+   */
+  useEffect(() => {
+    if (!updateReady || midHand) return
+    const id = setTimeout(() => location.reload(), 1800)
+    return () => clearTimeout(id)
+  }, [updateReady, midHand])
 
   useEffect(() => {
     tick()
@@ -199,8 +235,15 @@ export default function App() {
         {tab === 'wishes' && <WishesView />}
         {tab === 'shop' && <ShopView />}
         {tab === 'stats' && <StatsView />}
+        {tab === 'ranks' && <LeaderboardView />}
         {tab === 'settings' && <SettingsView />}
       </main>
+
+      {updateReady && (
+        <div className="update-note" role="status">
+          A new version of Anico is live{midHand ? ', loading when this hand is done' : ', reloading'}…
+        </div>
+      )}
 
       {DEMO && (
         <p className="demo-note">

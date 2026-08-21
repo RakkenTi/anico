@@ -8,20 +8,25 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { DB } from './db.js'
 import {
   activeProfile,
+  checkPassword,
   createInvite,
   createSession,
   endSession,
   endSessionsFor,
+  listInvites,
   login,
   playerCount,
   playerForToken,
   register,
+  renamePlayer,
+  revokeInvite,
   setSandboxActive,
   verifyPlayerPassword,
   type Player,
 } from './auth.js'
 import * as game from './game.js'
 import { setInstancePool } from './rules.js'
+import { forgetRanks, ranks } from './ranks.js'
 import { GameError } from './game.js'
 import { UpstreamError, crawlStatus, searchCharacters, startCrawl } from './catalog.js'
 import { publish, streamsFor, subscribe } from './bus.js'
@@ -41,6 +46,16 @@ export interface Config {
    * makes one.
    */
   resolvePlayer?: (c: { req: { path: string } }) => Player | null
+  /**
+   * What this build of the client is.
+   *
+   * Handed to every tab on connect, and compared by the tab against the one it
+   * booted with: an instance that restarts on a new image answers with a
+   * different string, and the page reloads itself rather than leaving somebody
+   * on last week's bundle until they think to press refresh. Absent where
+   * there is nothing to update, which is the demo.
+   */
+  buildId?: string
 }
 
 /**
@@ -105,6 +120,7 @@ const searches = counter(10, 60_000)
 
 export function createApp(db: DB, config: Config) {
   const app = new Hono<{ Variables: { player: Player; owner: Player } }>()
+  const build = config.buildId ?? 'static'
 
   const setSessionCookie = (c: any, token: string) =>
     setCookie(c, COOKIE, token, {
@@ -183,6 +199,9 @@ export function createApp(db: DB, config: Config) {
     })
   })
 
+  /** What is running here. Unauthenticated: it is a build string, not news. */
+  api.get('/version', (c) => c.json({ build }))
+
   api.post('/auth/logout', (c) => {
     endSession(db, getCookie(c, COOKIE))
     deleteCookie(c, COOKIE, { path: '/' })
@@ -195,7 +214,7 @@ export function createApp(db: DB, config: Config) {
   // profile while sandbox is switched on. `owner` is always the real account,
   // so admin rights and anything that outlives a sandbox session key off it.
   api.use('*', async (c, next) => {
-    if (c.req.path.startsWith('/api/auth/')) return next()
+    if (c.req.path.startsWith('/api/auth/') || c.req.path === '/api/version') return next()
     const owner = whoIs(c)
     if (!owner) return c.json({ error: 'Not signed in.' }, 401)
     c.set('owner', owner)
@@ -219,6 +238,9 @@ export function createApp(db: DB, config: Config) {
     const playerId = player.id
     return streamSSE(c, async (stream) => {
       let alive = true
+      // First frame on every stream, including the one EventSource opens by
+      // itself after a restart. That reconnect is how an update is noticed.
+      await stream.writeSSE({ data: JSON.stringify({ build }), event: 'version' })
       // The first stream is the account coming back: settle whatever the
       // machine earned while nothing at all was connected, and push the
       // receipt to this device.
@@ -245,6 +267,10 @@ export function createApp(db: DB, config: Config) {
   })
 
   api.get('/catalog', (c) => c.json(crawlStatus(db)))
+
+  // Deliberately `owner`: a sandbox profile is not on the boards, and the
+  // person testing in one should still see where their real account stands.
+  api.get('/ranks', (c) => c.json(ranks(db, c.get('owner').id)))
 
   api.post('/roll', async (c) => {
     const b = await body(c)
@@ -343,6 +369,24 @@ export function createApp(db: DB, config: Config) {
     return sync(c, { state: game.grantCredits(db, c.get('player'), Number(b.amount ?? 1000)) })
   })
 
+  /**
+   * Change the name on this account.
+   *
+   * Gated on the password rather than a confirmation click: a name is how
+   * everybody else on the instance knows who you are, and it is the one thing
+   * here that somebody sitting at an unlocked laptop could quietly change.
+   */
+  api.post('/rename', async (c) => {
+    const b = await body(c)
+    const owner = c.get('owner')
+    const ok = await checkPassword(db, owner.sandbox_of ?? owner.id, String(b.password ?? ''))
+    if (!ok) return c.json({ error: 'That password does not match this account.' }, 403)
+    const result = renamePlayer(db, owner, String(b.username ?? ''))
+    if (!result.ok) return c.json({ error: result.error }, 400)
+    forgetRanks()
+    return sync(c, { state: game.fullState(db, activeProfile(db, result.player)) })
+  })
+
   api.post('/reset', async (c) => {
     const b = await body(c)
     const owner = c.get('owner')
@@ -374,35 +418,22 @@ export function createApp(db: DB, config: Config) {
     return c.json({ users: rows })
   })
 
-  api.get('/admin/invites', adminOnly, (c) => {
-    const rows = db
-      .prepare(
-        `SELECT i.code, i.created_at, i.used_at, p.username AS used_by
-           FROM invites i LEFT JOIN players p ON p.id = i.used_by
-          ORDER BY i.created_at DESC LIMIT 50`,
-      )
-      .all()
-    return c.json({ invites: rows })
+  api.get('/admin/invites', adminOnly, (c) => c.json({ invites: listInvites(db) }))
+
+  api.post('/admin/invites', adminOnly, async (c) => {
+    const b = await body(c)
+    // Absent means one seat, which is what every client sent before invites
+    // could hold more than one.
+    return c.json({ invite: createInvite(db, c.get('owner').id, Number(b.maxUses ?? 1)) })
   })
 
-  api.post('/admin/invites', adminOnly, (c) =>
-    c.json({ code: createInvite(db, c.get('owner').id) }),
-  )
-
   /**
-   * Withdraw an invite that has not been used. A used one stays: it is the
-   * record of how an account came to exist, and deleting it would orphan that.
+   * Take a link out of circulation. One nobody used is deleted; one somebody
+   * joined through is marked instead, because it is the record of how that
+   * account came to exist and deleting it would orphan them.
    */
   api.delete('/admin/invites/:code', adminOnly, (c) => {
-    const code = c.req.param('code')
-    const row = db.prepare('SELECT used_by FROM invites WHERE code = ?').get(code) as
-      | { used_by: number | null }
-      | undefined
-    if (!row) return c.json({ error: 'No such invite.' }, 404)
-    if (row.used_by !== null) {
-      return c.json({ error: 'That invite has already been used, so it is a record now.' }, 400)
-    }
-    db.prepare('DELETE FROM invites WHERE code = ?').run(code)
+    if (!revokeInvite(db, c.req.param('code'))) return c.json({ error: 'No such invite.' }, 404)
     return c.json({ ok: true })
   })
 
