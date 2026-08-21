@@ -89,6 +89,15 @@ const SHOP_ANSWER_MS = 800
 const REACH_MS = 900
 /** How long selling a whole collection may take to show an emptied shelf. */
 const SELL_MS = 8000
+/**
+ * What every wrapper is promised at maxed Emerald, which every rung has.
+ *
+ * Three cards at Mythic -- but eleven characters in the world are Mythic and a
+ * pull holds up to twenty-four wrappers, so the promise falls to the next tier
+ * down rather than being broken. Legendary is the floor it can always reach.
+ */
+const GUARANTEE = 3
+const GUARANTEE_FLOOR = 450
 
 /* --------------------------------------------------------------- helpers */
 
@@ -115,6 +124,37 @@ function findChromium() {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/*
+ * AniList's real favourites curve, sampled by rank and interpolated log-log.
+ *
+ * The seed used to be 90000/(rank), which puts three characters above the
+ * Mythic line and hands the top of the catalog out far too generously. The
+ * real curve is much steeper at the head and much flatter after it: eleven
+ * characters in the world are Mythic, about a hundred and forty are Legendary
+ * or better, about seven hundred are Epic or better, and everything past four
+ * and a half thousand is Common. A guarantee that promises a tier can only be
+ * tested against a catalog that is as short of that tier as the real one.
+ */
+const FAV_BY_RANK = [
+  [1, 42890], [6, 28968], [11, 27890], [16, 22314], [26, 16317], [51, 16267],
+  [101, 11912], [151, 9255], [201, 7518], [251, 6430], [551, 3199], [951, 1851],
+  [1951, 805], [2951, 489], [3951, 327], [4951, 241],
+]
+
+function favouritesAt(rank) {
+  if (rank <= 1) return FAV_BY_RANK[0][1]
+  for (let i = 1; i < FAV_BY_RANK.length; i++) {
+    const [r0, f0] = FAV_BY_RANK[i - 1]
+    const [r1, f1] = FAV_BY_RANK[i]
+    if (rank <= r1) {
+      const t = (Math.log(rank) - Math.log(r0)) / (Math.log(r1) - Math.log(r0))
+      return Math.round(Math.exp(Math.log(f0) + t * (Math.log(f1) - Math.log(f0))))
+    }
+  }
+  const [rl, fl] = FAV_BY_RANK[FAV_BY_RANK.length - 1]
+  return Math.max(1, Math.round(fl * Math.pow(rank / rl, -1.15)))
+}
+
 /** A catalog with as many characters in it as a crawl reaches in a good week. */
 function seed(dbPath, n) {
   const db = new Database(dbPath)
@@ -133,7 +173,7 @@ function seed(dbPath, n) {
   const now = Date.now()
   db.transaction(() => {
     for (let i = 0; i < n; i++) {
-      const favourites = Math.max(1, Math.round(90000 / (i + 1)))
+      const favourites = favouritesAt(i + 1)
       stmt.run(
         1000 + i,
         `Character Nameson ${i}`,
@@ -383,6 +423,38 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
   })
   await wait(600)
   await page.screenshot({ path: join(OUT, `${rung.name}-spread.png`) })
+  /*
+   * The guarantee, wrapper by wrapper.
+   *
+   * Emerald VI promises three Mythics in every wrapper, and there are eleven
+   * Mythic characters in existence: the promise used to be filled first-come,
+   * so four wrappers took every Mythic in the world and the other twenty got
+   * nothing, every pull. It falls down the rarity ladder now.
+   *
+   * Asked of the API rather than the screen. The spread is virtualised, so
+   * counting cards in the document counts the rows that happen to be scrolled
+   * into view, and the wrapper each card belongs to is not in the DOM at all.
+   */
+  const promise = await page.evaluate(
+    ({ packs, want, floor }) =>
+      fetch('/api/roll', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ packs }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          let kept = 0
+          for (let g = 0; g < d.packCount; g++) {
+            const from = g * d.perPack
+            const slice = d.results.slice(from, Math.min(d.results.length, from + d.perPack))
+            if (slice.filter((c) => c.char.creditValue >= floor).length >= want) kept++
+          }
+          return { wrappers: d.packCount, kept }
+        }),
+    { packs: rung.multipack + 1, want: GUARANTEE, floor: GUARANTEE_FLOOR },
+  )
+
   const spread = (await page.evaluate(() => {
     const grid = document.querySelector('.roll-spread')
     const pane = document.querySelector('.spread-scroller') ?? grid?.parentElement
@@ -501,6 +573,8 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('spread width', spread.fill >= SPREAD_FILL),
       `shop ${bought === Infinity ? 'never updated' : `${bought}ms to answer`}`.padStart(24) +
         ok('shop responsiveness', bought < SHOP_ANSWER_MS),
+      `guarantee kept by ${promise.kept}/${promise.wrappers} wrappers`.padStart(35) +
+        ok('guarantee kept', promise.kept === promise.wrappers),
       `holding ${held.after.toLocaleString()} characters`.padStart(31),
       ...(sold
         ? [

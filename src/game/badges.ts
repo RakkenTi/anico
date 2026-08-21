@@ -53,7 +53,16 @@ export const BADGE_MAX = 6
  */
 export const PACK_SIZES = [10, 15, 20, 25, 40, 60] as const
 
-/** The rarity floor Emerald I..IV guarantees; V and VI add more of them. */
+/**
+ * The rarity floor Emerald I..IV guarantees; V and VI add more of them.
+ *
+ * The floor is what the badge aims at, not what it can always reach. Mythic
+ * starts around twenty-six thousand favourites, which is eleven characters on
+ * all of AniList -- not eleven per catalog, eleven people -- and Emerald VI
+ * asks for three of them in every wrapper of a pull that can hold twenty-four.
+ * A guarantee that cannot be met at its own tier is met at the best tier the
+ * catalog can still supply; see `guaranteePool` in server/game.ts.
+ */
 export const GUARANTEE_TIERS = ['rare', 'epic', 'legendary', 'mythic'] as const
 
 /** What the shop charges, as a multiple of list price, at Ruby 0..VI. */
@@ -169,9 +178,9 @@ export const BADGE_DEFS: BadgeDef[] = [
       'Every pack contains a Rare or better',
       'Every pack contains an Epic or better',
       'Every pack contains a Legendary or better',
-      'Every pack contains a Mythic. New cards pay back 25% of their value',
-      'Every pack contains 2 Mythics',
-      'Every pack contains 3 Mythics. New cards pay back 50%',
+      'Every pack contains a Mythic, or the best left in the catalog. New cards pay back 25% of their value',
+      'Every pack contains 2 Mythics, or the best left in the catalog',
+      'Every pack contains 3 Mythics, or the best left in the catalog. New cards pay back 50%',
     ],
     prereq: 'Bronze III + Silver III + Gold III, or any two badges at IV',
   },

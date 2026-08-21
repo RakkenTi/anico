@@ -235,12 +235,19 @@ heard, so they are rationed: a few may share any tenth of a second, one sample m
 restart faster than an ear can separate it from itself, and a limiter across the master
 bus catches whatever still lands together. What was heard before was mostly clipping.
 
+**Guarantee** — what a wrapper is promised, and the best tier that promise can
+actually reach. Eleven characters on all of AniList are Mythic, so Emerald VI's three
+a wrapper is a promise of seventy-two against a supply of eleven once Extra Packs is
+bought. It falls down the rarity ladder rather than being broken, and never below Rare
+(ADR 0012).
+
 **Stress run** — `npm run stress`, which plays the end game on a throwaway instance at
 four rungs and a phone and fails on anything over budget: the press-to-wrappers delay,
 the frame gap while a pull empties, the opening against the promised rate, voices in the
 same tenth of a second, whether the spread fills its pane, whether the button that opens
-a pack is reachable, whether the shop answers with the Automaton running, and whether a
-collection of sixty-five thousand characters can be sold at all. Every rung plays
+a pack is reachable, whether the shop answers with the Automaton running, whether every
+wrapper's guarantee was kept, and whether a collection of sixty-five thousand
+characters can be sold at all. Every rung plays
 against a collection the size a rung that deep would have, because what a player owns is
 its own axis of end game (ADR 0011) and a harness that only grew the pull missed both of
 the faults that cost the most. Every problem it checks for is one that shipped.
