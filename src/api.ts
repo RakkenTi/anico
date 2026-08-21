@@ -8,9 +8,31 @@ import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
 import type { Contract, Musterer } from './game/contracts'
-import type { Ranks } from './game/ranks'
+import type { PlayerProfile, Ranks } from './game/ranks'
 
-export type { RankBoard, RankRow, RankUnit, Ranks } from './game/ranks'
+export type {
+  PlayerProfile,
+  ProfileCard,
+  RankBoard,
+  RankRow,
+  RankUnit,
+  Ranks,
+  RosterEntry,
+} from './game/ranks'
+
+/** How often the instance copies its player data, and how much it keeps. */
+export interface BackupConfig {
+  intervalHours: number
+  keep: number
+  maxBytes: number
+}
+
+export interface BackupFile {
+  name: string
+  at: number
+  bytes: number
+  reason: 'auto' | 'manual' | 'safety'
+}
 
 /** An invite link, as the admin panel sees it. */
 export interface Invite {
@@ -163,7 +185,16 @@ export class ApiError extends Error {
  */
 export interface Instance {
   fetch: (path: string, init?: RequestInit) => Promise<Response>
-  listen?: (onState: (s: Snapshot) => void, onBuild: (id: string) => void) => () => void
+  listen?: (on: LiveHandlers) => () => void
+}
+
+/** What a live stream can say. Every one of them is optional to handle. */
+export interface LiveHandlers {
+  state: (s: Snapshot) => void
+  /** The instance's build string, sent first on every stream it opens. */
+  build: (id: string) => void
+  /** Accounts with somebody at them, whenever that changes. */
+  presence: (online: number) => void
 }
 
 let instance: Instance | null = null
@@ -197,34 +228,40 @@ const post = <T,>(path: string, body?: unknown) =>
  * snapshot, minus the collection, which is fetched separately when its
  * revision moves.
  */
-export function listenForState(
-  onState: (s: Snapshot) => void,
-  onBuild: (id: string) => void,
-): () => void {
-  if (instance) return instance.listen ? instance.listen(onState, onBuild) : () => {}
+export function listenForState(on: LiveHandlers): () => void {
+  if (instance) return instance.listen ? instance.listen(on) : () => {}
   if (typeof EventSource === 'undefined') return () => {}
   const source = new EventSource('/api/events')
-  source.addEventListener('state', (e) => {
+  /** A half-written frame is not worth a crash. */
+  const read = <T,>(e: Event, hand: (value: T) => void) => {
     try {
-      onState(JSON.parse((e as MessageEvent).data) as Snapshot)
+      hand(JSON.parse((e as MessageEvent).data) as T)
     } catch {
-      /* a half-written frame is not worth a crash */
+      /* ignored on purpose */
     }
-  })
+  }
+  source.addEventListener('state', (e) => read<Snapshot>(e, on.state))
   /*
    * The instance says what it is on every stream it opens, and EventSource
    * opens a new one by itself the moment the old one drops. So a restart on a
    * new image announces itself here, with no polling and nothing to schedule.
    */
-  source.addEventListener('version', (e) => {
-    try {
-      onBuild(String((JSON.parse((e as MessageEvent).data) as { build: string }).build))
-    } catch {
-      /* likewise */
-    }
-  })
+  source.addEventListener('version', (e) => read<{ build: string }>(e, (v) => on.build(String(v.build))))
+  // The one thing the instance tells everybody rather than one account.
+  source.addEventListener('presence', (e) =>
+    read<{ online: number }>(e, (v) => on.presence(Number(v.online) || 0)),
+  )
   return () => source.close()
 }
+
+/**
+ * Where a backup file is.
+ *
+ * A URL rather than a call, because downloading one is the browser's job: an
+ * anchor gets a save dialog and a progress bar, and a fetch would put a
+ * database in a tab's memory on the way to the same place.
+ */
+export const backupUrl = (name: string) => `/api/admin/backups/${encodeURIComponent(name)}/file`
 
 export const api = {
   me: () => request<SessionInfo>('/auth/me'),
@@ -238,6 +275,7 @@ export const api = {
   /** What the instance is running. Compared against what this tab booted on. */
   version: () => request<{ build: string }>('/version'),
   ranks: () => request<Ranks>('/ranks'),
+  player: (id: number) => request<PlayerProfile>(`/players/${id}`),
   catalog: () => request<CatalogStatus>('/catalog'),
 
   /** `packs` is how many wrappers to tear: zero is the free single card. */
@@ -290,6 +328,24 @@ export const api = {
   deleteInvite: (code: string) =>
     request<{ ok: true }>(`/admin/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   recrawl: () => post<{ ok: true }>('/admin/crawl'),
+
+  backups: () =>
+    request<{ config: BackupConfig; files: BackupFile[]; bytes: number }>('/admin/backups'),
+  setBackupConfig: (patch: Partial<BackupConfig>) =>
+    request<{ config: BackupConfig }>('/admin/backups', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  takeBackup: () => post<{ file: BackupFile; files: BackupFile[] }>('/admin/backups'),
+  deleteBackup: (name: string) =>
+    request<{ files: BackupFile[] }>(`/admin/backups/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+  restoreBackup: (name: string, password: string) =>
+    post<{ ok: true; safety: string; players: number }>(
+      `/admin/backups/${encodeURIComponent(name)}/restore`,
+      { password },
+    ),
   setPool: (poolSize: number) =>
     request<{ poolSize: number }>('/admin/instance', {
       method: 'PATCH',

@@ -226,6 +226,14 @@ interface GameState {
   build: string
   /** A newer build is live. The page reloads the moment nothing is on screen. */
   updateReady: boolean
+  /**
+   * Accounts with somebody at them right now, this one included.
+   *
+   * Pushed by the instance whenever a tab opens or closes anywhere, so the
+   * header's count is live rather than a number from whenever this page last
+   * loaded. Zero means nobody has told us yet, not that nobody is here.
+   */
+  online: number
 
   effects: () => Effects
   dailyReady: () => boolean
@@ -282,6 +290,8 @@ interface GameState {
   rename: (username: string, password: string) => Promise<string | null>
   /** What the instance says it is running. A change means a deploy landed. */
   noteBuild: (id: string) => void
+  /** How many accounts are connected. Pushed, not polled. */
+  notePresence: (online: number) => void
 }
 
 export const useGame = create<GameState>()((set, get) => {
@@ -379,15 +389,16 @@ export const useGame = create<GameState>()((set, get) => {
    */
   const connectLive = () => {
     if (liveOff) return
-    liveOff = listenForState(
-      (live) => {
+    liveOff = listenForState({
+      state: (live) => {
         apply(live)
         // The stream is also where an offline settlement arrives, when this
         // device is the one that brought the account back.
         reportOffline(live)
       },
-      (id) => get().noteBuild(id),
-    )
+      build: (id) => get().noteBuild(id),
+      presence: (online) => get().notePresence(online),
+    })
   }
 
   /** Run a call, surfacing the server's own message and never wedging the UI. */
@@ -455,6 +466,7 @@ export const useGame = create<GameState>()((set, get) => {
     toasts: [],
     build: '',
     updateReady: false,
+    online: 0,
 
     effects: () => computeEffects(get().badges, get().upgrades),
     canAffordPack: () => {
@@ -528,7 +540,15 @@ export const useGame = create<GameState>()((set, get) => {
       liveOff?.()
       liveOff = null
       await api.logout().catch(() => {})
-      set({ authed: false, rolled: [], collection: [], username: '', isAdmin: false, sandbox: false })
+      set({
+        authed: false,
+        rolled: [],
+        collection: [],
+        username: '',
+        isAdmin: false,
+        sandbox: false,
+        online: 0,
+      })
     },
 
     tick: () => set((s) => ({ now: Date.now() + s.clockOffset })),
@@ -936,6 +956,8 @@ export const useGame = create<GameState>()((set, get) => {
       if (!s.build) set({ build: id })
       else if (s.build !== id) set({ updateReady: true })
     },
+
+    notePresence: (online) => set({ online }),
 
     clearError: () => set({ error: null }),
 

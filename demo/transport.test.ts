@@ -51,12 +51,16 @@ test('nothing outside src/api.ts and src/game/sound.ts calls fetch', () => {
   assert.deepEqual(offenders.map((f) => f.slice(root.length)), [])
 })
 
-test('only three server modules reach for node, and the demo stubs all three', () => {
+test('only the server modules the demo never loads reach for node', () => {
   const stubbed = new Set([
     `server${'/'}db.ts`,
     `server${'/'}auth.ts`,
     // The instance entry point, which the demo never imports.
     `server${'/'}index.ts`,
+    // Backups are files in a directory, so they are the entry point's to make
+    // and are handed to `createApp` rather than imported by it. The test below
+    // is what keeps that true.
+    `server${'/'}backups.ts`,
   ])
   const offenders = serverFiles
     .filter((f) => !stubbed.has(f.slice(root.length)))
@@ -65,6 +69,22 @@ test('only three server modules reach for node, and the demo stubs all three', (
     offenders.map((f) => f.slice(root.length)),
     [],
     'a node import in the rules is a module the browser cannot load',
+  )
+})
+
+test('the HTTP layer never imports the backup store', () => {
+  /*
+   * `routes.ts` is bundled into the demo, and `backups.ts` opens files. The
+   * two are joined through `Config.backups`, the same way the demo's guest is
+   * injected -- so the moment somebody imports it directly for convenience,
+   * the demo stops building, in a browser, with a message about node:fs.
+   */
+  // `import type` is fine: it names the shape `Config` carries and is erased
+  // before anything reaches a bundler. A value import is the one that lands.
+  assert.doesNotMatch(
+    read(join(root, 'server/routes.ts')),
+    /^import\s+(?!type\b)[^\n]*from ['"]\.\/backups\.js['"]/m,
+    'reach the backup store through Config, not by importing it',
   )
 })
 

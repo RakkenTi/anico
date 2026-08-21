@@ -12,7 +12,8 @@
  * they are told what is true, in the order the server decided it.
  */
 
-type Send = (payload: string) => void
+/** `event` names the SSE event; absent means the state snapshot. */
+type Send = (payload: string, event?: string) => void
 
 const rooms = new Map<number, Set<Send>>()
 
@@ -59,6 +60,40 @@ export function publish(playerId: number, snapshot: unknown): void {
       room.delete(send)
     }
   }
+}
+
+/**
+ * Tell everybody, not just one account.
+ *
+ * The rooms exist because a snapshot is private: one player's balance is
+ * nobody else's business. This is for the one fact that is everybody's, which
+ * is who is here. It carries no state, only a count and a name.
+ */
+export function broadcast(event: string, payload: unknown): void {
+  const line = JSON.stringify(payload)
+  for (const room of [...rooms.values()]) {
+    for (const send of [...room]) {
+      try {
+        send(line, event)
+      } catch {
+        room.delete(send)
+      }
+    }
+  }
+}
+
+/** Accounts with at least one stream open. The instance's own presence count. */
+export function onlinePlayers(): number {
+  let n = 0
+  for (const room of rooms.values()) if (room.size > 0) n++
+  return n
+}
+
+/** Every account currently connected, for the roster and the boards. */
+export function onlineIds(): Set<number> {
+  const ids = new Set<number>()
+  for (const [id, room] of rooms) if (room.size > 0) ids.add(id)
+  return ids
 }
 
 /**

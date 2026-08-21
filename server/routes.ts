@@ -26,10 +26,11 @@ import {
 } from './auth.js'
 import * as game from './game.js'
 import { setInstancePool } from './rules.js'
-import { forgetRanks, ranks } from './ranks.js'
+import { forgetRanks, profile, ranks } from './ranks.js'
+import type { Backups } from './backups.js'
 import { GameError } from './game.js'
 import { UpstreamError, crawlStatus, searchCharacters, startCrawl } from './catalog.js'
-import { publish, streamsFor, subscribe } from './bus.js'
+import { broadcast, onlinePlayers, publish, streamsFor, subscribe } from './bus.js'
 import { streamSSE } from 'hono/streaming'
 
 const COOKIE = 'anico_session'
@@ -56,6 +57,14 @@ export interface Config {
    * there is nothing to update, which is the demo.
    */
   buildId?: string
+  /**
+   * Where this instance keeps its backups, if it keeps any.
+   *
+   * Injected rather than imported, for the same reason the player is: the
+   * store reaches for node:fs and a directory, and the demo build has neither.
+   * Absent means the routes below answer that there is nothing here to back up.
+   */
+  backups?: Backups
 }
 
 /**
@@ -143,6 +152,15 @@ export function createApp(db: DB, config: Config) {
   /** The one place a request is turned into an account. See `Config`. */
   const whoIs = (c: any): Player | null =>
     config.resolvePlayer ? config.resolvePlayer(c) : playerForToken(db, getCookie(c, COOKIE))
+
+  /**
+   * How many accounts have somebody at them.
+   *
+   * The one number here that belongs to everybody, so it goes out on its own
+   * event rather than inside a snapshot: a snapshot is private, and a count of
+   * players is not worth a per-player push of anything else.
+   */
+  const tellPresence = () => broadcast('presence', { online: onlinePlayers() })
 
   const sync = <T extends { state: unknown }>(c: any, body: T) => {
     publish(c.get('player').id, body.state)
@@ -245,15 +263,22 @@ export function createApp(db: DB, config: Config) {
       // machine earned while nothing at all was connected, and push the
       // receipt to this device.
       const arriving = streamsFor(playerId) === 0 ? game.markOnline(db, player) : null
-      const off = subscribe(playerId, (payload) => {
-        void stream.writeSSE({ data: payload, event: 'state' })
+      const off = subscribe(playerId, (payload, event) => {
+        void stream.writeSSE({ data: payload, event: event ?? 'state' })
       })
       if (arriving) await stream.writeSSE({ data: JSON.stringify(arriving), event: 'state' })
+      // This device is now one of the lit dots on everybody's leaderboard, so
+      // say so, to itself and to everybody else. Announced after subscribing,
+      // so the tab that caused the change is counted in the number it hears.
+      tellPresence()
       stream.onAbort(() => {
         alive = false
         off()
         // The last one out starts the offline clock.
-        if (streamsFor(playerId) === 0) game.markOffline(db, player)
+        if (streamsFor(playerId) === 0) {
+          game.markOffline(db, player)
+          tellPresence()
+        }
       })
       // A comment every half minute, so an idle connection is not tidied away
       // by whatever proxy the instance is sitting behind.
@@ -271,6 +296,12 @@ export function createApp(db: DB, config: Config) {
   // Deliberately `owner`: a sandbox profile is not on the boards, and the
   // person testing in one should still see where their real account stands.
   api.get('/ranks', (c) => c.json(ranks(db, c.get('owner').id)))
+
+  api.get('/players/:id', (c) => {
+    const found = profile(db, Number(c.req.param('id')), c.get('owner').id)
+    if (!found) return c.json({ error: 'No such player.' }, 404)
+    return c.json(found)
+  })
 
   api.post('/roll', async (c) => {
     const b = await body(c)
@@ -466,6 +497,76 @@ export function createApp(db: DB, config: Config) {
   api.post('/admin/crawl', adminOnly, (c) => {
     void startCrawl(db, true)
     return c.json({ ok: true })
+  })
+
+  /* --------------------------------------------------------------- backups */
+
+  /** Every route below needs somewhere to put a file. The demo has nowhere. */
+  const withBackups = async (c: any, next: any) => {
+    if (!config.backups) return c.json({ error: 'This build keeps no backups.' }, 501)
+    await next()
+  }
+
+  api.get('/admin/backups', adminOnly, withBackups, (c) =>
+    c.json({
+      config: config.backups!.config(),
+      files: config.backups!.list(),
+      bytes: config.backups!.bytes(),
+    }),
+  )
+
+  api.patch('/admin/backups', adminOnly, withBackups, async (c) =>
+    c.json({ config: config.backups!.setConfig(await body(c)) }),
+  )
+
+  api.post('/admin/backups', adminOnly, withBackups, (c) =>
+    c.json({ file: config.backups!.take('manual'), files: config.backups!.list() }),
+  )
+
+  api.delete('/admin/backups/:name', adminOnly, withBackups, (c) => {
+    if (!config.backups!.remove(c.req.param('name'))) return c.json({ error: 'No such backup.' }, 404)
+    return c.json({ files: config.backups!.list() })
+  })
+
+  /**
+   * Hand a backup over.
+   *
+   * Streamed off disk rather than read into memory: these are the only files
+   * this server sends that it did not build, and the whole point of them is
+   * being able to keep a copy somewhere that is not this box.
+   */
+  api.get('/admin/backups/:name/file', adminOnly, withBackups, (c) => {
+    const name = c.req.param('name')
+    // The store opens the file, because opening files is the one thing this
+    // module is not allowed to know how to do.
+    const file = config.backups!.open(name)
+    if (!file) return c.json({ error: 'No such backup.' }, 404)
+    return new Response(file.body, {
+      headers: {
+        'Content-Type': 'application/vnd.sqlite3',
+        'Content-Disposition': `attachment; filename="${name}"`,
+        'Content-Length': String(file.bytes),
+      },
+    })
+  })
+
+  /**
+   * Put one back.
+   *
+   * The most destructive button in the app: it replaces every account's
+   * progress, not just the caller's, so it asks for the admin's own password
+   * the way erasing a save does, and it takes a copy of the present before it
+   * touches anything.
+   */
+  api.post('/admin/backups/:name/restore', adminOnly, withBackups, async (c) => {
+    const b = await body(c)
+    const owner = c.get('owner')
+    const ok = await checkPassword(db, owner.sandbox_of ?? owner.id, String(b.password ?? ''))
+    if (!ok) return c.json({ error: 'That password does not match this account.' }, 403)
+    const result = config.backups!.restore(c.req.param('name'))
+    if (!result.ok) return c.json({ error: result.error ?? 'The restore failed.' }, 400)
+    forgetRanks()
+    return c.json(result)
   })
 
   app.route('/api', api)
