@@ -40,6 +40,12 @@ buying something every twenty minutes or so. There is no last purchase.
   see, and a pack of ten thousand that emptied in five seconds at fifty cards a
   second did not add up. Tying the cap to Open Speed makes the arithmetic
   visible and gives that line a job it never stops doing.
+
+  The dealt cards also **stand in** for the appraised ones on screen: a wrapper
+  is labelled with what the shop sold you and its counter drains to nothing,
+  because each card thrown carries its share of the pack away with it. A pack
+  that advertises twenty thousand and hands over thirty is not a smaller pack,
+  it is a pack that looks broken.
 - **Badges stay finite, and that is their job.** Six lines of six levels, each
   one unlocking or changing something you can name: whether packs exist, how
   many wishes you may pin, what a pack promises. They are the shape of the game;

@@ -473,8 +473,10 @@ export function roll(
   pack: boolean
   /** Stacks laid side by side on screen, each its own wrapper. */
   packCount: number
-  /** Cards in each of those stacks. */
+  /** Cards in each of those stacks that are dealt as real cards. */
   perPack: number
+  /** Cards each of those packs actually holds: the number on the wrapper. */
+  heldPerPack: number
   claimed: number
   bonus: number
   coins: number
@@ -703,6 +705,7 @@ export function roll(
     pack,
     packCount,
     perPack,
+    heldPerPack: pack ? packSize : perPack,
     claimed: opened.claimed,
     bonus: opened.bonus,
     coins: coinFound,
