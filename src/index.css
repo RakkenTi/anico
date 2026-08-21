@@ -1985,11 +1985,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-start;
-  gap: 26px 16px;
+  gap: 26px 20px;
   width: 100%;
   --cols: 1;
   --rows: 1;
-  --gap: 16px;
+  --gap: 20px;
   /* Room the grid has to work in, between the header and the tab dock, with
      the hint and the button still to fit under it. */
   --room: calc(64dvh - 110px);
@@ -2092,8 +2092,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   /* A phone has less height to give, and the hint, the button and the dock
      still have to fit under the grid. */
   .pack-grid {
-    gap: 18px 10px;
-    --gap: 10px;
+    gap: 18px 12px;
+    --gap: 12px;
     --room: calc(100dvh - 420px - env(safe-area-inset-bottom, 0px));
     --pack-w: min(
       calc((100% - (var(--cols) - 1) * var(--gap) - 30px) / var(--cols)),
@@ -2114,12 +2114,27 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   /* Up and to the right a few pixels each, so the pile fans towards the top
      corner and shows a sliver of every card under the top one. Six deep is as
      far as it leans: the grid reserves that much room beside the last column,
-     and a longer lean rests on the pack next door. */
-  --fan: min(var(--depth), 6);
-  transform: translate(calc(var(--fan) * 3px), calc(var(--fan) * -2px));
-  filter: brightness(calc(1 - min(var(--depth), 10) * 0.045));
+     and a longer lean rests on the pack next door.
+
+     `--pile` is how much of the pack is left, which is what makes ten mounted
+     cards read as a stack of two thousand getting shorter: the lean shortens
+     with it, and the last few cards lie almost flat. */
+  --fan: calc(min(var(--depth), 6) * var(--pile, 1));
+  transform:
+    translate(calc(var(--fan) * 3.4px), calc(var(--fan) * -2.4px))
+    rotate(calc(var(--depth) * 0.28deg * var(--pile, 1)));
+  filter: brightness(calc(1 - min(var(--depth), 10) * 0.05));
   pointer-events: none;
+  transition: transform 0.18s ease-out;
 }
+/* The card that has just come to the top settles rather than appearing. */
+.pack-card.top { animation: packSettle 0.22s ease-out; }
+@keyframes packSettle {
+  from { transform: translate3d(0, -5px, 0) scale(0.965) rotate(-0.6deg); opacity: 0.65; }
+  to { transform: none; opacity: 1; }
+}
+/* Mid-drag the card is following a finger, so it keeps its own transform. */
+.pack-card.top[style*='translate3d'] { animation: none; }
 .pack-card.top {
   position: relative;
   border-radius: 4px;
@@ -2134,6 +2149,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   position: absolute;
   inset: 0;
   pointer-events: none;
+  --throw: calc(var(--dir) * clamp(150px, var(--pack-w) * 1.9, 700px));
   animation: throwOut 0.32s cubic-bezier(0.32, 0, 0.68, 1) forwards;
 }
 @keyframes throwOut {
@@ -2142,7 +2158,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
     opacity: 1;
   }
   to {
-    transform: translate3d(calc(var(--dir) * 760px), -46px, 0) rotate(calc(var(--dir) * 26deg));
+    /* How far a card sails is a multiple of its own width, not a constant:
+       760px is a flourish for one big pack and a pile-up across the grid for
+       thirteen small ones. */
+    transform: translate3d(var(--throw), -46px, 0) rotate(calc(var(--dir) * 26deg));
     opacity: 0;
   }
 }

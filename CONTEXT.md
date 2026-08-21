@@ -107,6 +107,12 @@ because each card you throw takes its share of the pack with it. Those are the c
 appraised. The alternative was a pack advertising twenty thousand and handing over thirty,
 which is the same arithmetic with the player left out of it.
 
+Ten mounted cards cannot show a pile of two thousand getting shorter, so the *lean* does
+it: the fan is scaled by how much of the pack is left, and the last few cards lie almost
+flat. Cards leave a grid outwards rather than across it, and only the first two of a batch
+are given an animation. Faking the parts nobody can count is what keeps thirteen packs
+opening at three hundred cards a second looking like anything at all.
+
 **Pack price** — what opening a pack costs, twelve credits a card, always less than the
 cards inside are worth. The sink the whole economy turns on (ADR 0005): credits used to
 have nothing to buy once the shop was finished, which took about ten minutes.
