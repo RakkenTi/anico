@@ -2056,6 +2056,167 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   .rank-row { grid-template-columns: 1.8rem minmax(0, 1fr) auto; gap: 8px; font-size: 0.82rem; }
 }
 
+/* ------------------------------------------------ presence and profiles */
+/* The one number in the header that is about somebody else. */
+.stat-online { display: inline-flex; align-items: center; gap: 6px; }
+.stat-online .rank-dot { width: 6px; height: 6px; }
+
+/* Everybody on the instance, connected first. A wrap of chips rather than
+   another ranked list: nothing here is in an order worth counting. */
+.roster { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.roster-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.roster-chip:hover { color: var(--text); border-color: var(--line-strong); }
+.roster-chip.on { color: var(--text); }
+.roster-chip.me { border-color: var(--accent); background: var(--accent-soft); }
+
+/* A name on a board opens the person behind it, so it has to read as a
+   control without becoming a button in a row of buttons. */
+.rank-name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rank-name:hover { color: var(--value-soft); }
+
+.profile-modal { max-width: 560px; padding: 26px 24px 24px; }
+.profile-head { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin-bottom: 18px; }
+.profile-head .rank-dot { align-self: center; width: 9px; height: 9px; }
+.profile-name {
+  grid-column: 2;
+  margin: 0;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  letter-spacing: 0.02em;
+}
+.profile-since { grid-column: 2; margin: 0; color: var(--text-dim); font-size: 0.8rem; }
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.profile-stat { background: var(--well); padding: 12px 10px; text-align: center; }
+.profile-stat-value {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--value-soft);
+  font-variant-numeric: tabular-nums;
+}
+.profile-stat-label {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.profile-section { margin-top: 20px; }
+.profile-heading {
+  margin: 0 0 10px;
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.profile-cards {
+  list-style: none; margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.profile-card {
+  /* `rarity-*` sets --frame, the same token the cards themselves are
+     framed with, so a legendary reads the same here as in a spread. */
+  border: 1px solid var(--frame, var(--line));
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--well);
+}
+.profile-card img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; display: block; }
+.profile-card-name {
+  padding: 5px 6px 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-card-meta {
+  padding: 1px 6px 6px;
+  display: flex; gap: 5px;
+  font-size: 0.66rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.profile-card-stars { color: var(--value); }
+
+.profile-badges, .profile-upgrades { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.profile-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.profile-upgrades { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.profile-badges li, .profile-upgrades li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.8rem;
+  /* Unbought lines stay on the page: what somebody has not spent on is as
+     much of a shape as what they have. */
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+.profile-badges li.has, .profile-upgrades li.has { opacity: 1; color: var(--text); }
+.profile-badges .icon { width: 16px; height: 16px; flex: none; }
+.profile-badge-name, .profile-upgrade-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-badge-level, .profile-upgrade-level {
+  color: var(--value-soft);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.profile-badges li:not(.has) .profile-badge-level,
+.profile-upgrades li:not(.has) .profile-upgrade-level { color: inherit; }
+
+@media (max-width: 620px) {
+  .profile-modal { padding: 22px 16px 18px; }
+  .profile-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .profile-badges, .profile-upgrades { grid-template-columns: 1fr; }
+}
+
+/* ------------------------------------------------ backups */
+.backup-config { display: flex; flex-wrap: wrap; gap: 12px; }
+.backup-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
+.backup-field .input { width: auto; min-width: 9rem; }
+.backup-list li { align-items: center; }
+.backup-when { font-weight: 700; font-variant-numeric: tabular-nums; }
+/* The restore form takes the whole row when it opens. */
+.backup-list .reset-confirm { flex-basis: 100%; max-width: none; }
+
 /* ------------------------------------------------ admin */
 .admin-panel .setting-row { gap: 10px; }
 .admin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path'
 import { openDb, purgeSandboxProfiles } from './db.js'
 import { purgeExpiredSessions } from './auth.js'
 import { createApp } from './routes.js'
+import { openBackups, startBackupTimer } from './backups.js'
 import { startCrawl, catalogSize } from './catalog.js'
 
 const PORT = Number(process.env.PORT ?? 8080)
@@ -49,7 +50,17 @@ const BUILD_ID = indexHtml
   ? createHash('sha256').update(indexHtml).digest('hex').slice(0, 12)
   : 'dev'
 
-const app = createApp(db, { cookieSecure: COOKIE_SECURE, buildId: BUILD_ID })
+/*
+ * Backups live beside the database, inside DATA_DIR.
+ *
+ * Which means the bind mount the compose file already sets up: they land in a
+ * directory on the host, next to `anico.db`, where they can be rsynced off the
+ * box without asking this process for anything.
+ */
+const backups = openBackups(db, DATA_DIR)
+startBackupTimer(backups)
+
+const app = createApp(db, { cookieSecure: COOKIE_SECURE, buildId: BUILD_ID, backups })
 
 // The shell is served by us, never by the static middleware, so it always
 // carries no-cache: a stale index.html would pair an old bundle with a new API.
@@ -79,6 +90,12 @@ serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`[anico] listening on http://0.0.0.0:${info.port}`)
   console.log(`[anico] data in ${resolve(DATA_DIR)}, ${catalogSize(db)} characters in the catalog`)
   console.log(`[anico] build ${BUILD_ID}`)
+  const { intervalHours, keep } = backups.config()
+  console.log(
+    intervalHours > 0
+      ? `[anico] backups every ${intervalHours}h, keeping ${keep}, ${backups.list().length} on disk`
+      : `[anico] automatic backups are off, ${backups.list().length} on disk`,
+  )
   if (CRAWL_ON_BOOT) void startCrawl(db)
 })
 

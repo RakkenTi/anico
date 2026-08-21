@@ -13,10 +13,12 @@
  */
 
 import type { DB } from './db.js'
-import { streamsFor } from './bus.js'
-import type { RankBoard, RankRow, RankUnit, Ranks } from '../src/game/ranks.js'
+import { onlineIds } from './bus.js'
+import type { PlayerProfile, RankBoard, RankRow, RankUnit, Ranks } from '../src/game/ranks.js'
+import { EMPTY_BADGES } from '../src/game/badges.js'
+import { EMPTY_UPGRADES } from '../src/game/upgrades.js'
 
-export type { RankBoard, RankRow, RankUnit, Ranks }
+export type { PlayerProfile, RankBoard, RankRow, RankUnit, Ranks }
 
 interface Standing {
   id: number
@@ -154,11 +156,15 @@ const BOARDS: BoardSpec[] = [
  * the instance in the tab and opens no stream at all, would tell its only
  * visitor that nobody is playing.
  */
-const isOn = (id: number, viewerId: number) => id === viewerId || streamsFor(id) > 0
+const presence = (viewerId: number) => {
+  const live = onlineIds()
+  return (id: number) => id === viewerId || live.has(id)
+}
 
 export function ranks(db: DB, viewerId: number): Ranks {
   const rows = standings(db)
-  const online = rows.filter((r) => isOn(r.id, viewerId)).length
+  const isOn = presence(viewerId)
+  const online = rows.filter((r) => isOn(r.id)).length
 
   const boards = BOARDS.map((spec) => {
     const ranked = rows
@@ -170,7 +176,7 @@ export function ranks(db: DB, viewerId: number): Ranks {
       rank: r.rank,
       player: r.s.username,
       you: r.s.id === viewerId,
-      online: isOn(r.s.id, viewerId),
+      online: isOn(r.s.id),
       value: r.value,
       note: spec.note?.(r.s),
     })
@@ -194,6 +200,72 @@ export function ranks(db: DB, viewerId: number): Ranks {
     online,
     claimed: rows.reduce((n, r) => n + r.characters, 0),
     cards: rows.reduce((n, r) => n + r.cards, 0),
+    // Everybody, not just whoever placed: a board of ten is a ranking, and the
+    // roster is the answer to "who else is on this thing".
+    roster: rows
+      .map((r) => ({ id: r.id, player: r.username, you: r.id === viewerId, online: isOn(r.id) }))
+      .sort((a, b) => Number(b.online) - Number(a.online) || a.player.localeCompare(b.player)),
     boards,
+  }
+}
+
+/**
+ * One player, as everybody else is allowed to see them.
+ *
+ * Everything here is a consequence of playing: what they hold, what they have
+ * bought, the best card they have turned up. Nothing about the account itself
+ * -- no settings, no sessions, no note of who invited whom -- because a page
+ * for looking at your friends' collections is not a page for auditing them.
+ */
+export function profile(db: DB, id: number, viewerId: number): PlayerProfile | null {
+  const row = db
+    .prepare(
+      `SELECT p.id, p.username, p.created_at, p.is_admin,
+              ps.credits, ps.total_rolls AS rolls, ps.daily_streak AS streak,
+              ps.badges_json, ps.upgrades_json,
+              (SELECT COUNT(*)                  FROM claims c WHERE c.player_id = p.id) AS characters,
+              (SELECT COALESCE(SUM(c.copies),0) FROM claims c WHERE c.player_id = p.id) AS cards,
+              (SELECT COALESCE(MAX(c.stars),0)  FROM claims c WHERE c.player_id = p.id) AS stars
+         FROM players p JOIN player_state ps ON ps.player_id = p.id
+        WHERE p.id = ? AND p.sandbox_of IS NULL`,
+    )
+    .get(id) as any
+  if (!row) return null
+
+  const parse = <T,>(raw: string, fallback: T): T => {
+    try {
+      return { ...fallback, ...(JSON.parse(raw) as object) }
+    } catch {
+      return fallback
+    }
+  }
+
+  // The five best things they own, which is the part of somebody else's
+  // collection anybody actually wants to see.
+  const best = db
+    .prepare(
+      `SELECT ch.id, ch.name, ch.image, ch.series, c.credit_value, c.copies, c.stars
+         FROM claims c JOIN characters ch ON ch.id = c.character_id
+        WHERE c.player_id = ?
+        ORDER BY c.credit_value DESC LIMIT 5`,
+    )
+    .all(id) as PlayerProfile['best']
+
+  return {
+    id: row.id,
+    player: row.username,
+    isAdmin: !!row.is_admin,
+    you: row.id === viewerId,
+    online: presence(viewerId)(row.id),
+    joinedAt: row.created_at,
+    credits: row.credits,
+    rolls: row.rolls,
+    streak: row.streak,
+    characters: row.characters,
+    cards: row.cards,
+    stars: row.stars,
+    badges: parse(row.badges_json, { ...EMPTY_BADGES }),
+    upgrades: parse(row.upgrades_json, { ...EMPTY_UPGRADES }),
+    best,
   }
 }

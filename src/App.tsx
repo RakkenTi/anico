@@ -79,6 +79,7 @@ export default function App() {
   const dailyStreak = useGame((s) => s.dailyStreak)
   const testing = useGame((s) => s.sandbox)
   const username = useGame((s) => s.username)
+  const online = useGame((s) => s.online)
   const claimDaily = useGame((s) => s.claimDaily)
   const booting = useGame((s) => s.booting)
   const authed = useGame((s) => s.authed)
@@ -180,6 +181,21 @@ export default function App() {
             {packSize > 0 ? `×${fmtCount(packSize)} packs` : 'packs locked'}
           </span>
           <span className="stat" title="Collection size">{fmtCount(collectionSize)} owned</span>
+          {/* Who else is at the game. Pushed by the instance when anybody's
+              tab opens or closes, so it is live rather than a number from
+              whenever this page happened to load. Hidden until the stream has
+              said something, because "0 online" while you are plainly online
+              is worse than saying nothing. */}
+          {online > 0 && (
+            <button
+              className="stat stat-online"
+              onClick={() => setTab('ranks')}
+              title="Accounts with somebody at them right now"
+            >
+              <span className="rank-dot on" />
+              {fmtCount(online)} <em>online</em>
+            </button>
+          )}
           {/* Reads as a button rather than another read-out: the old version sat
               in a row of plain stats and nobody could tell it was clickable. */}
           <button

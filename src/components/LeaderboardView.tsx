@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type RankBoard, type RankRow, type Ranks } from '../api'
+import PlayerCard from './PlayerCard'
 import { fmt, fmtCount } from '../game/format'
 import { useGame } from '../game/store'
 import { DEMO } from '../game/demo'
@@ -25,38 +26,48 @@ function value(row: RankRow, unit: RankBoard['unit']): string {
   return fmtCount(row.value)
 }
 
-function Row({ row, unit }: { row: RankRow; unit: RankBoard['unit'] }) {
+function Row({
+  row,
+  unit,
+  onOpen,
+}: {
+  row: RankRow
+  unit: RankBoard['unit']
+  onOpen: (name: string) => void
+}) {
   return (
     <li className={`rank-row ${row.you ? 'rank-you' : ''} ${row.rank <= 3 ? `rank-top rank-${row.rank}` : ''}`}>
       <span className="rank-place">{row.rank}</span>
-      <span className="rank-name">
+      {/* The name is the way in to somebody's collection, on a phone as much
+          as anywhere, so it is a button rather than something to hover. */}
+      <button className="rank-name" onClick={() => onOpen(row.player)}>
         {/* Dimmed rather than absent when offline: an empty slot reads as a
             missing thing, and this is a fact about a person, not a badge. */}
         <span className={`rank-dot ${row.online ? 'on' : ''}`} title={row.online ? 'Playing now' : 'Away'} />
         {row.player}
         {row.you && <em className="rank-tag">you</em>}
-      </span>
+      </button>
       {row.note && <span className="rank-note">{row.note}</span>}
       <span className="rank-value">{value(row, unit)}</span>
     </li>
   )
 }
 
-function Board({ board }: { board: RankBoard }) {
+function Board({ board, onOpen }: { board: RankBoard; onOpen: (name: string) => void }) {
   return (
     <div className="panel rank-board">
       <h2 className="section-title">{board.title}</h2>
       <p className="section-sub">{board.blurb}</p>
       <ol className="rank-list">
         {board.rows.map((r) => (
-          <Row key={`${board.key}-${r.rank}`} row={r} unit={board.unit} />
+          <Row key={`${board.key}-${r.rank}`} row={r} unit={board.unit} onOpen={onOpen} />
         ))}
         {board.you && (
           <>
             <li className="rank-gap" aria-hidden="true">
               ⋯
             </li>
-            <Row row={board.you} unit={board.unit} />
+            <Row row={board.you} unit={board.unit} onOpen={onOpen} />
           </>
         )}
       </ol>
@@ -67,6 +78,7 @@ function Board({ board }: { board: RankBoard }) {
 export default function LeaderboardView() {
   const [ranks, setRanks] = useState<Ranks | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [open, setOpen] = useState<number | null>(null)
   const username = useGame((s) => s.username)
 
   useEffect(() => {
@@ -89,6 +101,13 @@ export default function LeaderboardView() {
     // Reloaded on a rename so the board stops calling you by the old name
     // before the next poll comes round.
   }, [username])
+
+  /* The boards carry names, not ids, because a rank is about a person rather
+     than a row. The roster is where the two are joined up. */
+  const openByName = (name: string) => {
+    const found = ranks?.roster.find((r) => r.player === name)
+    if (found) setOpen(found.id)
+  }
 
   if (error && !ranks) {
     return (
@@ -134,14 +153,37 @@ export default function LeaderboardView() {
         </div>
       </div>
 
+      <div className="panel">
+        <h2 className="section-title">Everybody</h2>
+        <p className="section-sub">
+          Whoever is connected first, then the rest by name. Open one to see what they hold
+          and what they have bought.
+        </p>
+        <ul className="roster">
+          {ranks.roster.map((r) => (
+            <li key={r.id}>
+              <button
+                className={`roster-chip ${r.online ? 'on' : ''} ${r.you ? 'me' : ''}`}
+                onClick={() => setOpen(r.id)}
+              >
+                <span className={`rank-dot ${r.online ? 'on' : ''}`} />
+                {r.player}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       {ranks.boards.map((b) => (
-        <Board key={b.key} board={b} />
+        <Board key={b.key} board={b} onOpen={openByName} />
       ))}
 
       <p className="attribution">
         Sandbox profiles are left off every board: they are handed credits and deleted on the
         next restart.
       </p>
+
+      {open !== null && <PlayerCard key={open} id={open} onClose={() => setOpen(null)} />}
     </div>
   )
 }

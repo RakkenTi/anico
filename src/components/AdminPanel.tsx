@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type CatalogStatus, type Invite } from '../api'
 import { useGame } from '../game/store'
 import { POOL_OPTIONS } from '../game/pool'
+import BackupPanel from './BackupPanel'
 
 /**
  * How many people one link lets in.
@@ -314,6 +315,8 @@ export default function AdminPanel() {
           through keeps the row, because it is the record of how those accounts exist.
         </p>
       </div>
+
+      <BackupPanel />
     </div>
   )
 }
