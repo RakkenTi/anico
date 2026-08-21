@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useGame } from '../game/store'
 import { api } from '../api'
+import { DEMO, DEMO_REPO } from '../game/demo'
 import type { RolledCharacter } from '../game/types'
 import CharacterCard from './CharacterCard'
+import Locked from './Locked'
 
 export default function WishesView() {
   const wishes = useGame((s) => s.wishes)
@@ -31,6 +33,28 @@ export default function WishesView() {
     } finally {
       setSearching(false)
     }
+  }
+
+  /*
+   * Pinning a character means searching AniList by name, which is the only
+   * call this app makes to anybody else at runtime. A demo that made it would
+   * be pointing a public URL at somebody else's rate limit, so the page says
+   * what it is for and stops there.
+   */
+  if (DEMO) {
+    return (
+      <div className="wishes-view">
+        <Locked
+          title="Wishes need an instance"
+          href={DEMO_REPO}
+        >
+          A wish pins a character by name, so that they turn up in your pulls more often than
+          the catalog would ever give them to you. Finding one means searching AniList, which
+          is the only request this game makes to anybody else, and a public demo has no
+          business making it on your behalf. Run your own instance and the search is yours.
+        </Locked>
+      </div>
+    )
   }
 
   return (

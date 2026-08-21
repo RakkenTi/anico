@@ -138,12 +138,33 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Where `/api` is.
+ *
+ * Normally it is over the wire, at the origin that served this bundle. The
+ * demo build hands over a whole instance running in the tab instead, so the
+ * two calls below are the only place in the client that has to know which.
+ * `listen` is absent there: a tab cannot disagree with itself, and every
+ * mutating route already answers with the authoritative snapshot.
+ */
+export interface Instance {
+  fetch: (path: string, init?: RequestInit) => Promise<Response>
+  listen?: (onState: (s: Snapshot) => void) => () => void
+}
+
+let instance: Instance | null = null
+
+export function useInstance(next: Instance): void {
+  instance = next
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const options: RequestInit = {
     credentials: 'same-origin',
     headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
     ...init,
-  })
+  }
+  const res = instance ? await instance.fetch(path, options) : await fetch(`/api${path}`, options)
   const text = await res.text()
   const data = text ? JSON.parse(text) : {}
   if (!res.ok) throw new ApiError(data.error ?? `Request failed (${res.status}).`, res.status)
@@ -163,6 +184,7 @@ const post = <T,>(path: string, body?: unknown) =>
  * revision moves.
  */
 export function listenForState(onState: (s: Snapshot) => void): () => void {
+  if (instance) return instance.listen ? instance.listen(onState) : () => {}
   if (typeof EventSource === 'undefined') return () => {}
   const source = new EventSource('/api/events')
   source.addEventListener('state', (e) => {

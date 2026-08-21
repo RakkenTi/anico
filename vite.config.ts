@@ -10,7 +10,7 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 // server/; /api is proxied to it during development.
 export default defineConfig({
   plugins: [react()],
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  define: { __APP_VERSION__: JSON.stringify(version), __DEMO__: 'false' },
   build: { outDir: 'dist/client', emptyOutDir: true },
   server: {
     proxy: {

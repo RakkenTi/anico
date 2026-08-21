@@ -31,6 +31,16 @@ const COOKIE = 'anico_session'
 
 export interface Config {
   cookieSecure: boolean
+  /**
+   * Who is making this request.
+   *
+   * Absent means the ordinary thing: read the session cookie and look the
+   * account up. The demo build, which has no accounts and no cookies, hands
+   * back a fixed guest instead -- injected here rather than branched on inside
+   * the middleware, so the only build that knows a guest exists is the one that
+   * makes one.
+   */
+  resolvePlayer?: (c: { req: { path: string } }) => Player | null
 }
 
 /**
@@ -114,6 +124,10 @@ export function createApp(db: DB, config: Config) {
    * account never disagree about the balance. The snapshot pushed is the same
    * authoritative one the caller gets, minus the collection (see bus.ts).
    */
+  /** The one place a request is turned into an account. See `Config`. */
+  const whoIs = (c: any): Player | null =>
+    config.resolvePlayer ? config.resolvePlayer(c) : playerForToken(db, getCookie(c, COOKIE))
+
   const sync = <T extends { state: unknown }>(c: any, body: T) => {
     publish(c.get('player').id, body.state)
     return c.json(body)
@@ -122,7 +136,7 @@ export function createApp(db: DB, config: Config) {
   /* ------------------------------------------------------------------ auth */
 
   api.get('/auth/me', (c) => {
-    const player = playerForToken(db, getCookie(c, COOKIE))
+    const player = whoIs(c)
     return c.json({
       player: player
         ? { username: player.username, isAdmin: !!player.is_admin, sandbox: !!player.sandbox }
@@ -182,7 +196,7 @@ export function createApp(db: DB, config: Config) {
   // so admin rights and anything that outlives a sandbox session key off it.
   api.use('*', async (c, next) => {
     if (c.req.path.startsWith('/api/auth/')) return next()
-    const owner = playerForToken(db, getCookie(c, COOKIE))
+    const owner = whoIs(c)
     if (!owner) return c.json({ error: 'Not signed in.' }, 401)
     c.set('owner', owner)
     c.set('player', activeProfile(db, owner))

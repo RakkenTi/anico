@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fmt, fmtCount } from './game/format'
 import { useGame, useUi, formatDuration } from './game/store'
 import { DAILY_INTERVAL_H } from './game/economy'
+import { DEMO, DEMO_NOTE, DEMO_REPO } from './game/demo'
 import { sfx } from './game/sound'
 import RollView from './components/RollView'
 import CollectionView from './components/CollectionView'
@@ -154,9 +155,23 @@ export default function App() {
             {dailyReady ? 'collect daily' : `daily ${formatDuration(dailyAt - now)}`}
             {dailyStreak > 1 && <span className="streak"> ×{dailyStreak}</span>}
           </button>
-          <button className="stat stat-user" onClick={signOut} title="Sign out of this instance">
-            {username} <em>sign out</em>
-          </button>
+          {/* No account in the demo, so the slot that would sign you out is
+              the one place every visitor looks: it points at the real thing. */}
+          {DEMO ? (
+            <a
+              className="stat stat-user"
+              href={DEMO_REPO}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={DEMO_NOTE}
+            >
+              demo <em>get the real thing</em>
+            </a>
+          ) : (
+            <button className="stat stat-user" onClick={signOut} title="Sign out of this instance">
+              {username} <em>sign out</em>
+            </button>
+          )}
         </div>
       </header>
 
@@ -185,6 +200,15 @@ export default function App() {
         {tab === 'stats' && <StatsView />}
         {tab === 'settings' && <SettingsView />}
       </main>
+
+      {DEMO && (
+        <p className="demo-note">
+          {DEMO_NOTE}{' '}
+          <a href={DEMO_REPO} target="_blank" rel="noreferrer noopener">
+            Run your own instance
+          </a>
+        </p>
+      )}
 
       <ToastStack />
     </div>

@@ -2489,6 +2489,57 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .version-line b { color: var(--value-soft); font-variant-numeric: tabular-nums; }
 
+/* ----------------------------------------------------------- the demo */
+
+/* A page the public demo cannot honestly offer. Darkened rather than removed:
+   a visitor deciding whether to run this themselves should see the door. */
+.locked-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.22)),
+    var(--surface);
+  border-style: dashed;
+}
+.locked-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text-dim);
+}
+.locked-panel .section-title { margin: 0; }
+.locked-body {
+  max-width: 62ch;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+/* The standing "this is a demo" line. Under the tabs rather than over the
+   game: it is a footnote, not a banner anybody has to dismiss. */
+.demo-note {
+  margin: 18px auto 0;
+  padding: 0 16px;
+  max-width: 72ch;
+  font-size: 11.5px;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--text-dim);
+}
+.demo-note a { color: var(--accent); }
+
+/* Two controls that are links in the demo and buttons everywhere else. A
+   button that wears an underline reads as a broken button. */
+a.btn,
+a.stat-user,
+a.stat-user em { text-decoration: none; }
+
 /* --------------------------------------------------------- the muster */
 
 /* Answering a demand, watched rather than read. The choreography is two custom
