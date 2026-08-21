@@ -4,11 +4,11 @@ A self-hosted anime card collecting game. No Discord bot, no commands: a web app
 on your own box, open in a browser, and play. Pull packs, keep what you like, sell the
 rest, and spend the credits on a shop that never runs out of things to sell you.
 
-![Anico: a first pack, then ten packs, then fifty](./docs/img/hero.gif)
+![Anico: one free card, a first pack, then ten packs of nineteen hundred](./docs/img/hero.gif)
 
-*One summon screen at three points in a save: a first ten-card pack, ten packs at once,
-then fifty. Same clip as a [WebM](./docs/img/hero.webm), at twice the size and a fifth of
-the weight.*
+*One save from its first card: the free single summon, a first ten-card pack, ten packs of
+nineteen hundred, and then the collection, the contract board and the shop that priced it.
+Same clip as a [WebM](./docs/img/hero.webm), at twice the size and a third of the weight.*
 
 Characters and art come from the [AniList API](https://docs.anilist.co/), fetched once by
 the server and cached in the instance's own database. One deployment is an **instance**;
@@ -27,8 +27,8 @@ takes the top card off every stack, so fifty packs are the same gesture as one. 
 <kbd>Space</kbd> and the button open them at your current **Open Speed**. It is only
 ceremony: every card is yours the moment the pack is bought.
 
-Open Speed is also what decides how much of a pull arrives as real cards. The rest is
-appraised into credits as the pack drains, at what those cards averaged
+Open Speed also decides how much of a pull arrives as real cards. The rest is appraised
+into credits as the pack drains, at what those cards averaged
 ([ADR 0007](./docs/adr/0007-the-numbers-have-no-ceiling.md)).
 
 ![Opening a pack](./docs/img/opening.gif)
@@ -49,8 +49,11 @@ is deliberate: it is your chance to **lock** anything you want to keep.
 **Upgrades** raise your rates and mostly have no maximum level. **Badges** are six tiers
 each and change how the game works: they unlock packs, add wish slots, and guarantee
 rarities. Every level costs more than the last and more than the effect it buys, so the
-next purchase is always a little further off. Past ten thousand, numbers are quoted as
-4.18B or 12.4Qa.
+next purchase is always a little further off, and the balance never runs away
+([ADR 0015](./docs/adr/0015-the-works-were-a-firework.md)).
+
+One row buys one level, ten, twenty-five, or as many as the balance covers. Past ten
+thousand, numbers are quoted as 4.18B or 12.4Qa.
 
 ![The shop](./docs/img/shop.jpg)
 
@@ -60,40 +63,16 @@ next purchase is always a little further off. Past ten thousand, numbers are quo
 presses again, faster with every level. It runs on any tab, and you can swipe along with
 it. Add **Offline Earnings** and it keeps paying with the game closed.
 
-### Run the works
+### Chase a contract
 
-Past a quadrillion credits the summon alone has nothing left to sell, so there are four
-more tabs. They all pay the same credits and are all bought from the same shop; what
-chains between them is material, not permission
-([ADR 0014](./docs/adr/0014-one-currency-three-faucets.md)).
+Each contract names a series and a depth and pays for holding that many characters that
+deep, so a character can be worth wanting for a reason that is not its credit value.
+Nothing expires and nothing is gambled. Rewards are stored as a number of *pulls*, so a
+contract is the same size of prize at ten thousand credits and at a quadrillion.
 
-A copy of a character you already hold sheds a **spare**, and a copy landing on a deep
-stack sheds more of one. That is the tap everything downstream runs on.
-
-**The Press** mills spares into **scrap**, once per summon, awake or away. The ram keeps
-your real rate, so an upgrade is visible rather than quoted. Hold the machine to slam it:
-a slam brings the ram down early on whatever is in the tank and stokes the works.
-
-![The Press](./docs/img/press.gif)
-
-**The Factory** is the furnace that eats the scrap and pays credits for it, every summon
-and every hour you are away. What one scrap is worth is a fraction of a whole *summon*
-rather than a flat number, which is how it stays worth having twenty orders of magnitude
-later. Stoke it by hand for **heat**, which doubles what a scrap fetches and fades in
-seconds. Worth a lot while you are stood at it, nothing at all to the away rate.
-
-![The Factory](./docs/img/factory.gif)
-
-**Expeditions** are the slow half: a lump of scrap now for a much larger lump later,
-measured in summons rather than minutes, so a caravan sits exactly where you left it. Set
-a route to **Repeat** and Auto Summon sends it again when it comes home.
-
-![Expeditions](./docs/img/expeditions.jpg)
-
-**Contracts** are the goal board. Each row names a series and a depth and pays for holding
-that many characters that deep, so a character can be worth wanting for a reason that is
-not its credit value. Nothing expires and nothing is gambled. **Called Shot** aims a share
-of every pull at one series: press the crosshair on the row you are trying to finish.
+**Called Shot** aims a share of every pull at the series you name, **Split Aim** points it
+at up to six at once, and **Auto Aim** re-points it at whatever you are closest to
+finishing.
 
 ![Contracts](./docs/img/contracts.jpg)
 
@@ -212,13 +191,12 @@ half torn or a card in flight. That is where the mobile bugs have been.
 
 `npm run stress` plays the end game, which is where every performance problem this project
 has had turned up. It stands up its own instance, seeds a catalog the size a real crawl
-reaches, and walks a player up five rungs of the shop, up to eighteen million cards a pull
+reaches, and walks a player up five rungs of the shop, up to eleven million cards a pull
 in forty-one wrappers against a collection of sixty-five thousand characters. It measures
 the press-to-wrappers delay, frame gaps, opening against what Open Speed promised, sound
-voices, wrapper widths, whether every guarantee was kept, whether the board posts and the
-Press mills, whether a caravan can be sent, and whether a whole collection can be sold. It
-screenshots all four of the works' tabs at every rung and exits non-zero on anything over
-budget.
+voices, wrapper widths, whether every guarantee was kept, whether the board posts and
+prices itself, and whether a whole collection can be sold. It exits non-zero on anything
+over budget.
 
 Both need a Chromium on the machine: `npx playwright install chromium`, or point
 `PLAYWRIGHT_CHROMIUM` at one.
