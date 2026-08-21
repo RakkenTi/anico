@@ -10,7 +10,7 @@ rest, and spend the credits on a shop that never runs out of things to sell you.
 nineteen hundred, and then the collection, the contract board and the shop that priced it.
 Same clip as a [WebM](./docs/img/hero.webm), at twice the size and a third of the weight.*
 
-**[Play the demo](https://rakkenti.github.io/anico/)** if you would rather try it than read
+**[Play the demo](https://demo.anico.markmartinez.ca/)** if you would rather try it than read
 about it. It is the real game with the real rules, running entirely in your browser: no
 account, no server, and nothing saved.
 
@@ -95,7 +95,7 @@ finishing.
 
 ## The demo
 
-[rakkenti.github.io/anico](https://rakkenti.github.io/anico/) is the whole instance
+[demo.anico.markmartinez.ca](https://demo.anico.markmartinez.ca/) is the whole instance
 compiled into a static page. The same Hono app, the same rules in `server/game.ts`, the
 same migrations, over SQLite compiled to WebAssembly: the server runs in the tab, and
 nothing in it knows the difference.

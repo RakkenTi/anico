@@ -8,12 +8,14 @@
  *
  *   node builtins   `server/auth.ts` imports them and the demo never calls
  *                   them, so they are aliased to a module of loud stubs.
- *   a base path      GitHub Pages serves from a subdirectory. Everything the
- *                   client asks for by URL reads `import.meta.env.BASE_URL`.
+ *   a base path      The deploy is a custom domain, so the site is the root of
+ *                   it. Everything the client asks for by URL reads
+ *                   `import.meta.env.BASE_URL`, so a project-pages deployment
+ *                   at /anico/ is one environment variable away.
  *   an entry point   `demo/main.tsx`, which stands the instance up before
  *                   React mounts.
  *
- * Set ANICO_DEMO_BASE to deploy somewhere other than /anico/.
+ * Set ANICO_DEMO_BASE to deploy under a subdirectory instead.
  */
 
 import { cpSync, existsSync, readFileSync } from 'node:fs'
@@ -45,7 +47,7 @@ function copySfx(): Plugin {
 }
 
 export default defineConfig({
-  base: process.env.ANICO_DEMO_BASE ?? '/anico/',
+  base: process.env.ANICO_DEMO_BASE ?? '/',
   root: here('./demo'),
   publicDir: here('./demo/public'),
   plugins: [react(), copySfx()],

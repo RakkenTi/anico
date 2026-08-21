@@ -22,7 +22,7 @@ import { homedir } from 'node:os'
 
 const DIST = resolve('dist/demo')
 const OUT = process.env.ANICO_DEMO_SHOTS ?? 'shots/demo'
-const BASE_PATH = process.env.ANICO_DEMO_BASE ?? '/anico/'
+const BASE_PATH = process.env.ANICO_DEMO_BASE ?? '/'
 /* Not 8099: that is the stress harness's, and the two would collide. */
 const PORT = Number(process.env.ANICO_DEMO_PORT ?? 8098)
 
