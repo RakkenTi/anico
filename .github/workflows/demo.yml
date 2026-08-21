@@ -1,11 +1,11 @@
-# The public demo: the whole instance, built as a static site.
+# The public demo: the whole instance, built as a static site and published to
+# GitHub Pages.
 #
-# Deliberately not wired to a Pages deployment. Publishing this puts a playable
-# copy of the game on the open internet under a personal domain, which is a
-# decision rather than a build step -- so this workflow proves the demo still
-# builds and still boots, and stops there. Add the deploy job when the audit
-# says go.
-name: Demo build
+# Nothing here is deployed until it has been played: the build job boots the
+# built site in a real browser and plays it, and the deploy job only runs if
+# that passed. A demo can build cleanly, boot cleanly and still be a blank
+# page, because the server it talks to is inside the tab.
+name: Demo
 
 on:
   push:
@@ -15,6 +15,14 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one halfway: a partial upload is a
+# broken page rather than an old one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -55,3 +63,29 @@ jobs:
       # Everything up to here would pass on a demo that renders a blank page.
       - run: npx playwright install --with-deps chromium
       - run: npm run smoke:demo
+
+      # Screenshots of every tab, kept for a fortnight. When somebody says the
+      # demo looks wrong, this is the difference between a bug report and a
+      # guess about which build it was.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demo-screens
+          path: shots/demo
+          retention-days: 14
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/demo
+
+  # Only from master, and only behind a build that played the game.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

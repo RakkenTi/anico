@@ -476,6 +476,21 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     DELETE FROM raids;
     `,
   },
+  {
+    name: '018_no_skip_owned',
+    sql: `
+    -- "Skip characters I already own" is gone from Settings and from the roll.
+    --
+    -- It was a switch that quietly turned off half the game: no duplicates
+    -- means no stack ever merges past the first star, which is where the
+    -- collection's value is and what every contract on the board asks for. A
+    -- setting nobody should leave on is a setting.
+    UPDATE player_state SET settings_json = json_remove(
+      CASE WHEN json_valid(settings_json) THEN settings_json ELSE '{}' END,
+      '$.skipOwned'
+    );
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

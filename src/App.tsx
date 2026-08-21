@@ -45,13 +45,20 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
  * A contract asks for a breadth of one series at a depth of stars, so a
  * collection of four cards can answer none of them and a board of five refusals
  * is a tutorial in being stuck. It opens once there is a collection to measure
- * against -- which is a few pulls in, and exactly when the summon stops being
- * the whole game.
+ * against -- a few pulls in, and exactly when the summon stops being the whole
+ * game.
+ *
+ * Counted from `totalClaims`, which the server sends in every snapshot, rather
+ * than from the collection this device is holding: the collection is fetched
+ * separately and only when the Collection view asks for it, so a player who
+ * pulled twenty packs without opening that tab had earned the board and could
+ * not see it. It is also the honest measure of the two -- distinct characters
+ * ever claimed, which does not go away when you sell them.
  */
 const BOARD_OPENS_AT = 40
 
 function boardOpen(s: ReturnType<typeof useGame.getState>): boolean {
-  return s.collection.length >= BOARD_OPENS_AT
+  return s.totalClaims >= BOARD_OPENS_AT
 }
 
 /** Tabs that wait for the board to open. */
@@ -74,13 +81,15 @@ export default function App() {
   const boot = useGame((s) => s.boot)
   const signOut = useGame((s) => s.signOut)
   const theme = useUi((s) => s.theme)
-  const layout = useUi((s) => s.layout)
   const tick = useGame((s) => s.tick)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    document.documentElement.dataset.layout = layout
-  }, [theme, layout])
+    /* Stamped rather than read: there is one layout now, and a device that
+       still has an older one in its stored settings would otherwise ask for a
+       stylesheet that no longer exists. */
+    document.documentElement.dataset.layout = 'stage'
+  }, [theme])
 
   useEffect(() => {
     void boot()
@@ -96,16 +105,8 @@ export default function App() {
   // wrapper to be torn while there is somebody watching it happen.
   useAutomaton(tab)
 
-  /* Sticky for the session, so a board spent back down to nothing mid-visit
-     does not take its own tab away underneath the player. Not persisted: the
-     snapshot answers this correctly on every load, and a flag on the device
-     would show the board to the next account to sign in here. */
-  const opened = useGame(boardOpen)
-  const [everOpen, setEverOpen] = useState(false)
-  // Adjusted during render rather than in an effect: it is derived from what
-  // this render already knows, and an effect would paint the tabs away and back.
-  if (opened && !everOpen) setEverOpen(true)
-  const tabs = opened || everOpen ? TABS : TABS.filter((t) => !LATE.has(t.key))
+  // No stickiness needed: the count it reads only ever goes up.
+  const tabs = useGame(boardOpen) ? TABS : TABS.filter((t) => !LATE.has(t.key))
 
   const dailyAt = lastDailyAt + DAILY_INTERVAL_H * 3_600_000
   const dailyReady = testing || now >= dailyAt

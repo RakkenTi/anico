@@ -668,10 +668,9 @@ export function roll(
   const wishes = wishesOf(db, player.id)
   const openWishes = wishes.filter((w) => !ownedIds.has(w.id))
 
-  const owner = settings.skipOwned ? player.id : null
   // The pool belongs to the instance, not the player: see `instancePool`.
   const poolSize = instancePool(db)
-  const pool = drawFromPool(db, dealt, settings.rollGender, poolSize, owner)
+  const pool = drawFromPool(db, dealt, settings.rollGender, poolSize)
   /*
    * Called Shot: a share of the pull comes from the series the player named.
    *
@@ -760,7 +759,7 @@ export function roll(
     const short = walls.reduce((n, [from, to]) => n + shortfall(results, from, to, fx), 0)
     const lucky =
       short > 0
-        ? guaranteePool(db, short, fx, settings, poolSize, owner, results.map((r) => r.char.id))
+        ? guaranteePool(db, short, fx, settings, poolSize, results.map((r) => r.char.id))
         : []
     for (const [from, to] of walls) {
       totalComp += guarantee(results, lucky, from, to, fx, ownedIds, wishes)
@@ -918,7 +917,6 @@ function guaranteePool(
   fx: ReturnType<typeof computeEffects>,
   settings: ServerSettings,
   poolSize: number,
-  owner: number | null,
   dealt: number[],
 ): PoolPick[] {
   const taken: PoolPick[] = []
@@ -934,7 +932,6 @@ function guaranteePool(
       settings.rollGender,
       poolSize,
       exclude,
-      owner,
       want - taken.length,
     )
     // Each rung includes the one above it, so what is already taken has to be

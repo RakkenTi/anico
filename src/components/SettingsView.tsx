@@ -4,20 +4,13 @@ import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
 import { DEMO } from '../game/demo'
-import type { RollGender, LayoutKey, ThemeKey } from '../game/types'
+import type { RollGender, ThemeKey } from '../game/types'
 import type { ServerSettings } from '../api'
 
 const THEMES: { key: ThemeKey; name: string; swatch: string[] }[] = [
   { key: 'arcade', name: 'Arcade', swatch: ['#0a0e12', '#2ac2a8', '#ffb454'] },
   { key: 'festival', name: 'Festival', swatch: ['#0b0d17', '#e04a35', '#d4af37'] },
   { key: 'daybreak', name: 'Daybreak', swatch: ['#f4ecda', '#c2402e', '#8a6d1a'] },
-]
-
-const LAYOUTS: { key: LayoutKey; name: string; note: string }[] = [
-  { key: 'stage', name: 'Stage', note: 'Cards front and centre' },
-  { key: 'classic', name: 'Classic', note: 'Plain and roomy' },
-  { key: 'scroll', name: 'Scroll', note: 'Taller cards, softer edges' },
-  { key: 'ledger', name: 'Ledger', note: 'Square corners, more per screen' },
 ]
 
 /**
@@ -110,23 +103,6 @@ export default function SettingsView() {
         </div>
 
         <div className="setting-row">
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={settings.skipOwned}
-              onChange={(e) => update({ skipOwned: e.target.checked })}
-            />
-            <span>Skip characters I already own</span>
-          </label>
-          <p className="setting-hint">
-            Leave this off if you want to merge. Duplicates stack, and every doubling merges
-            a stack a star higher, which is worth far more than the copies were apart. It
-            also closes the contract board: a pull with this on deals no duplicates, so no
-            stack ever grows past ★0 and nothing on the board can be answered.
-          </p>
-        </div>
-
-        <div className="setting-row">
           <label>Character pool</label>
           <p className="setting-hint">
             <b>{pool?.label ?? `Top ${poolSize.toLocaleString()}`}</b>. Set for the whole
@@ -161,29 +137,6 @@ export default function SettingsView() {
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="setting-row">
-          <label>Layout</label>
-          <div className="segmented wrap">
-            {LAYOUTS.map((l) => (
-              <button
-                key={l.key}
-                className={`seg ${ui.layout === l.key ? 'active' : ''}`}
-                onClick={() => {
-                  ui.set({ layout: l.key })
-                  sfx.tap()
-                }}
-                title={l.note}
-              >
-                {l.name}
-              </button>
-            ))}
-          </div>
-          <p className="setting-hint">
-            {LAYOUTS.find((l) => l.key === ui.layout)?.note}. Themes only recolour; layouts
-            change spacing, corners and how much fits on a screen.
-          </p>
         </div>
 
         <div className="setting-row">

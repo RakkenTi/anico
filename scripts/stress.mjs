@@ -265,6 +265,12 @@ function stock(dbPath, n, copies = 4096) {
     }
   })()
   const after = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
+  /* Claims written behind the game's back still have to count: the contract
+     board opens on `total_claims`, and a rung holding sixty-five thousand
+     characters that the counter has never heard of is a state no real player
+     can be in. */
+  db.prepare('UPDATE player_state SET total_claims = MAX(total_claims, ?) WHERE player_id = ?')
+    .run(after, player.id)
   db.close()
   return { before: have, after }
 }

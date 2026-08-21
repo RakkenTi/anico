@@ -46,8 +46,6 @@ export interface ServerSettings {
   rollGender: RollGender
   /** Sell every pull below this rarity as it lands. */
   autoSell: AutoSell
-  /** Never roll a character this player already owns. */
-  skipOwned: boolean
   /**
    * Let Auto Aim point Called Shot for you.
    *
@@ -62,7 +60,6 @@ export interface ServerSettings {
 export const DEFAULT_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
   autoSell: 'off',
-  skipOwned: false,
   autoAim: true,
 }
 
@@ -80,9 +77,19 @@ const clampInt = (v: unknown, lo: number, hi: number, fallback: number): number 
  * playing a different one from the person next to them.
  */
 export function instancePool(db: DB): number {
-  const raw = Number(getMeta(db, POOL_KEY))
-  if (!Number.isFinite(raw)) return POOL_EVERYTHING
-  return Math.min(POOL_EVERYTHING, Math.max(POOL_MIN, Math.round(raw)))
+  /*
+   * No row means the whole catalog, and it has to be checked before the
+   * number: `Number(null)` is 0, 0 is finite, and 0 clamps up to POOL_MIN. So
+   * every instance that had never had its pool set was quietly drawing from
+   * the top *hundred* characters -- the narrowest pool there is, on a catalog
+   * of tens of thousands, which is the opposite of the default this is
+   * documented as having.
+   */
+  const raw = getMeta(db, POOL_KEY)
+  if (raw === null || raw.trim() === '') return POOL_EVERYTHING
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return POOL_EVERYTHING
+  return Math.min(POOL_EVERYTHING, Math.max(POOL_MIN, Math.round(n)))
 }
 
 export function setInstancePool(db: DB, value: unknown): number {
@@ -111,7 +118,6 @@ export function sanitizeSettings(patch: any, current: ServerSettings): ServerSet
   if (['off', 'rare', 'epic', 'legendary', 'mythic'].includes(patch?.autoSell)) {
     next.autoSell = patch.autoSell
   }
-  if (typeof patch?.skipOwned === 'boolean') next.skipOwned = patch.skipOwned
   if (typeof patch?.autoAim === 'boolean') next.autoAim = patch.autoAim
   return next
 }

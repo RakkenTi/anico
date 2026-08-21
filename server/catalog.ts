@@ -429,19 +429,15 @@ export function drawFromPool(
   count: number,
   pref: RollGender,
   poolSize: number,
-  excludeOwnedBy: number | null,
 ): PoolPick[] {
   const floor = poolFloor(db, poolSize, pref)
-  const exclude = excludeOwnedBy
-    ? 'AND id NOT IN (SELECT character_id FROM claims WHERE player_id = @player)'
-    : ''
   const rows = db
     .prepare(
       `SELECT * FROM characters
-        WHERE favourites >= @floor ${genderClause(pref)} ${exclude}
+        WHERE favourites >= @floor ${genderClause(pref)}
         ORDER BY RANDOM() LIMIT @count`,
     )
-    .all({ floor, count, player: excludeOwnedBy ?? 0 })
+    .all({ floor, count })
   return rows.map(rowToCharacter)
 }
 
@@ -482,22 +478,18 @@ export function drawAboveValue(
   pref: RollGender,
   poolSize: number,
   exclude: number[],
-  excludeOwnedBy: number | null,
   count: number,
 ): PoolPick[] {
   if (count <= 0) return []
   const floor = poolFloor(db, poolSize, pref)
-  const owned = excludeOwnedBy
-    ? 'AND id NOT IN (SELECT character_id FROM claims WHERE player_id = @player)'
-    : ''
   const holes = exclude.map(() => '?').join(',')
   const rows = db
     .prepare(
       `SELECT * FROM characters
-        WHERE favourites >= @floor AND credit_value >= @min ${genderClause(pref)} ${owned}
+        WHERE favourites >= @floor AND credit_value >= @min ${genderClause(pref)}
           ${exclude.length ? `AND id NOT IN (${holes})` : ''}
         ORDER BY RANDOM() LIMIT @count`,
     )
-    .all({ floor, min: minValue, count, player: excludeOwnedBy ?? 0 }, ...exclude)
+    .all({ floor, min: minValue, count }, ...exclude)
   return (rows as any[]).map(rowToCharacter)
 }

@@ -1343,7 +1343,12 @@ ol.badge-levels { list-style: none; counter-reset: none; display: flex; flex-dir
 
 /* A spread big enough to need windowing (see useVirtualGrid): the scroller is
    as tall as the whole thing and the mounted rows are moved into place. */
+/* The spread's own box, which is always the full width of the stage even when
+   the spread inside it is one card. Without the auto margins a single summon
+   hugged the left edge and left a hand's width of gap before the rail: the
+   stage centres its children, and this is the child it centres. */
 .spread-scroller { position: relative; width: 100%; }
+.spread-scroller > .roll-spread { margin-inline: auto; }
 .spread-scroller > .roll-spread.windowed { will-change: transform; }
 /* No cascade at a thousand cards: a flourish nobody can see the end of is a
    delay. The cards are simply there. */
