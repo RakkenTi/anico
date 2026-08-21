@@ -30,6 +30,21 @@ import { wrapSqlJs } from './sqlite'
 /** Where the prebaked catalog lives, relative to the deployed base path. */
 const CATALOG = `${import.meta.env.BASE_URL}catalog.db`
 
+/**
+ * What the guest starts with.
+ *
+ * An instance starts at zero and the first pack is 1,350 credits away, which
+ * is about thirty free summons: three or four minutes of pressing a button and
+ * selling what it hands you. That is the right opening for a game somebody
+ * chose to install and the wrong one for a page somebody clicked on -- a demo
+ * gets a minute of attention, and it should spend it on the pack tearing open
+ * rather than on the grind that pays for one.
+ *
+ * Enough for every badge worth seeing, Auto Summon, and a few levels of the
+ * lines that compound. Not enough to reach the end of anything.
+ */
+const GUEST_CREDITS = 500_000
+
 const GUEST: Player = {
   id: 1,
   username: 'guest',
@@ -71,9 +86,10 @@ function seatGuest(db: DB): void {
     ).run(GUEST.id, GUEST.username, GUEST.username, Date.now())
     db.prepare(
       `INSERT INTO player_state (player_id, credits, badges_json, upgrades_json, settings_json)
-       VALUES (?, 0, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(
       GUEST.id,
+      GUEST_CREDITS,
       JSON.stringify(EMPTY_BADGES),
       JSON.stringify(EMPTY_UPGRADES),
       JSON.stringify(DEFAULT_SETTINGS),

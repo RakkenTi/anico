@@ -10,6 +10,10 @@ rest, and spend the credits on a shop that never runs out of things to sell you.
 nineteen hundred, and then the collection, the contract board and the shop that priced it.
 Same clip as a [WebM](./docs/img/hero.webm), at twice the size and a third of the weight.*
 
+**[Play the demo](https://rakkenti.github.io/anico/)** if you would rather try it than read
+about it. It is the real game with the real rules, running entirely in your browser: no
+account, no server, and nothing saved.
+
 Characters and art come from the [AniList API](https://docs.anilist.co/), fetched once by
 the server and cached in the instance's own database. One deployment is an **instance**;
 players share it but their collections are separate.
@@ -84,10 +88,46 @@ finishing.
 - **Wishes**: pin characters by name; they turn up rarely on purpose
 - **Coins**: drop on about one summon in fifty
 - **Series sets**: 3, 5 and 10 characters from one show pay a bonus
-- **Daily bonus**, **stats charts**, **three themes and four layouts**, and a PWA install
+- **Daily bonus**, **stats charts**, **three themes**, and a PWA install
 - **Admin**: the character pool, the catalog crawl, invites and accounts, in Settings
 
 ![Collection](./docs/img/collection.jpg)
+
+## The demo
+
+[rakkenti.github.io/anico](https://rakkenti.github.io/anico/) is the whole instance
+compiled into a static page. The same Hono app, the same rules in `server/game.ts`, the
+same migrations, over SQLite compiled to WebAssembly: the server runs in the tab, and
+nothing in it knows the difference.
+
+It is a build target rather than a fork, so a new route or a changed price reaches it with
+no work. What differs is only what a public page cannot honestly offer:
+
+- **No accounts.** One guest, minted on load, given a starting balance so the first pack
+  is a click away rather than a grind.
+- **Nothing saved.** The database is bytes in memory. A refresh is a new visitor.
+- **Wishes is locked.** Pinning a character means searching AniList, and a public demo has
+  no business spending somebody else's rate limit. Locking it also means the demo makes no
+  external API call at all; card art is still hot-linked, as it is in an instance.
+- **No offline earnings, no Auto Summon with the tab closed, no multi-device sync.** All
+  three are genuinely server behaviours. The clips above are where they live.
+
+Building it:
+
+```sh
+npm run bake:catalog   # crawls AniList once and writes demo/public/catalog.db
+npm run build:demo     # into dist/demo
+npm run preview:demo   # serves it at the deployed base path
+npm run smoke:demo     # boots it in a real browser and plays it
+```
+
+The catalog is a build input, not an output: it takes a while to crawl politely, so it is
+committed. Regenerate it when you want the popularity ranking refreshed.
+
+`npm test` runs the demo's SQLite shim against real better-sqlite3, case for case, and
+carries the guards that keep the demo honest: a second path to `/api`, a Node import in
+the rules, or a route that stops answering with the state it published all fail the suite
+rather than the demo.
 
 ## Running an instance
 
@@ -179,6 +219,7 @@ npm run build         # client into dist/client, server into dist/server
 npm start             # the built server on :8080
 npm run dev           # Vite on :5173, proxying /api to :8080
 npm run lint          # oxlint
+npm test              # the demo's SQLite shim, and the drift guards
 ```
 
 Run `npm start` and `npm run dev` together for hot reload against a live API. Point the

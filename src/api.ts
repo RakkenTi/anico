@@ -15,7 +15,6 @@ export interface ServerSettings {
   rollGender: 'female' | 'male' | 'everyone'
   /** Sell every pull below this rarity as it lands. */
   autoSell: AutoSell
-  skipOwned: boolean
   /** Let Auto Aim point Called Shot at the closest contracts. */
   autoAim: boolean
 }

@@ -23,7 +23,8 @@ import { homedir } from 'node:os'
 const DIST = resolve('dist/demo')
 const OUT = process.env.ANICO_DEMO_SHOTS ?? 'shots/demo'
 const BASE_PATH = process.env.ANICO_DEMO_BASE ?? '/anico/'
-const PORT = Number(process.env.ANICO_DEMO_PORT ?? 8099)
+/* Not 8099: that is the stress harness's, and the two would collide. */
+const PORT = Number(process.env.ANICO_DEMO_PORT ?? 8098)
 
 if (!existsSync(DIST)) throw new Error('dist/demo is missing. Run `npm run build:demo` first.')
 mkdirSync(OUT, { recursive: true })
@@ -70,6 +71,8 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, r))
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+const stat = async () =>
+  page.evaluate(() => document.querySelector('.header-stats')?.textContent?.trim().slice(0, 80))
 const problems = []
 const check = (ok, what) => {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${what}`)
@@ -122,6 +125,63 @@ await page.locator('.tab', { hasText: /collection/i }).click()
 await wait(1500)
 const held = await page.locator('.char-card').count()
 check(held > 0, `the card is in the collection (${held})`)
+
+/*
+ * The board.
+ *
+ * Reachable in a demo because the guest starts with credits, and worth
+ * reaching: posting a contract runs a random pick over the catalog, counts a
+ * series' cast, and profiles the collection at five star depths. None of that
+ * is touched by a summon, so without this the shim's hardest queries only ever
+ * run in front of a visitor.
+ */
+console.log(`\n  the contract board`)
+await page.locator('.tab', { hasText: /shop/i }).click()
+await wait(600)
+/* By name, not by price: Sapphire is what unlocks packs and it is gated on
+   one level each of the three above it, so a loop that always buys the
+   cheapest affordable row spends the whole balance on Bronze. */
+async function buyBadge(name, times = 1) {
+  for (let i = 0; i < times; i++) {
+    const btn = page
+      .locator('.col-badges .shop-row', { hasText: new RegExp(name, 'i') })
+      .first()
+      .locator('.row-buy')
+    if (await btn.isDisabled()) return
+    await btn.click({ force: true })
+    await wait(350)
+  }
+}
+for (const name of ['Bronze', 'Silver', 'Gold']) await buyBadge(name)
+await buyBadge('Sapphire', 4)
+console.log(`  (badges: ${(await page.locator('.col-badges .row-lv').allTextContents()).join(' ')})`)
+await page.locator('.tab', { hasText: /summon/i }).click()
+// RollView clears its deal timer when it unmounts, so the summon buttons come
+// back disabled for one more beat after a tab change.
+await wait(3000)
+for (let pull = 0; pull < 8; pull++) {
+  const pack = page.locator('.roll-actions .btn-summon.btn-pack').first()
+  if (!(await pack.count())) { console.log('  (no pack button)'); break }
+  if (await pack.isDisabled()) { await wait(2000) }
+  if (await pack.isDisabled()) { console.log('  (pack button stayed disabled)'); break }
+  await pack.click()
+  await page.waitForSelector('.pack-stack', { timeout: 15_000 }).catch(() => {})
+  await page.keyboard.press('Space')
+  await page.waitForSelector('.pack-stack', { state: 'detached', timeout: 20_000 }).catch(() => {})
+  await wait(1200)
+  if (await page.locator('.tab', { hasText: /contracts/i }).count()) break
+}
+console.log(`  (collection: ${(await stat()) ?? ''})`)
+const board = page.locator('.tab', { hasText: /contracts/i })
+await page.screenshot({ path: join(OUT, 'board-attempt.png'), fullPage: true })
+check((await board.count()) > 0, 'the board opens once there is a collection to measure')
+if (await board.count()) {
+  await board.click()
+  await wait(1200)
+  const rows = await page.locator('.contract-row').count()
+  check(rows > 0, `contracts are posted (${rows})`)
+  await page.screenshot({ path: join(OUT, 'contracts.png'), fullPage: true })
+}
 
 console.log(`\n  every tab renders`)
 for (const [tab, root] of [

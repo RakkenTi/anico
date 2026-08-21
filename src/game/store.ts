@@ -13,7 +13,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { LayoutKey, OwnedCharacter, RolledCharacter, ThemeKey, Toast } from './types'
+import type { OwnedCharacter, RolledCharacter, ThemeKey, Toast } from './types'
 import { DAILY_INTERVAL_H, rarityOf } from './economy'
 import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects } from './badges'
 import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
@@ -35,7 +35,6 @@ const HOUR = 3_600_000
 const EMPTY_SETTINGS: ServerSettings = {
   rollGender: 'everyone',
   autoSell: 'off',
-  skipOwned: false,
   autoAim: true,
 }
 
@@ -893,14 +892,13 @@ export const useGame = create<GameState>()((set, get) => {
 })
 
 /* ---------------------------------------------------------------------------
-   Presentation settings stay on the device. Theme, layout and volume are not
-   rules, nobody can cheat with them, and syncing them would mean a player's
-   phone dictated how the app looks on their laptop.
+   Presentation settings stay on the device. Theme and volume are not rules,
+   nobody can cheat with them, and syncing them would mean a player's phone
+   dictated how the app looks on their laptop.
    ------------------------------------------------------------------------- */
 
 interface UiSettings {
   theme: ThemeKey
-  layout: LayoutKey
   soundEnabled: boolean
   soundVolume: number
   /** How many levels a press of a shop row buys. */
@@ -912,7 +910,6 @@ export const useUi = create<UiSettings>()(
   persist(
     (set) => ({
       theme: 'arcade',
-      layout: 'stage',
       soundEnabled: true,
       soundVolume: 0.6,
       buyAmount: 1,

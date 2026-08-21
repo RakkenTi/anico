@@ -104,17 +104,13 @@ db.transaction(() => {
     db.prepare(`DELETE FROM ${t}`).run()
   }
   /*
-   * The pool, pinned in data rather than in code.
+   * The pool is the whole file, which is what an instance defaults to.
    *
-   * `instancePool` reads this row and defaults to the whole catalog, which
-   * would mean a demo drawing from a top-ten-thousand file as though it were
-   * the long tail: every card a household name, and the rarity ladder squashed
-   * flat. Pinning it here keeps the demo a build target rather than a branch.
+   * `instancePool` reads this row and a missing one means "no floor at all".
+   * The trimming above has already decided how deep the demo's catalog goes;
+   * a second floor on top of it would only hide the tail of what shipped.
    */
-  db.prepare(
-    `INSERT INTO meta (key, value) VALUES ('pool_size', ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-  ).run(String(TOP))
+  db.prepare(`DELETE FROM meta WHERE key = 'pool_size'`).run()
 })()
 db.exec('VACUUM')
 db.exec('ANALYZE')
