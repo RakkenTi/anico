@@ -4,7 +4,11 @@ A self-hosted anime card collecting game. No Discord bot, no commands: a web app
 on your own box, open in a browser, and play. Pull packs, keep what you like, sell the
 rest, and spend the credits on a shop that never runs out of things to sell you.
 
-![Opening a pack](./docs/img/opening.gif)
+![Anico: a first pack, ten packs, forty-eight packs](./docs/img/hero.gif)
+
+*One summon screen from a first ten-card pack to forty-eight wrappers at once.
+There is a [WebM of the same clip](./docs/img/hero.webm) at half the weight for
+anywhere that can play video.*
 
 Character data and art come from the [AniList GraphQL API](https://docs.anilist.co/),
 fetched once by the server and cached in the instance's own database. One deployment is
@@ -31,7 +35,9 @@ what those cards averaged, as the pack drains, because each card you throw carri
 share of the pack with it. A wrapper is labelled with everything it holds and its counter
 runs to zero ([ADR 0007](./docs/adr/0007-the-numbers-have-no-ceiling.md)).
 
-![Three sealed packs](./docs/img/packs.jpg)
+![Ten sealed packs](./docs/img/packs.jpg)
+
+![Opening a pack](./docs/img/opening.gif)
 
 ### Keep what is worth keeping
 
@@ -55,6 +61,12 @@ Speed, which decides how much of a pull you actually open. **Badges** are six ti
 and change how the game works: they unlock packs, add wish slots, and guarantee rarities
 in every pack.
 
+Further down the shelf are the lines that only matter once the numbers are silly:
+**Longer Table** puts up to forty-eight wrappers on screen at once, **Wider Deal** deals
+more of a pull as real cards instead of appraising it into credits, **Deeper Merges**
+takes stacks past ★12, and five more run the works below. They are priced for the player
+who needs them, so they never compete with the early shop.
+
 Every level costs more than the last, and always more than the effect it buys, so the
 next purchase is always a little further away than the one before. Numbers get big enough
 to need names: past ten thousand everything is quoted as 4.18B or 12.4Qa.
@@ -69,6 +81,50 @@ collection while it grinds, and you can swipe along with it to open packs faster
 manages alone. Add **Offline Earnings** and it keeps paying while the game is
 closed, at a fraction of its speed, for as many hours as you have bought. Closed means the
 whole account: an idle tab on another device still counts as playing.
+
+### Run the works
+
+Past a quadrillion credits the summon alone has nothing left to sell: every badge costs
+63.9M between them, and every upgrade line that ends costs 10.4B. So there are **the
+works**, four more tabs that all pay the same credits and are all bought from the same
+shop. Nothing in them locks anything else. What chains between them is material, not
+permission ([ADR 0014](./docs/adr/0014-one-currency-three-faucets.md)).
+
+A copy of a character you already hold sheds a **spare**, and a copy landing on a deep
+stack sheds more of one. That is the tap everything downstream runs on.
+
+**The Press** mills spares into **scrap**. It runs by itself on every summon, awake or
+away, and the ram keeps the pace your real rate does, so an upgrade is visible rather
+than quoted. You can also hit it. A slam runs the belt through the yard right then, which
+is the pack's swipe in another room: a hand cannot outrun the mill that fills the yard,
+only clear the backlog faster.
+
+![The Press](./docs/img/press.gif)
+
+**The Factory** is the belt that eats the scrap. A piece leaves the yard, melts under the
+furnace, is struck into a coin under the stamper, and comes off the end as credits, every
+press and every hour you are away. What one scrap is worth is a fraction of a whole
+*press* rather than a fixed number of credits, which is how a faucet outside the summon
+stays worth having twenty orders of magnitude later.
+
+![The Factory](./docs/img/factory.gif)
+
+**Expeditions** are the slow half: a lump of scrap now for a much larger lump later.
+Distance is counted in summons rather than minutes, so a caravan sits exactly where you
+left it and moves the moment you press again. Waypoints pay along the way; the last leg
+waits for a hand. Set a route to **Repeat** and Auto Summon sends it again when it comes
+home.
+
+![Expeditions](./docs/img/expeditions.jpg)
+
+**Contracts** are the goal board. Each row names a series and a depth and pays for holding
+that many characters that deep, so a particular character can be worth wanting for a
+reason that is not its credit value. Nothing expires. Fulfil a ready row whenever you
+like, or **pin** one out of reach and be paid ×2.5 when your collection reaches it.
+**Called Shot** aims a share of every pull at one series: press the crosshair on the row
+you are trying to finish.
+
+![Contracts](./docs/img/contracts.jpg)
 
 ### Play on two devices
 
@@ -89,6 +145,9 @@ a time, so two devices selling the same card end with one sale and one polite re
 - **Series sets**: 3, 5 and 10 characters from one show pay a bonus
 - **Daily bonus**: every 20 hours, worth at least half a minute of Auto Summon
 - **Stats**: charts of your collection by rarity, gender and series
+
+![Stats](./docs/img/stats.jpg)
+
 - **Sandbox**: an admin-granted scratch profile with free packs and its own empty
   collection. Nothing in it is kept
 - **Themes and layouts**: three colour themes and four layouts in Settings, plus a PWA
@@ -312,38 +371,30 @@ It uses `playwright-core`, which ships no browser of its own and borrows a Chrom
 already on the machine (`npx playwright install chromium` provides one, or point
 `PLAYWRIGHT_CHROMIUM` at an existing binary).
 
-Past a quadrillion credits the summon alone has nothing left to sell — every badge costs
-63.9M between them and every upgrade line that ends costs 10.4B — so there are **the
-works**: three more faucets and a goal board, all paying the same credits and all bought
-from the same shop. Duplicate cards shed scrap in proportion to how deep the stack they
-land on already is; the **Press** mills that into scrap, the **Factory**'s belt melts
-scrap into credits every press and every hour you are away, an **expedition** spends a
-lump of scrap now for a much larger lump later, and **contracts** pay for holding a
-breadth of one series at a depth of stars. Nothing in it reads a character's credit
-value, because that would only rename rarity, and nothing in it locks anything else: what
-chains between mechanics is material, not permission. What one scrap is worth is a
-fraction of a whole *press* rather than a fixed number of credits, which is how a faucet
-outside the summon stays relevant across twenty orders of magnitude. See
-`docs/adr/0014-one-currency-three-faucets.md`.
+`npm run dev` proxies `/api` to `:8080` by default. Point it somewhere else with
+`ANICO_API=http://127.0.0.1:8090 npm run dev`, which is how you work against a throwaway
+seeded instance without touching the one you play on.
 
 `npm run stress` plays the end game, which is where every performance problem this
 project has had turned up. It stands up its own throwaway instance, seeds a catalog the
-size a real crawl reaches, and walks a player up four rungs of the shop — ten thousand
-cards a pull, a hundred and ninety-four thousand, seven hundred and eighty-two thousand,
-ten million — plus a phone, pulling at each one with a real browser. Each rung is played
-against a collection the size a rung that deep would have, up to sixty-five thousand
-characters, because how much a player already owns is its own axis of the end game. It
-measures the press-to-wrappers delay, the frame gap while a pull empties, the opening
+size a real crawl reaches, and walks a player up four rungs of the shop (ten thousand
+cards a pull, a hundred and ninety-four thousand, ten million, and ten million again in
+forty-one wrappers) plus a phone, pulling at each one with a real browser. Each rung is
+played against a collection the size a rung that deep would have, up to sixty-five
+thousand characters, because how much a player already owns is its own axis of the end
+game.
+
+It measures the press-to-wrappers delay, the frame gap while a pull empties, the opening
 against what Open Speed promised, sound voices landing in the same tenth of a second,
-whether the spread uses its pane, whether the button that opens a pack is reachable,
-whether the shop still answers with the Automaton running, whether every wrapper's
-guarantee was kept, whether the board posts contracts and the Press is milling, whether
-the muster puts a rank of portraits on screen, whether a caravan can be sent and its road
-drawn, and whether a whole collection can be sold. It screenshots all four of the works'
-tabs at every rung, because three of them exist to be a machine you can watch and a
-machine that renders as an empty box passes every assertion anybody would think to
-write. It exits non-zero on anything over budget.
-`ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
+whether the spread uses its pane, how wide a wrapper ends up when forty-one of them are
+on screen, whether the button that opens a pack is reachable, whether the shop still
+answers with the Automaton running, whether every wrapper's guarantee was kept, whether
+the board posts contracts and the Press is milling, whether the muster puts a rank of
+portraits on screen, whether a caravan can be sent and its road drawn, and whether a
+whole collection can be sold. It screenshots all four of the works' tabs at every rung,
+because they exist to be machines you can watch and a machine that renders as an empty
+box passes every assertion anybody would think to write. It exits non-zero on anything
+over budget. `ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
 
 ## How it fits together
 
