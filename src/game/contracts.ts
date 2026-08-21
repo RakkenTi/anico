@@ -34,25 +34,8 @@ export interface Contract {
   held: number
 }
 
-/**
- * A pinned contract: one you take on rather than fulfil.
- *
- * It names something just past your reach and pays when the collection gets
- * there, so it is a to-do list rather than a test. Slots are few and nothing
- * expires: scarcity is the slot, not a clock, because ADR 0004 removed every
- * timer in the game on the grounds that pacing makes an app you cannot play
- * when you happen to open it.
- */
-export interface Pinned extends Contract {
-  acceptedAt: number
-}
-
-/** Contracts a player may have pinned at once. */
-export const COMMISSION_SLOTS = 3
 /** Contracts on the board at any moment. Fulfilling one posts its replacement. */
 export const RAID_BOARD = 5
-/** A pinned contract pays this much more than the one it was cut from. */
-export const COMMISSION_BONUS = 2.5
 
 /**
  * Series small enough to be worth naming and big enough to be an ask.

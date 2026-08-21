@@ -278,23 +278,6 @@ export function createApp(db: DB, config: Config) {
     return sync(c, { state: snapshot, ...paid })
   })
 
-  api.post('/commission/:id', (c) =>
-    sync(c, { state: game.acceptCommission(db, c.get('player'), Number(c.req.param('id'))) }),
-  )
-
-  api.post('/commission/:id/claim', (c) => {
-    const { snapshot, ...paid } = game.claimCommission(
-      db,
-      c.get('player'),
-      Number(c.req.param('id')),
-    )
-    return sync(c, { state: snapshot, ...paid })
-  })
-
-  api.delete('/commission/:id', (c) =>
-    sync(c, { state: game.abandonCommission(db, c.get('player'), Number(c.req.param('id'))) }),
-  )
-
   api.post('/works/slam', (c) => {
     const { snapshot, ...paid } = game.slamPress(db, c.get('player'))
     return sync(c, { state: snapshot, ...paid })

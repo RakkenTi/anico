@@ -1,877 +1,455 @@
 /* ============================================================
-   The Press: a machine drawn in layered gradients, driven by one custom
-   property, and slammed by hand.
+   The Press.
 
-   --press-stroke is the real cadence. The view writes it on .press-machine
-   from the player's actual spare rate and every repeating thing in here reads
-   it for its animation-duration. Buy Finer Mill, the ram speeds up, and no
-   React is involved.
+   Flat panels, one accent, one moving highlight -- the same vocabulary the
+   pack foil is drawn in, because that is the one visual in this game nobody
+   has complained about. The old machine was thirty absolutely-placed parts in
+   units of its own height, and it read as a kit of parts rather than a
+   machine.
 
-   --press-h is the other half. Every dimension inside the frame is a multiple
-   of it, so the machine scales as one object at 180px tall on a phone and
-   300px on a desktop.
+   Two custom properties drive everything:
 
-   Materials: every surface is a token base colour under white/black rgba
-   washes, the same trick the pack foil uses, so all three themes keep their
-   own steel. The only saturated colours are the tokens' own: --value for the
-   hazard chevrons and scrap, --ok for the lamp, --accent for the slam plate.
+     --press-stroke  the real cadence, written by the view from the player's
+                     own spare rate. Every repeating keyframe reads it.
+     --press-h       the frame's height. Every dimension in here is a multiple
+                     of it, so the machine scales as one object.
 
-   Only transform and opacity are animated. The custom properties the
-   keyframes read never change after mount; --press-stroke moves only when the
-   rate does, and it changes a duration rather than a value being interpolated.
+   The ram, the cards under it and the chips off the far side are three
+   keyframes cut at 46% of the same duration, siblings, no delays. That is the
+   whole of how they stay in step.
    ============================================================ */
 
 .press-view { display: flex; flex-direction: column; gap: 12px; }
 .press-view .panel:last-child { margin-bottom: 0; }
 
-/* ------------------------------------------------ the machine
+/* --------------------------------------------------------- the frame */
 
-   The frame is 1.6 wide for 1 tall and everything in it is placed in units of
-   --press-h measured from its top left corner:
-
-     x 0.04  the two uprights, at 0.04 and 1.46
-     x 0.16  the feed table, with the queue standing on it at 0.23 and 0.30
-     x 0.26  the hopper, whose mouth drops a card at 0.44
-     x 0.62  the bed starts, and the press assembly is centred on 0.98
-     x 1.30  the scrap ramp down to the yard
-
-     y 0.00  crown
-     y 0.10  the cylinder, tucked up behind the crown
-     y 0.14  uprights, guides, and the ram at the top of its stroke
-     y 0.44  the face of the ram, up
-     y 0.47  the top of a card standing on the bed
-     y 0.618 the face of the ram, down, on a card milled flat
-     y 0.66  the bed and the feed table, one continuous surface
-     y 0.80  the base, which carries both read-outs and the slam plate
-
-   The ram is off-centre because the feed has to come from somewhere: the
-   whole left third of the frame is material waiting to go in. */
-
-.press-machine {
-  /* 44vw keeps the frame inside a 390px phone once the panel's padding is
-     off, and it stops growing where a portrait is still only about forty
-     pixels wide. */
-  --press-h: clamp(180px, 44vw, 300px);
-  /* From the face up to the face down: 0.618 - 0.44. */
-  --press-drop: calc(var(--press-h) * 0.178);
-  --press-from-x: calc(var(--press-h) * -0.54);
-  --press-from-y: calc(var(--press-h) * -0.27);
-  --press-tilt: -8deg;
+.press-frame {
+  --press-h: clamp(260px, 62vw, 420px);
   --press-stroke: 1500ms;
+
   display: flex;
-  justify-content: center;
-  width: 100%;
-  margin: 0 0 14px;
-  /* It is a real button now. Strip the chrome, keep the semantics. */
+  flex-direction: column;
+  width: min(100%, calc(var(--press-h) * 1.08));
+  margin: 0 auto;
   padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--surface-2), var(--well));
+  box-shadow: var(--shadow);
+  overflow: hidden;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  user-select: none;
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.18s ease, transform 0.06s ease;
 }
-.press-machine:focus-visible { outline: none; }
-.press-machine:focus-visible .press-rig {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
+.press-frame:hover { border-color: var(--line-value); }
+.press-frame:active { transform: translateY(1px); }
+.press-frame:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-.press-rig {
-  position: relative;
-  display: block;
-  width: calc(var(--press-h) * 1.6);
-  max-width: 100%;
-  height: var(--press-h);
-  /* The hall behind the machine. Its own material rather than the page's
-     pattern showing through: on the light theme a patterned back wall made
-     the whole press look transparent. */
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.06) 0 1px,
-      transparent 1px calc(var(--press-h) * 0.1)
-    ),
-    radial-gradient(130% 95% at 50% 4%, rgba(255, 255, 255, 0.07), transparent 58%),
-    linear-gradient(180deg, var(--surface-2), var(--well) 68%);
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  /* Nothing may leave the machine. */
-  overflow: hidden;
-  /* The jolt: the frame moves, not the ram. A press this size does not shake
-     itself, it shakes the floor and everything bolted to it. */
-  animation: pressShake var(--press-stroke) linear infinite;
-}
-
-/* --- crown beam --------------------------------------------------------- */
+/* --------------------------------------------------------- the crown */
 
 .press-crown {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: calc(var(--press-h) * 0.14);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 calc(var(--press-h) * 0.05);
-  background:
-    radial-gradient(circle at 6px 50%, rgba(255, 255, 255, 0.3) 0 1px, rgba(0, 0, 0, 0.45) 1.5px 2.5px, transparent 3.5px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.22)),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, var(--raised), var(--surface-2));
-  /* The first layer is a row of bolt heads, repeated along the beam. */
-  background-size: calc(var(--press-h) * 0.145) 100%, auto, auto, auto;
-  background-repeat: repeat-x;
-  border-bottom: 2px solid var(--line-strong);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
-  z-index: 6;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--line);
 }
-.press-plate {
+.press-brand {
   font-family: var(--serif);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-dim);
   white-space: nowrap;
-  padding: 1px 7px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  border-radius: 2px;
-  /* Opaque: the crown's bolt line runs behind this and showed through the
-     lettering as a strikethrough. */
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.12)),
-    var(--surface-2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.press-lamp {
-  flex: 0 0 auto;
-  width: 7px;
+.press-heat { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.press-heat-tag {
+  font-style: normal;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.press-heat-bar {
+  position: relative;
+  width: clamp(56px, 18vw, 96px);
   height: 7px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.85), transparent 45%), var(--ok);
-  box-shadow:
-    0 0 7px 1px var(--ok),
-    inset 0 0 2px rgba(0, 0, 0, 0.3);
-}
-.press-spm {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--value);
-  white-space: nowrap;
-  padding: 2px 7px;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--well);
-  border: 1px solid var(--line-strong);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
 }
+.press-heat-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--value), var(--accent));
+  transition: width 0.2s ease-out;
+}
+.press-heat-x {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  min-width: 3.6ch;
+  transition: color 0.2s ease;
+}
+.press-frame.hot .press-heat-x { color: var(--value); }
+.press-frame.hot .press-heat-bar { box-shadow: inset 0 0 0 1px var(--line-value); }
 
-/* --- frame steel -------------------------------------------------------- */
+/* --------------------------------------------------------- the throat
 
-/* The two uprights the crown sits on. Cylindrical: dark edges, a bright line
-   up one flank, and a bolted flange top and bottom. */
-.press-column {
-  position: absolute;
-  top: calc(var(--press-h) * 0.14);
-  height: calc(var(--press-h) * 0.66);
-  width: calc(var(--press-h) * 0.1);
+   The working space, and the only place a dimension is set by hand. Every
+   part in here is a fraction of --throat, laid out from the top:
+
+     0.00   the crosshead the rod hangs from
+     0.44   the face of the ram, up
+     0.62   the top of a card standing on the bed
+     0.80   the face of the ram, down, on a card milled flat
+     0.92   the bed
+*/
+
+.press-throat {
+  --throat: calc(var(--press-h) * 0.56);
+  position: relative;
+  height: var(--throat);
   background:
-    radial-gradient(circle at 50% 4%, rgba(255, 255, 255, 0.4) 0 1.5px, rgba(0, 0, 0, 0.55) 2px 3px, transparent 4px),
-    radial-gradient(circle at 50% 96%, rgba(255, 255, 255, 0.4) 0 1.5px, rgba(0, 0, 0, 0.55) 2px 3px, transparent 4px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24) 28%, rgba(255, 255, 255, 0.05) 55%, rgba(0, 0, 0, 0.5)),
-    linear-gradient(180deg, var(--raised), var(--surface-2) 50%, var(--raised));
-  border-left: 1px solid var(--line-strong);
-  border-right: 1px solid var(--line-strong);
-  z-index: 1;
-}
-.press-column.left { left: calc(var(--press-h) * 0.04); }
-.press-column.right { left: calc(var(--press-h) * 1.46); }
-
-/* The rails the ram runs in. */
-.press-guide {
-  position: absolute;
-  top: calc(var(--press-h) * 0.14);
-  height: calc(var(--press-h) * 0.52);
-  width: calc(var(--press-h) * 0.03);
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.2) 45%, rgba(0, 0, 0, 0.45)), var(--line-strong);
-  z-index: 2;
-}
-.press-guide.left { left: calc(var(--press-h) * 0.665); }
-.press-guide.right { left: calc(var(--press-h) * 1.265); }
-
-/* The hopper the cards come out of, over the table they land on.
-   Hung off the crown rather than floating under it: an unattached funnel in
-   the middle of a dark frame was the single thing that read as unfinished. */
-.press-bin {
-  position: absolute;
-  left: calc(var(--press-h) * 0.16);
-  top: calc(var(--press-h) * 0.13);
-  width: calc(var(--press-h) * 0.48);
-  height: calc(var(--press-h) * 0.27);
-  background:
-    /* Riveted seams down the taper, so the funnel is sheet metal rather than
-       the large flat shadow it read as. */
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.06), transparent 62%),
     repeating-linear-gradient(
-      92deg,
-      rgba(255, 255, 255, 0.05) 0 1px,
-      transparent 1px calc(var(--press-h) * 0.06)
+      90deg,
+      rgba(0, 0, 0, 0.06) 0 1px,
+      transparent 1px calc(var(--throat) * 0.09)
     ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 30%, rgba(0, 0, 0, 0.42) 92%),
-    linear-gradient(102deg, rgba(255, 255, 255, 0.13), rgba(0, 0, 0, 0.26) 60%),
-    linear-gradient(180deg, var(--raised), var(--surface-2));
-  border-top: 2px solid var(--line-strong);
-  clip-path: polygon(0 0, 100% 0, 76% 100%, 26% 100%);
-  z-index: 5;
+    var(--well);
+  overflow: hidden;
 }
-/* The throat: the last hand's width of the funnel, straight-sided, so the
-   cards leave something rather than appearing out of a taper. */
-.press-bin::after {
+.press-post {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--throat) * 0.08);
+  background: linear-gradient(90deg, var(--line), var(--line-strong) 45%, var(--surface-2));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+.press-post.left { left: calc(var(--throat) * 0.07); }
+.press-post.right { right: calc(var(--throat) * 0.07); }
+/* Bolts down the upright, which is the cheapest thing that makes a flat bar
+   read as a piece of a machine. */
+.press-post::after {
   content: '';
   position: absolute;
-  left: 26%;
-  right: 24%;
-  top: 100%;
-  height: calc(var(--press-h) * 0.05);
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.42)),
-    var(--surface-2);
-  border-bottom: 2px solid var(--line-strong);
-  box-shadow: inset 0 -3px 6px rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background-image: radial-gradient(circle, var(--line-strong) 0 1.5px, transparent 1.6px);
+  background-size: 100% calc(var(--throat) * 0.16);
+  background-position: 50% calc(var(--throat) * 0.08);
+  opacity: 0.8;
 }
-/* A stiffening rib down the frame between the column and the hopper, so the
-   left edge is structure rather than empty black. */
-.press-bin::before {
-  content: '';
+
+/* The cylinder the rod comes out of. It fills the top of the frame, which is
+   otherwise a dark field with a stick in it. */
+.press-cyl {
   position: absolute;
-  left: calc(var(--press-h) * -0.09);
-  top: calc(var(--press-h) * 0.02);
-  width: calc(var(--press-h) * 0.035);
-  height: calc(var(--press-h) * 0.5);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.34));
-  border-radius: 1px;
-}
-.press-table {
-  position: absolute;
-  left: calc(var(--press-h) * 0.16);
-  top: calc(var(--press-h) * 0.66);
-  width: calc(var(--press-h) * 0.46);
-  height: calc(var(--press-h) * 0.14);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 38%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 6px),
-    var(--surface-2);
-  border-top: 2px solid var(--line-strong);
+  top: calc(var(--throat) * 0.03);
+  left: calc(var(--throat) * 0.17);
+  right: calc(var(--throat) * 0.17);
+  height: calc(var(--throat) * 0.19);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--raised), var(--surface-2) 60%, var(--line));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 3px 10px rgba(0, 0, 0, 0.35);
   z-index: 2;
 }
-/* The lip where the feed table meets the bed, and the leg under it. */
-.press-table::after {
+/* The bore: where the rod goes in. */
+.press-cyl::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--throat) * -0.012);
+  width: calc(var(--throat) * 0.19);
+  height: calc(var(--throat) * 0.03);
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+/* --------------------------------------------------------- the ram */
+
+.press-plunger {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--throat) * 0.18);
+  width: calc(var(--throat) * 0.66);
+  transform: translateX(-50%);
+  z-index: 3;
+  animation: pressRam var(--press-stroke) cubic-bezier(0.4, 0, 0.3, 1) infinite;
+}
+/* The crosshead and the rod it hangs on. */
+.press-rod {
+  display: block;
+  width: calc(var(--throat) * 0.14);
+  height: calc(var(--throat) * 0.16);
+  margin: 0 auto;
+  background: linear-gradient(90deg, var(--line), var(--line-strong) 50%, var(--line));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.press-ram {
+  display: block;
+  height: calc(var(--throat) * 0.15);
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--line-strong), var(--raised) 55%, var(--surface-2));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 4px 14px rgba(0, 0, 0, 0.4);
+  position: relative;
+}
+/* The hazard face: the one saturated surface on the machine, and the one that
+   meets a card. */
+.press-ram::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  top: 100%;
-  height: calc(var(--press-h) * 0.05);
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.15));
-  border-bottom: 1px solid var(--line);
-}
-
-/* --- the press assembly ------------------------------------------------- */
-
-/* The hydraulic cylinder, fixed to the crown. The rod telescopes out of it. */
-.press-cyl {
-  position: absolute;
-  left: calc(var(--press-h) * 0.98);
-  top: calc(var(--press-h) * 0.1);
-  width: calc(var(--press-h) * 0.26);
-  height: calc(var(--press-h) * 0.17);
-  margin-left: calc(var(--press-h) * -0.13);
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.28) 24%, rgba(255, 255, 255, 0.06) 55%, rgba(0, 0, 0, 0.48)),
-    linear-gradient(180deg, var(--raised), var(--surface-2));
-  border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  z-index: 5;
-}
-/* Clamp band at the top, gland at the bottom. */
-.press-cyl::before,
-.press-cyl::after {
-  content: '';
-  position: absolute;
-  left: calc(var(--press-h) * -0.01);
-  right: calc(var(--press-h) * -0.01);
-  height: calc(var(--press-h) * 0.028);
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.18) 24%, rgba(255, 255, 255, 0.02) 55%, rgba(0, 0, 0, 0.5)),
-    var(--raised);
-  border: 1px solid var(--line-strong);
-  border-radius: 2px;
-}
-.press-cyl::before { top: calc(var(--press-h) * 0.012); }
-.press-cyl::after { bottom: calc(var(--press-h) * -0.008); }
-
-.press-plunger {
-  position: absolute;
-  top: calc(var(--press-h) * 0.14);
-  left: calc(var(--press-h) * 0.7);
-  width: calc(var(--press-h) * 0.56);
-  height: calc(var(--press-h) * 0.3);
-  z-index: 4;
-  animation: pressRam var(--press-stroke) linear infinite;
-}
-/* The piston rod: chrome, and retracted into the cylinder at the top of the
-   stroke, so the drop visibly extends it. */
-.press-rod {
-  position: absolute;
-  top: calc(var(--press-h) * -0.05);
-  left: 50%;
-  width: calc(var(--press-h) * 0.08);
-  margin-left: calc(var(--press-h) * -0.04);
-  height: calc(var(--press-h) * 0.18);
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.65) 32%, rgba(255, 255, 255, 0.15) 58%, rgba(0, 0, 0, 0.5)),
-    var(--text-dim);
-  border-radius: 1px;
-}
-/* The ram: a slab of brushed steel with a hazard band over the working face. */
-.press-ram {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: calc(var(--press-h) * 0.19);
-  background:
-    radial-gradient(circle at 7% 22%, rgba(255, 255, 255, 0.3) 0 1.5px, rgba(0, 0, 0, 0.45) 2px 3px, transparent 4px),
-    radial-gradient(circle at 93% 22%, rgba(255, 255, 255, 0.3) 0 1.5px, rgba(0, 0, 0, 0.45) 2px 3px, transparent 4px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 14%, rgba(255, 255, 255, 0) 86%, rgba(0, 0, 0, 0.35)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 32%, rgba(0, 0, 0, 0.2)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 2px, transparent 2px 5px),
-    linear-gradient(180deg, var(--raised), var(--surface-2) 70%, var(--raised));
-  border: 1px solid var(--line-strong);
-  /* The working face: the strongest edge the token set has. */
-  border-bottom: calc(var(--press-h) * 0.022) solid var(--text-dim);
-  border-radius: 2px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
-}
-/* Warning chevrons just above the jaw. */
-.press-ram::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: calc(var(--press-h) * 0.04);
+  bottom: calc(var(--throat) * -0.035);
+  height: calc(var(--throat) * 0.035);
+  border-radius: 0 0 2px 2px;
   background: repeating-linear-gradient(
     -45deg,
-    var(--value) 0 calc(var(--press-h) * 0.032),
-    rgba(0, 0, 0, 0.82) calc(var(--press-h) * 0.032) calc(var(--press-h) * 0.064)
+    var(--accent) 0 6px,
+    var(--accent-down) 6px 12px
   );
-  border-top: 1px solid rgba(0, 0, 0, 0.45);
-  opacity: 0.85;
 }
 
-/* The bed: the anvil the ram meets, same steel, jaw up. */
+@keyframes pressRam {
+  0%, 26% { transform: translateX(-50%) translateY(0); }
+  46% { transform: translateX(-50%) translateY(calc(var(--throat) * 0.335)); }
+  58% { transform: translateX(-50%) translateY(calc(var(--throat) * 0.335)); }
+  84%, 100% { transform: translateX(-50%) translateY(0); }
+}
+
+/* --------------------------------------------------------- the bed */
+
 .press-bed {
   position: absolute;
-  left: calc(var(--press-h) * 0.62);
-  top: calc(var(--press-h) * 0.66);
-  width: calc(var(--press-h) * 0.72);
-  height: calc(var(--press-h) * 0.14);
-  background:
-    radial-gradient(circle at 5% 55%, rgba(255, 255, 255, 0.3) 0 1.5px, rgba(0, 0, 0, 0.45) 2px 3px, transparent 4px),
-    radial-gradient(circle at 95% 55%, rgba(255, 255, 255, 0.3) 0 1.5px, rgba(0, 0, 0, 0.45) 2px 3px, transparent 4px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, 0) 85%, rgba(0, 0, 0, 0.35)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 40%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 2px, transparent 2px 5px),
-    linear-gradient(180deg, var(--surface-2), var(--raised));
-  border: 1px solid var(--line-strong);
-  /* The other jaw. */
-  border-top: calc(var(--press-h) * 0.018) solid var(--text-dim);
+  left: calc(var(--throat) * 0.2);
+  right: calc(var(--throat) * 0.2);
+  top: calc(var(--throat) * 0.92);
+  height: calc(var(--throat) * 0.05);
   border-radius: 2px;
+  background: linear-gradient(180deg, var(--line-strong), var(--line));
+  box-shadow: 0 calc(var(--throat) * 0.03) calc(var(--throat) * 0.06) rgba(0, 0, 0, 0.4);
   z-index: 2;
+  /* The cards stand *on* the bed, so they are laid out off its top edge. */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: calc(var(--throat) * 0.03);
 }
-/* The lip off the right of the bed, where a chip leaves from. */
-.press-ramp {
-  position: absolute;
-  left: calc(var(--press-h) * 1.28);
-  top: calc(var(--press-h) * 0.69);
-  width: calc(var(--press-h) * 0.22);
-  height: calc(var(--press-h) * 0.13);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.3)),
-    var(--raised);
-  clip-path: polygon(0 0, 100% 52%, 100% 100%, 0 48%);
-  z-index: 2;
-}
-/* The chute's near wall, so it reads as a slide with a lip rather than a
-   diagonal hole cut in the frame. */
-.press-ramp::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.22) 0 2px, transparent 2px);
-  clip-path: polygon(0 0, 100% 52%, 100% 100%, 0 48%);
-}
-/* The plinth, in diamond plate. */
-.press-base {
-  position: absolute;
-  left: 0; right: 0;
-  top: calc(var(--press-h) * 0.8);
-  bottom: 0;
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 10px),
-    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 10px),
-    linear-gradient(180deg, var(--surface-2), var(--well));
-  border-top: 2px solid var(--line-strong);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  z-index: 1;
-}
-/* The heap the belt is eating: pressed chips piled under the ramp's exit.
-   Dimmed to a metal rather than the gold the credits use, and sat in a bin,
-   because a bright loose triangle beside the counter read as a glitch. */
-.press-base::before {
-  content: '';
-  position: absolute;
-  left: calc(var(--press-h) * 1.3);
-  top: calc(var(--press-h) * 0.002);
-  width: calc(var(--press-h) * 0.2);
-  height: calc(var(--press-h) * 0.055);
-  background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 45%),
-    linear-gradient(160deg, var(--value-soft) 10%, rgba(140, 108, 44, 0.85) 55%, rgba(0, 0, 0, 0.5));
-  clip-path: polygon(0% 100%, 10% 62%, 24% 74%, 38% 34%, 52% 58%, 66% 22%, 80% 60%, 92% 44%, 100% 100%);
-  z-index: 4;
-}
-/* The bin it falls into. */
-.press-base::after {
-  content: '';
-  position: absolute;
-  left: calc(var(--press-h) * 1.285);
-  top: calc(var(--press-h) * -0.02);
-  width: calc(var(--press-h) * 0.23);
-  height: calc(var(--press-h) * 0.075);
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.05)), var(--well);
-  border: 1px solid var(--line-strong);
-  border-top: none;
-  border-radius: 0 0 3px 3px;
-  box-shadow: inset 0 4px 7px rgba(0, 0, 0, 0.55);
-  z-index: 3;
-}
-
-/* --- the work: real portraits out of the real collection ---------------- */
-
-.press-card,
-.press-queue {
-  position: absolute;
-  top: calc(var(--press-h) * 0.47);
-  width: calc(var(--press-h) * 0.1357);
-  height: calc(var(--press-h) * 0.19);
-  background: var(--surface-2);
-  border: 1px solid var(--line-strong);
-  border-radius: 2px;
-  overflow: hidden;
+.press-card {
+  position: relative;
+  bottom: calc(var(--throat) * 0.05);
+  width: calc(var(--throat) * 0.21);
+  height: calc(var(--throat) * 0.3);
   transform-origin: 50% 100%;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  animation: pressFeed var(--press-stroke) linear infinite;
 }
-.press-card img,
-.press-queue img {
+/* Nested so the hand slam can squash the same card the loop is carrying,
+   without the two animations fighting over one transform. */
+.press-card-inner {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-}
-
-.press-card {
-  /* Seats are measured off the centre of the press, which is 0.98. */
-  left: calc(var(--press-h) * 0.98);
-  margin-left: calc(var(--press-x, 0px) - var(--press-h) * 0.0679);
-  z-index: 3;
-  animation: pressFeed var(--press-stroke) linear infinite;
-  animation-delay: calc(var(--press-stroke) * var(--press-off, 0));
-}
-.press-queue {
-  left: var(--press-qx);
-  transform: rotate(var(--press-tilt));
-  z-index: 3;
-}
-
-/* What comes out: a chip of pressed gold with a glint on its top edge. */
-.press-scrap {
-  position: absolute;
-  top: calc(var(--press-h) * 0.625);
-  left: calc(var(--press-h) * 0.98);
-  width: calc(var(--press-h) * 0.045);
-  height: calc(var(--press-h) * 0.045);
-  margin-left: calc(var(--press-h) * -0.0225);
-  background: linear-gradient(135deg, var(--value-soft), var(--value) 55%, rgba(0, 0, 0, 0.35)), var(--value);
-  border-radius: 1px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.4);
-  opacity: 0;
-  z-index: 3;
-  animation: pressScrap var(--press-stroke) linear infinite;
-  animation-delay: calc(var(--press-stroke) * var(--press-off, 0));
-}
-
-/* --- read-outs bolted to the base --------------------------------------- */
-
-.press-gauge {
-  position: absolute;
-  left: calc(var(--press-h) * 0.05);
-  bottom: calc(var(--press-h) * 0.045);
-  width: calc(var(--press-h) * 0.4);
-  padding: 4px 7px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.15));
-  border: 1px solid rgba(0, 0, 0, 0.5);
-  border-bottom-color: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.55);
-  z-index: 7;
-}
-.press-gauge-label {
-  display: block;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.press-gauge-bar {
-  display: block;
-  height: 4px;
-  margin-top: 3px;
-  border: 1px solid var(--line-strong);
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.25);
-  overflow: hidden;
-}
-.press-gauge-bar > span { display: block; height: 100%; background: var(--value); }
-
-.press-yard {
-  position: absolute;
-  right: calc(var(--press-h) * 0.05);
-  bottom: calc(var(--press-h) * 0.045);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.15;
-  padding: 3px 8px;
   border-radius: 3px;
-  background: var(--well);
-  border: 1px solid var(--line-strong);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
-  z-index: 7;
+  overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  transform-origin: 50% 100%;
 }
-.press-yard-n {
-  font-family: var(--mono, ui-monospace, monospace);
-  font-weight: 700;
-  font-size: clamp(11px, calc(var(--press-h) * 0.047), 14px);
-  color: var(--value-soft);
-}
-.press-yard-label {
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+.press-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
-/* The visible affordance: a machine button on the plinth. It depresses with
-   the tap, like the physical control it is drawn as. */
-.press-slam-tag {
+@keyframes pressFeed {
+  0%, 40% { transform: translateX(0) scaleY(1); opacity: 1; }
+  46% { transform: translateX(0) scaleY(0.2); opacity: 1; }
+  58% { transform: translateX(0) scaleY(0.2); opacity: 1; }
+  64% { transform: translateX(0) scaleY(0.16); opacity: 0; }
+  /* Gone, and back on the feed side in one frame: a card is off the bed for
+     under a tenth of a stroke, so a still of this machine has material in it
+     whenever it is taken. */
+  65% { transform: translateX(-280%) scaleY(1); opacity: 0; }
+  72% { transform: translateX(-280%) scaleY(1); opacity: 1; }
+  100% { transform: translateX(0) scaleY(1); opacity: 1; }
+}
+/* The three cards are one rank being crushed together, not three machines. */
+.press-card:nth-child(1) { animation-delay: calc(var(--press-stroke) * -0.02); }
+.press-card:nth-child(2) { animation-delay: calc(var(--press-stroke) * -0.01); }
+
+/* --------------------------------------------------------- the chute */
+
+.press-chute {
   position: absolute;
-  left: 50%;
-  bottom: calc(var(--press-h) * 0.052);
-  transform: translateX(-50%);
-  padding: 3px 13px;
-  outline: calc(var(--press-h) * 0.022) solid var(--well);
-  outline-offset: calc(var(--press-h) * 0.012);
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  text-indent: 0.24em;
-  text-transform: uppercase;
-  color: var(--on-accent);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 55%), var(--accent);
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  box-shadow: 0 2px 0 var(--accent-down), 0 3px 8px rgba(0, 0, 0, 0.35);
-  z-index: 8;
+  right: calc(var(--throat) * 0.14);
+  bottom: calc(var(--throat) * 0.1);
+  width: calc(var(--throat) * 0.035);
+  height: calc(var(--throat) * 0.035);
+  z-index: 4;
 }
-.press-machine:active .press-slam-tag,
-.press-machine.slam-a .press-slam-tag,
-.press-machine.slam-b .press-slam-tag {
-  transform: translateX(-50%) translateY(2px);
-  box-shadow: 0 0 0 var(--accent-down), 0 1px 3px rgba(0, 0, 0, 0.35);
+.press-chip {
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
+  background: var(--value);
+  animation: pressChip var(--press-stroke) ease-out infinite;
+  animation-delay: calc(var(--press-stroke) * var(--i) * 0.03);
+}
+@keyframes pressChip {
+  0%, 44% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  50% { transform: translate(60%, -180%) scale(1); opacity: 1; }
+  100% { transform: translate(320%, 60%) scale(0.7); opacity: 0; }
 }
 
-/* --- slam transients ---------------------------------------------------- */
+/* --------------------------------------------------------- the hand slam
 
-/* Credits paid, rising off the point of impact, with a spray of sparks. */
+   A nested one-shot on the elements the loop already drives, so the two
+   compose instead of restarting each other. Two names, alternated by the
+   view, because an animation only restarts when its name changes. */
+
+.press-frame.kick-a .press-ram { animation: pressKickA 300ms cubic-bezier(0.3, 0, 0.2, 1); }
+.press-frame.kick-b .press-ram { animation: pressKickB 300ms cubic-bezier(0.3, 0, 0.2, 1); }
+.press-frame.kick-a .press-card-inner { animation: pressSquashA 300ms ease-out; }
+.press-frame.kick-b .press-card-inner { animation: pressSquashB 300ms ease-out; }
+.press-frame.kick-a .press-throat { animation: pressJoltA 300ms ease-out; }
+.press-frame.kick-b .press-throat { animation: pressJoltB 300ms ease-out; }
+
+@keyframes pressKickA {
+  0% { transform: translateY(0); }
+  34% { transform: translateY(calc(var(--throat) * 0.2)); }
+  100% { transform: translateY(0); }
+}
+@keyframes pressKickB {
+  0% { transform: translateY(0); }
+  34% { transform: translateY(calc(var(--throat) * 0.2)); }
+  100% { transform: translateY(0); }
+}
+@keyframes pressSquashA {
+  0% { transform: scaleY(1); }
+  34% { transform: scaleY(0.34); }
+  100% { transform: scaleY(1); }
+}
+@keyframes pressSquashB {
+  0% { transform: scaleY(1); }
+  34% { transform: scaleY(0.34); }
+  100% { transform: scaleY(1); }
+}
+/* The whole working space takes the blow, which is what sells the weight. */
+@keyframes pressJoltA {
+  0%, 30% { transform: translateY(0); }
+  38% { transform: translateY(3px); }
+  100% { transform: translateY(0); }
+}
+@keyframes pressJoltB {
+  0%, 30% { transform: translateY(0); }
+  38% { transform: translateY(3px); }
+  100% { transform: translateY(0); }
+}
+
+/* --------------------------------------------------------- the payout */
+
+.press-pay.heat { color: var(--accent); }
 .press-pay {
   position: absolute;
-  left: calc(var(--press-h) * 0.98);
-  top: calc(var(--press-h) * 0.38);
-  margin-left: var(--pay-dx, 0px);
-  z-index: 9;
+  left: 50%;
+  bottom: calc(var(--throat) * 0.3);
+  z-index: 6;
+  transform: translateX(-50%);
   font-family: var(--serif);
-  font-weight: 800;
-  font-size: clamp(14px, calc(var(--press-h) * 0.075), 22px);
-  color: var(--value-soft);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.35);
-  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--value);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   pointer-events: none;
-  animation: pressPay 750ms cubic-bezier(0.2, 0.6, 0.3, 1) both;
+  white-space: nowrap;
+  animation: pressPay 850ms ease-out forwards;
 }
 @keyframes pressPay {
-  0% { transform: translate(-50%, 8px) scale(0.8); opacity: 0; }
-  14% { transform: translate(-50%, 0) scale(1.05); opacity: 1; }
-  70% { opacity: 1; }
-  100% { transform: translate(-50%, calc(var(--press-h) * -0.26)) scale(1); opacity: 0; }
-}
-.press-pay i {
-  position: absolute;
-  left: 50%;
-  top: 95%;
-  width: calc(var(--press-h) * 0.022 * var(--spark-s, 1));
-  height: calc(var(--press-h) * 0.022 * var(--spark-s, 1));
-  border-radius: 50%;
-  background: var(--value-soft);
-  box-shadow: 0 0 6px var(--value);
-  animation: pressSpark 430ms ease-out both;
-}
-@keyframes pressSpark {
-  0% { transform: translate(-50%, 0) scale(1); opacity: 1; }
-  100% {
-    transform: translate(calc(-50% + var(--spark-x, 0px)), var(--spark-y, 0px)) scale(0.25);
-    opacity: 0;
-  }
+  0% { opacity: 0; transform: translate(calc(-50% + var(--dx)), 6px) scale(0.85); }
+  18% { opacity: 1; transform: translate(calc(-50% + var(--dx)), 0) scale(1); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), -46px) scale(1); }
 }
 
-/* The honest miss: nothing in the yard to crush. */
-.press-starved {
-  position: absolute;
-  left: calc(var(--press-h) * 0.98);
-  top: calc(var(--press-h) * 0.41);
-  transform: translateX(-50%);
-  z-index: 9;
-  padding: 2px 9px;
-  border-radius: 3px;
-  border: 1px solid var(--red);
+/* --------------------------------------------------------- the foot */
+
+.press-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--raised);
+  border-top: 1px solid var(--line);
+}
+.press-gauge {
+  flex: 1;
+  height: 7px;
+  border-radius: 4px;
   background: var(--well);
-  color: var(--red);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  pointer-events: none;
-  animation: pressStarved 700ms ease-out both;
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
 }
-@keyframes pressStarved {
-  0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
-  75% { opacity: 1; transform: translateX(-50%) translateY(0); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-3px); }
-}
-
-/* ------------------------------------------------ stopped
-
-   Idle still has to read as a machine. Everything with a cadence stops, the
-   ram breathes on a fixed slow cycle, and the lamp goes from a steady green
-   glow to a slow dim pulse. The bed clears and the table does not: material
-   waiting, machine stopped. */
-
-.press-machine.idle .press-rig,
-.press-machine.idle .press-scrap { animation: none; }
-.press-machine.idle .press-card { animation: none; opacity: 0; }
-.press-machine.idle .press-plunger { animation: pressIdle 3.6s ease-in-out infinite; }
-.press-machine.idle .press-lamp {
+.press-gauge i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
   background: var(--text-dim);
-  box-shadow: none;
-  animation: pressHum 2.8s ease-in-out infinite;
+  transition: width 0.2s ease-out;
 }
-.press-machine.idle .press-spm { color: var(--text-dim); }
+.press-slam {
+  font-family: var(--serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--on-accent);
+  background: var(--accent);
+  padding: 3px 12px;
+  border-radius: 999px;
+}
+.press-frame:active .press-slam { background: var(--accent-down); }
 
-/* ------------------------------------------------ what it says */
+/* --------------------------------------------------------- idle */
+
+.press-frame.idle .press-plunger,
+.press-frame.idle .press-card,
+.press-frame.idle .press-chip {
+  animation-play-state: paused;
+}
+.press-frame.idle .press-card { opacity: 0.35; }
+.press-frame.idle .press-chip { opacity: 0; }
+
+/* --------------------------------------------------------- the meters */
 
 .press-meters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
-.press-toggle { margin-top: 12px; }
-
-.press-numbers {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 0 16px;
-  margin: 10px 0 0;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--well);
-  font-size: 12px;
-}
-.press-numbers > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line);
-}
-.press-numbers dt { color: var(--text-dim); }
-.press-numbers dd { margin: 0; color: var(--text); font-weight: 600; white-space: nowrap; }
-
-/* ------------------------------------------------ motion */
-
-/*
- * The automatic stroke: held up to 18%, dropped fast, stopped hard on the
- * work at 34%, one short recoil, a dwell, then drawn back slowly. Every other
- * keyframe in this file is written against that 34% mark.
- */
-@keyframes pressRam {
-  0% { transform: translate3d(0, 0, 0); }
-  18% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.5, 0, 1, 0.45); }
-  34% { transform: translate3d(0, var(--press-drop), 0); animation-timing-function: cubic-bezier(0.2, 0, 0.2, 1); }
-  40% { transform: translate3d(0, calc(var(--press-drop) - var(--press-h) * 0.018), 0); }
-  46% { transform: translate3d(0, var(--press-drop), 0); }
-  58% { transform: translate3d(0, var(--press-drop), 0); animation-timing-function: cubic-bezier(0.4, 0, 0.3, 1); }
-  84% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(0, 0, 0); }
-}
-
-/* Sub-pixel on purpose: the automatic jolt is felt, not measured. */
-@keyframes pressShake {
-  0%, 33% { transform: translate3d(0, 0, 0); }
-  35% { transform: translate3d(0, 1.5px, 0); }
-  38% { transform: translate3d(-1px, -1px, 0); }
-  41% { transform: translate3d(1px, 0.5px, 0); }
-  44%, 100% { transform: translate3d(0, 0, 0); }
-}
-
-/*
- * The manual stroke. Two identical animations under two names, alternated by
- * the view, so a second tap inside the first stroke restarts it. Faster and
- * harder than the cadence stroke: this one is the player's.
- */
-.press-machine.slam-a .press-plunger { animation: pressSlamA 300ms linear both; }
-.press-machine.slam-b .press-plunger { animation: pressSlamB 300ms linear both; }
-.press-machine.slam-a .press-rig { animation: pressJoltA 300ms linear; }
-.press-machine.slam-b .press-rig { animation: pressJoltB 300ms linear; }
-
-@keyframes pressSlamA {
-  0% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.6, 0, 1, 0.4); }
-  28% { transform: translate3d(0, var(--press-drop), 0); }
-  38% { transform: translate3d(0, calc(var(--press-drop) - var(--press-h) * 0.014), 0); }
-  48% { transform: translate3d(0, var(--press-drop), 0); animation-timing-function: cubic-bezier(0.25, 0, 0.35, 1); }
-  100% { transform: translate3d(0, 0, 0); }
-}
-@keyframes pressSlamB {
-  0% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.6, 0, 1, 0.4); }
-  28% { transform: translate3d(0, var(--press-drop), 0); }
-  38% { transform: translate3d(0, calc(var(--press-drop) - var(--press-h) * 0.014), 0); }
-  48% { transform: translate3d(0, var(--press-drop), 0); animation-timing-function: cubic-bezier(0.25, 0, 0.35, 1); }
-  100% { transform: translate3d(0, 0, 0); }
-}
-@keyframes pressJoltA {
-  0%, 24% { transform: translate3d(0, 0, 0); }
-  32% { transform: translate3d(0, 3px, 0); }
-  46% { transform: translate3d(-2px, -1px, 0); }
-  62% { transform: translate3d(1.5px, 1px, 0); }
-  100% { transform: translate3d(0, 0, 0); }
-}
-@keyframes pressJoltB {
-  0%, 24% { transform: translate3d(0, 0, 0); }
-  32% { transform: translate3d(0, 3px, 0); }
-  46% { transform: translate3d(-2px, -1px, 0); }
-  62% { transform: translate3d(1.5px, 1px, 0); }
-  100% { transform: translate3d(0, 0, 0); }
-}
-
-/*
- * A card's whole life, starting from the one place it spends longest: seated
- * on the bed, upright, waiting to be hit. The crush runs from 18% to 34% on
- * the ram's own easing, which is what keeps the face of the ram and the top
- * of the card together. It is milled away at 74% and the ram only finishes
- * lifting at 84%, in that order.
- */
-@keyframes pressFeed {
-  0% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(1); opacity: 1; }
-  18% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scaleY(1);
-    opacity: 1;
-    animation-timing-function: cubic-bezier(0.5, 0, 1, 0.45);
-  }
-  34% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(0.22); opacity: 1; }
-  70% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(0.22); opacity: 1; }
-  74% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(0.22); opacity: 0; }
-  74.01% {
-    transform: translate3d(var(--press-from-x), var(--press-from-y), 0) rotate(var(--press-tilt)) scaleY(1);
-    opacity: 0;
-    animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.4);
-  }
-  78% { opacity: 1; }
-  86% {
-    transform: translate3d(var(--press-from-x), 0, 0) rotate(0deg) scaleY(1);
-    opacity: 1;
-    animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1);
-  }
-  100% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(1); opacity: 1; }
-}
-
-/* A chip squeezes out from under the face at 36%, two percent after the ram
-   lands, then crosses the base to the counter and fades as it is counted. */
-@keyframes pressScrap {
-  0%, 36% { transform: translate3d(0, 0, 0) scale(0.5); opacity: 0; }
-  41% {
-    transform: translate3d(calc(var(--press-h) * 0.08), calc(var(--press-h) * -0.02), 0) scale(1);
-    opacity: 1;
-    animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
-  }
-  88% { transform: translate3d(var(--press-sx), var(--press-sy), 0) scale(0.9); opacity: 1; }
-  100% { transform: translate3d(var(--press-sx), var(--press-sy), 0) scale(0.7); opacity: 0; }
-}
-
-/* Hydraulics with nothing to crush: pressure held, and the ram creeping. */
-@keyframes pressIdle {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(0, calc(var(--press-h) * 0.014), 0); }
-}
-
-@keyframes pressHum {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
-
-/*
- * Reduced motion: the machine stops, but it stops loaded. The ram parks at
- * the top of its stroke, three real portraits stand on the bed under it, two
- * more wait on the table and the scrap sits at the counter.
- *
- * The payout marker and the starved flash keep their animations: they are
- * discrete, player-initiated, and their animationend is what removes them.
- * The sparks and the strokes go.
- */
 @media (prefers-reduced-motion: reduce) {
-  .press-rig,
   .press-plunger,
   .press-card,
-  .press-scrap,
-  .press-lamp,
-  .press-pay i { animation: none; }
-  .press-machine.idle .press-plunger,
-  .press-machine.idle .press-lamp,
-  .press-machine.slam-a .press-plunger,
-  .press-machine.slam-b .press-plunger,
-  .press-machine.slam-a .press-rig,
-  .press-machine.slam-b .press-rig { animation: none; }
-  .press-pay i { opacity: 0; }
+  .press-chip { animation: none; }
   .press-card { opacity: 1; transform: none; }
-  .press-scrap { opacity: 1; transform: translate3d(var(--press-sx), var(--press-sy), 0); }
-  .press-machine.idle .press-scrap { opacity: 0; }
 }

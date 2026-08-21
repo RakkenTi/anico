@@ -56,16 +56,18 @@ import {
   type PoolPick,
 } from './catalog.js'
 import {
+  HAND_MULT,
+  HEAT_PER_TAP,
   ROUTES,
   WAYPOINTS,
+  heatMult,
+  heatNow,
   routePay,
   waypointsPassed,
   type Expedition,
   type Works,
 } from '../src/game/industry.js'
 import {
-  COMMISSION_BONUS,
-  COMMISSION_SLOTS,
   DEPTH_BY_TIER,
   MAX_CAST,
   MIN_CAST,
@@ -77,7 +79,6 @@ import {
   fitTier,
   type Contract,
   type Musterer,
-  type Pinned,
 } from '../src/game/contracts.js'
 import { autoSellFloor, instancePool, sanitizeSettings, type ServerSettings } from './rules.js'
 import { streamsFor } from './bus.js'
@@ -206,6 +207,9 @@ interface StateRow {
   aim_series: string | null
   /** Smoothed spares one pull is worth, so time away fills the tank too. */
   auto_spares: number
+  /** Heat as it stood when it was last raised, and when that was. */
+  heat: number
+  heat_at: number
 }
 
 interface RollSessionEntry {
@@ -431,7 +435,8 @@ export interface Snapshot {
   creditsPerCard: number
   /** The series Called Shot is pointed at. */
   aimSeries: string | null
-  board: { raids: Contract[]; commissions: Pinned[] }
+  /** The contract board. */
+  board: Contract[]
   collection?: OwnedCharacter[]
   /** What the machine did while nobody was watching. Absent when it did nothing. */
   offline?: { pulls: number; credits: number; minutes: number }
@@ -444,6 +449,7 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
   const { badges, upgrades, fx } = loadoutOf(row)
   const size = packSizeFor(fx, !!player.sandbox_of)
   const perCard = creditsPerCard(row, fx)
+  const heat = heatNow(row.heat, row.heat_at, Date.now())
   return {
     username: player.username,
     isAdmin: !!player.is_admin,
@@ -474,11 +480,25 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
       scrap: Math.floor(row.scrap),
       belt: fx.belt,
       scrapWorth: fx.scrapWorth,
-      // What the belt paid over one press at the current rate, which is the
-      // number the Factory quotes. Derived rather than stored: it is a rate,
-      // and a rate read off the last press is a rate that lies after an
-      // upgrade is bought.
-      factoryRate: Math.floor(Math.min(row.scrap, fx.belt) * perCard * fx.scrapWorth),
+      /*
+       * What the Factory pays per press, sustained.
+       *
+       * Against the *supply*, not against the yard. The belt starts at two
+       * scrap a press and a young Press makes a fifth of one, so the yard is
+       * empty almost all of the time by design -- and quoted against the yard
+       * this number read a flat zero for the entire early game, which is the
+       * Factory telling a player it is broken while it is in fact keeping up
+       * perfectly. Quoted against what is arriving it says what an hour is
+       * actually worth, and it still falls back to the yard once a backlog is
+       * what the belt is eating.
+       */
+      factoryRate: Math.floor(
+        Math.min(fx.belt, row.auto_spares / fx.sparesPerScrap + row.scrap) *
+          perCard *
+          fx.scrapWorth *
+          heatMult(heat),
+      ),
+      heat,
       reach: reachOf(db, player.id, row.collection_rev),
       caravans: fx.caravans,
       out: expeditionsOf(db, player.id),
@@ -1193,12 +1213,16 @@ function runFactory(
 ): { melted: number; paid: number } {
   if (presses <= 0) return { melted: 0, paid: 0 }
   const row = db
-    .prepare('SELECT scrap FROM player_state WHERE player_id = ?')
-    .get(playerId) as { scrap: number }
+    .prepare('SELECT scrap, heat, heat_at FROM player_state WHERE player_id = ?')
+    .get(playerId) as { scrap: number; heat: number; heat_at: number }
   const melted = Math.min(row.scrap, fx.belt * presses)
   if (melted <= 0) return { melted: 0, paid: 0 }
   // `fx.scrapWorth` is already the Foundry's multiple, so the level is spent.
-  const paid = Math.floor(melted * perCard * fx.scrapWorth)
+  // Heat is read here rather than passed in so that every path into the
+  // Factory -- a pull, a slam, an hour of settling -- prices a melt the same
+  // way, and so an hour away prices it cold, which is what it was.
+  const hot = heatMult(heatNow(row.heat, row.heat_at, Date.now()))
+  const paid = Math.floor(melted * perCard * fx.scrapWorth * hot)
   db.prepare(
     'UPDATE player_state SET scrap = scrap - ?, credits = credits + ? WHERE player_id = ?',
   ).run(melted, paid, playerId)
@@ -1708,9 +1732,9 @@ function postRaid(db: DB, playerId: number): boolean {
 function fillBoard(db: DB, playerId: number): void {
   for (let guard = 0; guard < RAID_BOARD * 2; guard++) {
     const open = (
-      db
-        .prepare('SELECT COUNT(*) AS n FROM raids WHERE player_id = ? AND accepted_at IS NULL')
-        .get(playerId) as { n: number }
+      db.prepare('SELECT COUNT(*) AS n FROM raids WHERE player_id = ?').get(playerId) as {
+        n: number
+      }
     ).n
     if (open >= RAID_BOARD) return
     if (!postRaid(db, playerId)) return
@@ -1724,7 +1748,6 @@ type RaidRow = {
   depth: number
   /** Presses this is worth. Multiplied by the player's own rate on the way out. */
   reward: number
-  accepted_at: number | null
 }
 
 function withHeld(db: DB, playerId: number, r: RaidRow, perCard: number, cards: number): Contract {
@@ -1738,22 +1761,11 @@ function withHeld(db: DB, playerId: number, r: RaidRow, perCard: number, cards: 
   }
 }
 
-export function boardOf(
-  db: DB,
-  playerId: number,
-  perCard: number,
-  cards: number,
-): { raids: Contract[]; commissions: Pinned[] } {
+export function boardOf(db: DB, playerId: number, perCard: number, cards: number): Contract[] {
   const rows = db
     .prepare('SELECT * FROM raids WHERE player_id = ? ORDER BY id')
     .all(playerId) as RaidRow[]
-  const raids: Contract[] = []
-  const commissions: Pinned[] = []
-  for (const r of rows) {
-    if (r.accepted_at === null) raids.push(withHeld(db, playerId, r, perCard, cards))
-    else commissions.push({ ...withHeld(db, playerId, r, perCard, cards), acceptedAt: r.accepted_at })
-  }
-  return { raids, commissions }
+  return rows.map((r) => withHeld(db, playerId, r, perCard, cards))
 }
 
 function raidRow(db: DB, playerId: number, id: number): RaidRow {
@@ -1791,7 +1803,6 @@ export interface RaidPayout {
  */
 export function attemptRaid(db: DB, player: Player, id: number): RaidPayout {
   const row = raidRow(db, player.id, id)
-  if (row.accepted_at !== null) fail('That one is pinned. Collect it instead.')
   const held = heldIn(db, player.id, row.series, row.depth)
   if (held < row.breadth) {
     fail(`${row.series} needs ${row.breadth} at ★${row.depth}. You have ${held}.`)
@@ -1817,72 +1828,6 @@ export function attemptRaid(db: DB, player: Player, id: number): RaidPayout {
     depth: row.depth,
     roster,
   }
-}
-
-/**
- * Take a raid on rather than answer it.
- *
- * Only ever one you cannot currently answer, which is what makes the two
- * different: a raid is a test of what you hold and a commission is what you go
- * and get. It costs no Scrip and pays more Renown, and what it costs instead
- * is a slot -- scarcity here is slots, not clocks, because ADR 0004 took every
- * timer out of this game.
- */
-export function acceptCommission(db: DB, player: Player, id: number): Snapshot {
-  const row = raidRow(db, player.id, id)
-  if (row.accepted_at !== null) fail('That one is already taken.')
-  const taken = (
-    db
-      .prepare('SELECT COUNT(*) AS n FROM raids WHERE player_id = ? AND accepted_at IS NOT NULL')
-      .get(player.id) as { n: number }
-  ).n
-  if (taken >= COMMISSION_SLOTS) fail(`All ${COMMISSION_SLOTS} commission slots are full.`)
-  if (heldIn(db, player.id, row.series, row.depth) >= row.breadth) {
-    fail('You can already answer that one. Raid it.')
-  }
-  db.transaction(() => {
-    db.prepare('UPDATE raids SET accepted_at = ?, reward = ? WHERE id = ?').run(
-      Date.now(),
-      Math.max(1, Math.round(row.reward * COMMISSION_BONUS)),
-      row.id,
-    )
-    fillBoard(db, player.id)
-  })()
-  return snapshot(db, player)
-}
-
-/** Collect a commission the collection has grown into. */
-export function claimCommission(db: DB, player: Player, id: number): RaidPayout {
-  const row = raidRow(db, player.id, id)
-  if (row.accepted_at === null) fail('That one has not been taken on.')
-  const held = heldIn(db, player.id, row.series, row.depth)
-  if (held < row.breadth) {
-    fail(`${row.series} needs ${row.breadth} at ★${row.depth}. You have ${held}.`)
-  }
-  const roster = rosterFor(db, player.id, row.series, row.depth)
-  db.transaction(() => {
-    db.prepare('UPDATE player_state SET renown = renown + ? WHERE player_id = ?').run(
-      row.reward,
-      player.id,
-    )
-    db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
-  })()
-  return {
-    snapshot: snapshot(db, player),
-    reward: row.reward,
-    series: row.series,
-    breadth: row.breadth,
-    depth: row.depth,
-    roster,
-  }
-}
-
-/** Give a commission back. The slot is the cost, so this is how you pay it back. */
-export function abandonCommission(db: DB, player: Player, id: number): Snapshot {
-  const row = raidRow(db, player.id, id)
-  if (row.accepted_at === null) fail('That one has not been taken on.')
-  db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
-  return snapshot(db, player)
 }
 
 /** Point Called Shot at a series, or at nothing. */
@@ -1935,30 +1880,64 @@ export function sendExpedition(db: DB, player: Player, key: string): Snapshot {
 }
 
 /**
- * A hand on the ram.
+ * A hand on the machine.
  *
- * One slam runs the belt for a few presses' worth at once. It spends nothing
- * but the yard, so tapping can never outrun the Press that fills it -- it is
- * the manual assist, the way a swipe helps a pack open. Rate-limited here
- * rather than trusted to the client.
+ * One tap does three things, in the order the machine does them:
+ *
+ *   1. It stokes the works. Heat multiplies what every scrap fetches and
+ *      halves in seconds, so hammering is worth up to double while a hand is
+ *      on it and nothing at all a minute later.
+ *   2. It brings the ram down early. The automatic stroke waits for a whole
+ *      scrap's worth of spares; a slam mills whatever is in the tank right
+ *      now, at `HAND_MULT`, and does not round the remainder away.
+ *   3. It runs the belt over what just landed.
+ *
+ * The first version of this only did (3), and it was right about the shape --
+ * a tap must never outrun the collection that feeds it -- and wrong about
+ * everything a player sees. The yard is empty almost always, so a tap paid
+ * zero, said "yard empty", and read as a button that does nothing. Heat and
+ * the hand mill are both bounded and neither needs a yard, so a tap now
+ * always moves something.
+ *
+ * Rate-limited here rather than trusted to the client.
  */
 const SLAM_PRESSES = 3
 const SLAM_GAP_MS = 110
 const lastSlam = new Map<number, number>()
 
-export function slamPress(
-  db: DB,
-  player: Player,
-): { snapshot: Snapshot; melted: number; paid: number } {
+export interface SlamResult {
+  snapshot: Snapshot
+  /** Scrap the hand mill made out of the tank. */
+  milled: number
+  /** Scrap the belt melted. */
+  melted: number
+  paid: number
+  heat: number
+}
+
+export function slamPress(db: DB, player: Player): SlamResult {
   const now = Date.now()
   if (now - (lastSlam.get(player.id) ?? 0) < SLAM_GAP_MS) {
-    return { snapshot: snapshot(db, player), melted: 0, paid: 0 }
+    const snap = snapshot(db, player)
+    return { snapshot: snap, milled: 0, melted: 0, paid: 0, heat: snap.works.heat }
   }
   lastSlam.set(player.id, now)
   const row = loadState(db, player.id)
   const { fx } = loadoutOf(row)
+
+  // (1) Stoke. Capped at one so a hold cannot bank a multiplier for later.
+  const heat = Math.min(1, heatNow(row.heat, row.heat_at, now) + HEAT_PER_TAP)
+  // (2) Mill the tank by hand. Fractional on purpose: the automatic stroke
+  //     keeps the remainder in spares, and a hand stroke on a tank holding a
+  //     fifth of a scrap has to be able to hand over a fifth of a scrap.
+  const milled = (row.spares * HAND_MULT) / fx.sparesPerScrap
+  db.prepare(
+    'UPDATE player_state SET spares = 0, scrap = scrap + ?, heat = ?, heat_at = ? WHERE player_id = ?',
+  ).run(milled, heat, now, player.id)
+
+  // (3) Run the belt, which reads the heat this tap just set.
   const r = runFactory(db, player.id, SLAM_PRESSES, fx, creditsPerCard(row, fx))
-  return { snapshot: snapshot(db, player), ...r }
+  return { snapshot: snapshot(db, player), milled, ...r, heat }
 }
 
 /** Bring a caravan home. Only the last waypoint waits for a hand. */

@@ -19,7 +19,7 @@ import { EMPTY_BADGES, computeEffects, type BadgeKey, type Badges, type Effects 
 import { BASE_CARD_RATE, EMPTY_UPGRADES, type UpgradeKey, type Upgrades } from './upgrades'
 import { POOL_EVERYTHING } from './pool'
 import type { Works } from './industry'
-import type { Contract, Musterer, Pinned } from './contracts'
+import type { Contract, Musterer } from './contracts'
 import { bindSoundSettings, dealStepMs, setDealSpeed, sfx } from './sound'
 import { fmt, fmtCount } from './format'
 import {
@@ -91,7 +91,7 @@ const patchStack = (
  * the same treatment a pull's do: asked for the moment the answer lands rather
  * than the moment the rank deals in.
  */
-function payout(res: RaidPayout): Omit<Muster, 'id' | 'commission'> {
+function payout(res: RaidPayout): Omit<Muster, 'id'> {
   if (typeof Image !== 'undefined') {
     for (const m of res.roster) {
       const img = new Image()
@@ -116,8 +116,6 @@ export interface Muster {
   depth: number
   reward: number
   roster: Musterer[]
-  /** A commission collected rather than a raid paid for. */
-  commission: boolean
 }
 
 interface GameState {
@@ -146,7 +144,7 @@ interface GameState {
   /** What one card is worth to this player: every payout is quoted against it. */
   creditsPerCard: number
   aimSeries: string | null
-  board: { raids: Contract[]; commissions: Pinned[] }
+  board: Contract[]
   wishes: RolledCharacter[]
   badges: Badges
   upgrades: Upgrades
@@ -253,13 +251,13 @@ interface GameState {
   /* The board (ADR 0013). `quiet` settles without the muster: it is what the
      Automaton uses when nobody is on the page to watch one. */
   raid: (id: number, quiet?: boolean) => Promise<void>
-  acceptCommission: (id: number) => Promise<void>
-  claimCommission: (id: number, quiet?: boolean) => Promise<void>
   dismissMuster: () => void
-  abandonCommission: (id: number) => Promise<void>
   /** The works (ADR 0014). */
-  /** One hand-slam of the ram: melts a few belt-loads now. Resolves to what it paid. */
-  slamPress: () => Promise<number>
+  /**
+   * One hand on the machine: stokes the heat, mills the tank, runs the belt.
+   * Resolves to what the tap paid and the heat it left behind.
+   */
+  slamPress: () => Promise<{ paid: number; milled: number; heat: number }>
   sendExpedition: (route: string) => Promise<void>
   collectExpedition: (id: number) => Promise<void>
   setAim: (series: string | null) => Promise<void>
@@ -403,13 +401,14 @@ export const useGame = create<GameState>()((set, get) => {
       belt: 2,
       scrapWorth: 0,
       factoryRate: 0,
+      heat: 0,
       reach: 0,
       caravans: 1,
       out: [],
     },
     creditsPerCard: 0,
     aimSeries: null,
-    board: { raids: [], commissions: [] },
+    board: [],
     wishes: [],
     badges: { ...EMPTY_BADGES },
     upgrades: { ...EMPTY_UPGRADES },
@@ -845,49 +844,16 @@ export const useGame = create<GameState>()((set, get) => {
         get().pushToast(`${res.series} fulfilled: +${fmt(res.reward)} credits`, 'credits')
         return
       }
-      set({ muster: { id, commission: false, ...payout(res) } })
-    },
-
-    acceptCommission: async (id) => {
-      sfx.tap()
-      const res = await guard(
-        () => api.accept(id),
-        (m) => get().pushToast(m, 'info'),
-      )
-      if (res) apply(res.state)
-    },
-
-    claimCommission: async (id, quiet) => {
-      const res = await guard(
-        () => api.claimCommission(id),
-        (m) => get().pushToast(m, 'info'),
-      )
-      if (!res) return
-      sfx.reveal('mythic')
-      apply(res.state)
-      if (quiet) {
-        get().pushToast(`${res.series} delivered: +${fmt(res.reward)} credits`, 'credits')
-        return
-      }
-      set({ muster: { id, commission: true, ...payout(res) } })
+      set({ muster: { id, ...payout(res) } })
     },
 
     dismissMuster: () => set({ muster: null }),
 
-    abandonCommission: async (id) => {
-      sfx.tap()
-      const res = await guard(
-        () => api.abandon(id),
-        (m) => get().pushToast(m, 'info'),
-      )
-      if (res) apply(res.state)
-    },
-
     slamPress: async () => {
       const res = await guard(() => api.slam())
-      if (!res) return 0
+      if (!res) return { paid: 0, milled: 0, heat: 0 }
       apply(res.state)
-      return res.paid
+      return { paid: res.paid, milled: res.milled, heat: res.heat }
     },
 
     sendExpedition: async (route) => {

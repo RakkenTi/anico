@@ -63,13 +63,7 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
  */
 function worksOpen(s: ReturnType<typeof useGame.getState>): boolean {
   const w = s.works
-  return (
-    w.spares > 0 ||
-    w.scrap > 0 ||
-    w.sparesPerPull > 0 ||
-    w.out.length > 0 ||
-    s.board.commissions.length > 0
-  )
+  return w.spares > 0 || w.scrap > 0 || w.sparesPerPull > 0 || w.out.length > 0
 }
 
 /** The four tabs that arrive together when the works open. */

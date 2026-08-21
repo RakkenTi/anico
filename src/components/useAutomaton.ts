@@ -48,9 +48,7 @@ function clearRoutine(st: ReturnType<typeof useGame.getState>, onBoard: boolean)
   if (road && st.works.out.length < st.works.caravans && st.works.scrap >= road.scrap) {
     return void st.sendExpedition(road.key)
   }
-  const done = st.board.commissions.find((c) => c.held >= c.breadth)
-  if (done) return void st.claimCommission(done.id, !onBoard)
-  const next = st.board.raids.find((r) => r.held >= r.breadth)
+  const next = st.board.find((r) => r.held >= r.breadth)
   if (next) void st.raid(next.id, !onBoard)
 }
 

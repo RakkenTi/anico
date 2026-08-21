@@ -82,7 +82,7 @@ export default function MusterStage({ muster, onClose }: { muster: Muster; onClo
           )}
         </div>
 
-        <div className="muster-stamp">{muster.commission ? 'Delivered' : 'Answered'}</div>
+        <div className="muster-stamp">Answered</div>
         <div className="muster-pay">
           +{fmt(muster.reward)} <em>credits</em>
         </div>

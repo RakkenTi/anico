@@ -8,7 +8,7 @@ import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
 import type { Works } from './game/industry'
-import type { Contract, Musterer, Pinned } from './game/contracts'
+import type { Contract, Musterer } from './game/contracts'
 
 export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
@@ -45,7 +45,7 @@ export interface Snapshot {
   creditsPerCard: number
   /** The series Called Shot is pointed at. */
   aimSeries: string | null
-  board: { raids: Contract[]; commissions: Pinned[] }
+  board: Contract[]
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
   /** Packs torn at a single press. */
@@ -211,11 +211,10 @@ export const api = {
 
   /* The board (ADR 0013). */
   raid: (id: number) => post<{ state: Snapshot } & RaidPayout>(`/raid/${id}`),
-  accept: (id: number) => post<{ state: Snapshot }>(`/commission/${id}`),
-  claimCommission: (id: number) =>
-    post<{ state: Snapshot } & RaidPayout>(`/commission/${id}/claim`),
-  abandon: (id: number) => request<{ state: Snapshot }>(`/commission/${id}`, { method: 'DELETE' }),
-  slam: () => post<{ state: Snapshot; melted: number; paid: number }>('/works/slam'),
+  slam: () =>
+    post<{ state: Snapshot; milled: number; melted: number; paid: number; heat: number }>(
+      '/works/slam',
+    ),
   sendExpedition: (route: string) => post<{ state: Snapshot }>('/expedition', { route }),
   collectExpedition: (id: number) =>
     post<{ state: Snapshot; paid: number; route: string }>(`/expedition/${id}/collect`),

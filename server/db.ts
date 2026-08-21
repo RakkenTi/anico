@@ -413,6 +413,29 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     DELETE FROM raids;
     `,
   },
+  {
+    name: '016_heat',
+    sql: `
+    -- Heat: the one number in the works a hand moves and a collection does not.
+    --
+    -- Every faucet outside the summon is paced by material, which is correct
+    -- and also means the Press and the Factory had nothing for a player to do
+    -- but watch. Heat is what a tap buys: it multiplies what a scrap fetches,
+    -- and it halves every few seconds, so it is worth exactly as much as
+    -- somebody standing at the machine and nothing at all to the idle curve.
+    ALTER TABLE player_state ADD COLUMN heat REAL NOT NULL DEFAULT 0;
+    ALTER TABLE player_state ADD COLUMN heat_at INTEGER NOT NULL DEFAULT 0;
+
+    -- Pinning is gone. It was a second verb on a board whose whole appeal is
+    -- that it has one -- you either hold what a contract wants or you do not --
+    -- and three slots, a x2.5 bonus and an Unpin button were a rulebook
+    -- bolted to a to-do list. Every row is now simply fulfilled when the
+    -- collection reaches it. Pinned rows had their reward already multiplied,
+    -- so they are dropped rather than released and the board reposts.
+    DELETE FROM raids WHERE accepted_at IS NOT NULL;
+    ALTER TABLE raids DROP COLUMN accepted_at;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {
