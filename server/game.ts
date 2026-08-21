@@ -15,6 +15,7 @@ import {
   BASE_COIN_CHANCE,
   DAILY_INTERVAL_H,
   DAILY_STREAK_WINDOW_H,
+  RARITY_MIN,
   SERIES_MILESTONES,
   COIN_BASE_MEAN,
   coinAmount,
@@ -605,26 +606,12 @@ export function roll(
       g * perPack,
       Math.min(results.length, (g + 1) * perPack),
     ])
-    /*
-     * Every wrapper's top-up, drawn in one query.
-     *
-     * The draw shuffles the catalog against every id already dealt, which is
-     * not cheap, and this used to run once per wrapper: twenty-four of them
-     * was three quarters of a second of the summon. Asked for only what the
-     * wrappers are actually short, so a lucky pull still costs nothing.
-     */
+    // Every wrapper's top-up, drawn together and only for what they are
+    // actually short: a lucky pull still costs nothing.
     const short = walls.reduce((n, [from, to]) => n + shortfall(results, from, to, fx), 0)
     const lucky =
       short > 0
-        ? drawAboveValue(
-            db,
-            fx.guaranteeValue,
-            settings.rollGender,
-            poolSize,
-            results.map((r) => r.char.id),
-            owner,
-            short,
-          )
+        ? guaranteePool(db, short, fx, settings, poolSize, owner, results.map((r) => r.char.id))
         : []
     for (const [from, to] of walls) {
       totalComp += guarantee(results, lucky, from, to, fx, ownedIds, wishes)
@@ -747,6 +734,74 @@ export function roll(
   }
 }
 
+/**
+ * The tiers a guarantee falls through, best first.
+ *
+ * Never below Rare: at that point the promise is "a card", which is what a
+ * pack is anyway.
+ */
+const GUARANTEE_LADDER = [
+  RARITY_MIN.mythic,
+  RARITY_MIN.legendary,
+  RARITY_MIN.epic,
+  RARITY_MIN.rare,
+]
+
+/**
+ * What the wrappers are topped up from, drawn once for the whole pull.
+ *
+ * There are eleven Mythic characters in existence. The tier starts around
+ * twenty-six thousand favourites and the most-favourited character alive has
+ * forty-three thousand, so it is eleven people, not eleven per catalog.
+ * Emerald VI asks for three a wrapper and Extra Packs puts twenty-four
+ * wrappers on the screen, which is a promise of seventy-two against a supply
+ * of eleven: the first four wrappers took every Mythic in the world and the
+ * other twenty got nothing, every pull, for good.
+ *
+ * The promise is kept at the best tier the catalog can still supply instead --
+ * Mythic while they last, then Legendary, then Epic -- so every wrapper is
+ * topped up with something. Shuffled afterwards, because which wrapper the
+ * Mythics land in should not be a fact anybody can learn.
+ */
+function guaranteePool(
+  db: DB,
+  want: number,
+  fx: ReturnType<typeof computeEffects>,
+  settings: ServerSettings,
+  poolSize: number,
+  owner: number | null,
+  dealt: number[],
+): PoolPick[] {
+  const taken: PoolPick[] = []
+  const exclude = [...dealt]
+  for (const floor of GUARANTEE_LADDER) {
+    if (taken.length >= want) break
+    // Never above what the badge promised: Emerald I does not quietly deal
+    // Mythics because the catalog happens to have some.
+    if (floor > fx.guaranteeValue) continue
+    const got = drawAboveValue(
+      db,
+      floor,
+      settings.rollGender,
+      poolSize,
+      exclude,
+      owner,
+      want - taken.length,
+    )
+    // Each rung includes the one above it, so what is already taken has to be
+    // excluded or the Mythics come back around as Legendaries.
+    for (const c of got) {
+      taken.push(c)
+      exclude.push(c.id)
+    }
+  }
+  for (let i = taken.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[taken[i], taken[j]] = [taken[j], taken[i]]
+  }
+  return taken
+}
+
 /** How many cards a wrapper is short of the floor its badge printed. */
 function shortfall(
   results: RollResult[],
@@ -784,16 +839,25 @@ function guarantee(
   wishes: PoolPick[],
 ): number {
   let delta = 0
+  // A top-up from further down the ladder does not itself clear the promised
+  // floor, so without this the next pass would pick it as the worst card in
+  // the wrapper and swap it straight back out.
+  const filled = new Set<number>()
   for (let n = shortfall(results, from, to, fx); n > 0; n--) {
     let worst = -1
     for (let i = from; i < to; i++) {
-      if (results[i].wished) continue
+      if (results[i].wished || filled.has(i)) continue
       if (results[i].char.creditValue >= fx.guaranteeValue) continue
       if (worst < 0 || results[i].char.creditValue < results[worst].char.creditValue) worst = i
     }
     if (worst < 0) return delta
-    const pick = lucky.pop()
+    const pick = lucky[lucky.length - 1]
     if (!pick) return delta
+    // A rung or two down the ladder a top-up can be worth less than the card
+    // it would replace. Leave it for a wrapper it actually improves.
+    if (pick.creditValue <= results[worst].char.creditValue) return delta
+    lucky.pop()
+    filled.add(worst)
     const owned = ownedIds.has(pick.id)
     const compensation = owned ? duplicateCompensation(pick.creditValue, fx.dupCompMult) : 0
     delta += compensation - results[worst].compensation

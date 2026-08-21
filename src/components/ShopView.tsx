@@ -63,13 +63,16 @@ export default function ShopView() {
           <dt>Guarantee</dt>
           <dd>
             {fx.guaranteeRarity ? (
-              <>
+              /* "or better" reads as a bonus and this is the opposite: past a
+                 few wrappers there are no Mythics left in the world to deal,
+                 and the wrapper is filled from the next tier down instead. */
+              <span title="Falls to the next tier down when the catalog has no more of them">
                 <b className="credits-text">
                   {fx.guaranteeCount > 1 ? `${fx.guaranteeCount} ` : ''}
                   {RARITY_NAMES[fx.guaranteeRarity]}
                 </b>{' '}
-                per pack
-              </>
+                per pack, or the best left
+              </span>
             ) : (
               <>None yet</>
             )}
