@@ -304,7 +304,19 @@ export const useGame = create<GameState>()((set, get) => {
       packPrice: s.packPrice,
       autoSpinMs: s.autoSpinMs,
       cardRate: s.cardRate,
-      autoSpin: adopt ? s.autoSpin : prev.autoSpin,
+      /*
+       * The switch is this device's, but the machine is the account's.
+       *
+       * Auto Summon runs per device, so a snapshot pushed because the desktop
+       * pressed the button must not start or stop the phone -- hence the
+       * `adopt` gate. What it must never do is leave the switch on for a
+       * machine that no longer exists: a reset wipes the upgrade, `autoSpinMs`
+       * drops to zero, `useAutomaton` stops looping, and nothing is ever
+       * refused a pull, so the flag that would have cleared itself never does.
+       * The pack opener reads that flag to decide whether a hand or a machine
+       * is opening the wrappers, and every pack after the reset tore itself.
+       */
+      autoSpin: (adopt ? s.autoSpin : prev.autoSpin) && s.autoSpinMs > 0,
       lastDailyAt: s.lastDailyAt,
       dailyStreak: s.dailyStreak,
       totalRolls: s.totalRolls,
