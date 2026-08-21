@@ -718,7 +718,18 @@ export function roll(
     notes: opened.notes.slice(0, 4),
     hidden: overflow,
     hiddenFor,
-    snapshot: snapshot(db, player, true),
+    /*
+     * Without the collection.
+     *
+     * A pull used to answer with everything the player owns, which by the time
+     * packs are worth pulling is thousands of characters, each with artwork,
+     * aliases and covers: a megabyte and climbing, rebuilt and re-sent on every
+     * press, and the Automaton presses several times a second. It was the
+     * slowest part of a summon by a distance and nothing on the summon screen
+     * reads it. The revision counter still moves, so the collection screen
+     * knows to ask for a fresh copy the moment somebody looks at it.
+     */
+    snapshot: snapshot(db, player),
   }
 }
 

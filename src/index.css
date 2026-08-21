@@ -749,7 +749,20 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   overscroll-behavior: contain;
   padding-right: 6px;
 }
-.roll-view.mega .roll-spread { max-width: none; }
+/*
+ * A big spread takes the pane it is given.
+ *
+ * Five fixed columns inside a max-width meant for a ten-card spread left a
+ * thousand cards in a narrow strip with a third of the screen empty beside it.
+ * Columns are sized instead of counted, so the grid fills whatever the pane
+ * is: seven of them on a desktop, three on a phone, and the card itself stays
+ * the size it has always been. `:not(.single)` and the doubled class keep this
+ * ahead of the per-layout caps, which are written for spreads you can count.
+ */
+.roll-view.mega .roll-spread:not(.single) {
+  max-width: none;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+}
 .roll-view.mega .roll-rail {
   position: static;
   align-self: start;
@@ -777,7 +790,10 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   /* A pack of seventy-five in two columns is thirty-eight rows of scrolling.
      Three columns on a phone makes it a spread you can take in; the cards go
      narrow enough that their own container query drops the rarity word. */
-  .roll-view.mega .roll-spread { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .roll-view.mega .roll-spread:not(.single) {
+    grid-template-columns: repeat(auto-fill, minmax(102px, 1fr));
+    gap: 8px;
+  }
 }
 
 .spread-slot {
@@ -1408,6 +1424,20 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   align-items: flex-end;
   max-width: min(380px, calc(100vw - 36px));
   pointer-events: none;
+}
+/*
+ * On a phone, receipts do not get to stand in front of the game.
+ *
+ * A pull at end game arrives with four of them at once -- the dowry, the
+ * series set, what the machine appraised -- and four toasts on a small screen
+ * reach from the tab bar to the middle of the pack grid, which is where "Open
+ * the rest" is. The button was not slow; it was underneath. Two at a time, and
+ * a tap goes through to whatever is behind rather than dismissing a receipt
+ * that was about to leave anyway.
+ */
+@media (max-width: 760px) {
+  .toast-stack .toast:nth-last-child(n + 3) { display: none; }
+  .toast-stack .toast { pointer-events: none; }
 }
 .toast {
   pointer-events: auto;
@@ -2123,14 +2153,44 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   transform:
     translate(calc(var(--fan) * 3.4px), calc(var(--fan) * -2.4px))
     rotate(calc(var(--depth) * 0.28deg * var(--pile, 1)));
-  filter: brightness(calc(1 - min(var(--depth), 10) * 0.05));
   pointer-events: none;
-  transition: transform 0.18s ease-out;
+  /*
+   * No transition on that transform.
+   *
+   * It used to ease, which sounds harmless and is not: `--pile` moves every
+   * time a card leaves, and a transition on it sets every card in every pile
+   * animating a transform the compositor cannot take, all at once, for the
+   * next fifth of a second. Seven packs ten deep is seventy large cards being
+   * restyled and repainted on the main thread continuously, which measured at
+   * twenty-five frames a second.
+   *
+   * It does not need one. The lean travels twenty pixels over the whole of a
+   * pull, so a card leaving moves the pile under it by half a pixel; there is
+   * nothing to smooth.
+   */
 }
-/* The card that has just come to the top settles rather than appearing. */
-.pack-card.top { animation: packSettle 0.22s ease-out; }
-@keyframes packSettle {
+/* Deeper cards sit in more shade. A wash rather than `filter: brightness()`:
+   a filter gives every card in the pile its own paint layer, and a pile is a
+   hundred and twenty cards. */
+.pack-card.behind::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, calc(min(var(--depth), 10) * 0.05));
+  pointer-events: none;
+}
+/* The card that has just come to the top settles rather than appearing.
+   Two names for one animation, alternated by the stack, so it replays without
+   the card having to be torn out of the document and built again. */
+.pack-card.top.settle-a { animation: packSettleA 0.22s ease-out; }
+.pack-card.top.settle-b { animation: packSettleB 0.22s ease-out; }
+@keyframes packSettleA {
   from { transform: translate3d(0, -5px, 0) scale(0.965) rotate(-0.6deg); opacity: 0.65; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes packSettleB {
+  from { transform: translate3d(0, -5px, 0) scale(0.965) rotate(0.6deg); opacity: 0.65; }
   to { transform: none; opacity: 1; }
 }
 /* Mid-drag the card is following a finger, so it keeps its own transform. */
@@ -2149,21 +2209,42 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   position: absolute;
   inset: 0;
   pointer-events: none;
-  --throw: calc(var(--dir) * clamp(150px, var(--pack-w) * 1.9, 700px));
-  animation: throwOut 0.32s cubic-bezier(0.32, 0, 0.68, 1) forwards;
+  /* Where the card starts: under the finger that flicked it, or square on the
+     pile for everything else. Set once and never animated, so the animation
+     underneath has nothing variable in it. */
+  transform: translate3d(var(--from-x, 0), var(--from-y, 0), 0) rotate(var(--from-rot, 0deg));
 }
-@keyframes throwOut {
-  from {
-    transform: translate3d(var(--from-x, 0), var(--from-y, 0), 0) rotate(var(--from-rot, 0deg));
-    opacity: 1;
-  }
-  to {
-    /* How far a card sails is a multiple of its own width, not a constant:
-       760px is a flourish for one big pack and a pile-up across the grid for
-       thirteen small ones. */
-    transform: translate3d(var(--throw), -46px, 0) rotate(calc(var(--dir) * 26deg));
-    opacity: 0;
-  }
+/*
+ * The flight itself, on a wrapper of its own.
+ *
+ * How far a card sails has always been a multiple of its own width rather than
+ * a constant -- 760px is a flourish for one big pack and a pile-up across the
+ * grid for seventeen small ones -- but a keyframe that reads a custom property
+ * can never be handed to the compositor, so every card in the air was being
+ * restyled and repainted on the main thread, whole card and artwork with it.
+ * Twenty of those was most of a frame.
+ *
+ * A percentage measures the same multiple of the same card and is a plain
+ * value, so these run off the main thread entirely. The direction is a class
+ * rather than a sign, for the same reason.
+ */
+.pack-fly {
+  position: absolute;
+  inset: 0;
+  will-change: transform, opacity;
+  /* `both`, not `forwards`: a layer is written in one go and the cards are
+     staggered by animation-delay, so each one has to hold its starting pose
+     until its turn rather than jumping to the end and back. */
+  animation: throwRight 0.32s cubic-bezier(0.32, 0, 0.68, 1) both;
+}
+.pack-fly.to-left { animation-name: throwLeft; }
+@keyframes throwRight {
+  from { transform: none; opacity: 1; }
+  to { transform: translate3d(190%, -26%, 0) rotate(26deg); opacity: 0; }
+}
+@keyframes throwLeft {
+  from { transform: none; opacity: 1; }
+  to { transform: translate3d(-190%, -26%, 0) rotate(-26deg); opacity: 0; }
 }
 
 /* --- the wrapper ------------------------------------------------------- */
@@ -2328,7 +2409,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pack-card.departing { animation-duration: 0.14s; }
+  .pack-fly { animation-duration: 0.14s; }
   .pack-card.top { transition-duration: 0.1s; }
   .pack-foil,
   .pack-flap { animation: none; }
