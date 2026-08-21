@@ -312,19 +312,19 @@ It uses `playwright-core`, which ships no browser of its own and borrows a Chrom
 already on the machine (`npx playwright install chromium` provides one, or point
 `PLAYWRIGHT_CHROMIUM` at an existing binary).
 
-Past a quadrillion credits the shop has nothing left to sell — every badge costs 63.9M
-between them and every upgrade line that ends costs 10.4B — so there is a second economy
-that the credit curve cannot reach. A press deals a bounded number of real cards however
-large the pull is, so copies arrive at a flat rate no upgrade can multiply: every
-duplicate sheds scrap in proportion to how deep the stack it lands on already is, that is
-milled into **Scrip**, Scrip is spent on
-**raids** that ask for a breadth of one series at a depth of stars, raids pay **Renown**,
-and Renown raises the ceilings the credit engine has been sitting against. Nothing in it
-reads a character's credit value, because that would only rename rarity. Each demand is
-posted at the rung the collection is standing on, so the board is something you can act
-on rather than a list of refusals, and answering one plays a **muster**: the cards that
-satisfy it deal out at the stars they merged to, the demand stamps answered, and the
-Renown lands. See `docs/adr/0013-a-second-economy-the-credit-curve-cannot-reach.md`.
+Past a quadrillion credits the summon alone has nothing left to sell — every badge costs
+63.9M between them and every upgrade line that ends costs 10.4B — so there are **the
+works**: three more faucets and a goal board, all paying the same credits and all bought
+from the same shop. Duplicate cards shed scrap in proportion to how deep the stack they
+land on already is; the **Press** mills that into scrap, the **Factory**'s belt melts
+scrap into credits every press and every hour you are away, an **expedition** spends a
+lump of scrap now for a much larger lump later, and **contracts** pay for holding a
+breadth of one series at a depth of stars. Nothing in it reads a character's credit
+value, because that would only rename rarity, and nothing in it locks anything else: what
+chains between mechanics is material, not permission. What one scrap is worth is a
+fraction of a whole *press* rather than a fixed number of credits, which is how a faucet
+outside the summon stays relevant across twenty orders of magnitude. See
+`docs/adr/0014-one-currency-three-faucets.md`.
 
 `npm run stress` plays the end game, which is where every performance problem this
 project has had turned up. It stands up its own throwaway instance, seeds a catalog the
@@ -337,9 +337,12 @@ measures the press-to-wrappers delay, the frame gap while a pull empties, the op
 against what Open Speed promised, sound voices landing in the same tenth of a second,
 whether the spread uses its pane, whether the button that opens a pack is reachable,
 whether the shop still answers with the Automaton running, whether every wrapper's
-guarantee was kept, whether the board posts raids and the Refinery is milling, whether
-the muster puts a rank of portraits on screen, and whether a whole collection can be
-sold. It exits non-zero on anything over budget.
+guarantee was kept, whether the board posts contracts and the Press is milling, whether
+the muster puts a rank of portraits on screen, whether a caravan can be sent and its road
+drawn, and whether a whole collection can be sold. It screenshots all four of the works'
+tabs at every rung, because three of them exist to be a machine you can watch and a
+machine that renders as an empty box passes every assertion anybody would think to
+write. It exits non-zero on anything over budget.
 `ANICO_STRESS_RUNGS=phone` runs one rung when chasing something down.
 
 ## How it fits together

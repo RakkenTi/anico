@@ -221,15 +221,41 @@
   padding: 7px 8px;
 }
 
+/*
+ * The dock wraps.
+ *
+ * It is a fixed bar centred with a translate, which means it has no width to
+ * be constrained by: at ten tabs on a 390px phone the row simply extended past
+ * both edges of the viewport and the first tab sat at a negative x, unclickable
+ * and invisible. Six tabs never showed it. Wrapping costs nothing at any width
+ * that fits and is the only thing that keeps working as tabs are added.
+ */
+/*
+ * The dock centres on the viewport, not on half of it.
+ *
+ * It used to be `left: 50%` with a translate back, which leaves a shrink-to-fit
+ * box whose available width is only the half of the screen to the right of that
+ * point. With six tabs the content was narrower than that and nobody noticed;
+ * with ten it was not, so the row wrapped at 1440px and, on a phone, wrapped
+ * into a dock four rows tall with its first tab off the left edge entirely.
+ *
+ * Pinned to both edges with `margin: 0 auto` instead: the box may grow to the
+ * whole viewport, hugs its content, and stays centred. It wraps only when ten
+ * tabs genuinely do not fit, which is what wrapping is for.
+ */
 [data-layout='stage'] .tabs {
   position: fixed;
   z-index: 30;
   bottom: max(16px, env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
+  left: 8px;
+  right: 8px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin: 0 auto;
   padding: 6px;
   gap: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -252,9 +278,10 @@
 [data-layout='stage'] .tab.active { background: var(--accent); color: var(--on-accent); }
 [data-layout='stage'] .tab.active .tab-kanji { color: var(--on-accent); }
 
-/* The dock is ~68px tall and floats over the bottom of the page, so
-   toasts rise above it instead of landing behind it on narrow screens
-   where the dock stretches toward the right edge. */
+/* The dock is ~68px tall on one row and floats over the bottom of the page, so
+   toasts rise above it instead of landing behind it on narrow screens where the
+   dock stretches toward the right edge. The phone block below adds the second
+   row's worth. */
 [data-layout='stage'] .toast-stack {
   bottom: calc(max(16px, env(safe-area-inset-bottom)) + 88px);
 }
@@ -262,6 +289,18 @@
    would still come to rest underneath the dock. */
 [data-layout='stage'] .bulk-bar {
   bottom: calc(max(16px, env(safe-area-inset-bottom)) + 88px);
+}
+
+@media (max-width: 760px) {
+  /* Ten icon-only tabs wrap to two rows here; everything that has to clear the
+     dock clears both of them. */
+  [data-layout='stage'] .tabs { gap: 1px; padding: 5px; }
+  [data-layout='stage'] .tab { padding: 7px 10px 6px; }
+  [data-layout='stage'] .toast-stack,
+  [data-layout='stage'] .bulk-bar {
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 108px);
+  }
+  [data-layout='stage'] .app { padding-bottom: 150px; }
 }
 
 [data-layout='stage'] .main { margin-top: 18px; }
@@ -318,8 +357,10 @@
    is the only thing on the summon screen anyone came to look at. The marquee
    shrinks to a wordmark and the strip above the stage loses its padding. */
 @media (max-width: 620px) {
-  [data-layout='stage'] .tab { padding: 8px 13px 7px; }
-  [data-layout='stage'] .app { padding-bottom: 120px; }
+  /* Ten tabs at this width wrap to two rows, so the dock is about twice as
+     tall as the one-row version these numbers were written for. */
+  [data-layout='stage'] .tab { padding: 7px 10px 6px; }
+  [data-layout='stage'] .app { padding-bottom: 150px; }
   [data-layout='stage'] .header { padding: 10px 2px 2px; gap: 6px; }
   [data-layout='stage'] .brand-name { font-size: 1.25rem; letter-spacing: 0.2em; }
   [data-layout='stage'] .header-stats { padding: 5px 6px; }

@@ -1,5 +1,12 @@
 # A second economy the credit curve cannot reach
 
+> **Superseded by ADR 0014.** The diagnosis here holds and the mechanics
+> survive; what was wrong was the second currency. Scrip and Renown made the
+> new work matter by making it unreachable from the credit curve, and the
+> price of that was the summon's own ceilings sitting behind a different
+> mechanic. ADR 0014 keeps the Press, the board and the flat stream, deletes
+> both currencies, and pays everything in credits denominated in *presses*.
+
 By a quadrillion credits the game has nothing left to sell. Every badge costs
 63.9M in total and every upgrade line that ends costs 10.4B between them, so
 the entire *shape* of the game is bought five orders of magnitude before Qa.

@@ -1,0 +1,423 @@
+/* ============================================================
+   The Factory line.
+   One conveyor drawn in boxes and gradients. Every repeating
+   motion is a keyframe whose duration comes from a custom
+   property the view sets from real throughput, so Belt Speed
+   makes the belt faster instead of making a number bigger.
+   Only transform and opacity are animated: this page stays
+   open for hours.
+   ============================================================ */
+
+.factory-view { display: flex; flex-direction: column; gap: 12px; }
+
+.fx-lede {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.fx-lede b { color: var(--text); font-weight: 600; }
+
+.fx-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.fx-gold { color: var(--value); }
+
+.fx-title-rate {
+  margin-left: 10px;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------ the line
+
+   Three columns because that is the machine: what is waiting,
+   what is moving, what came out. It stays horizontal at every
+   width -- a conveyor stacked into a column is not a conveyor
+   -- so the ends shrink and the belt keeps the rest. */
+.fx-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(52px, 88px) 1fr minmax(62px, 110px);
+  gap: 10px;
+  align-items: end;
+  /* Room above the belt for the stations, which hang over it. */
+  padding: 54px 12px 14px;
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--well);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------ the yard */
+.fx-yard { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.fx-bin {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 62px;
+  border: 1px solid var(--line-strong);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  background: var(--surface);
+  overflow: hidden;
+}
+/* The heap is scaled, not resized: one static transform, no layout. */
+.fx-heap {
+  position: absolute;
+  inset: 0;
+  transform: scaleY(var(--fx-pile, 0));
+  transform-origin: 50% 100%;
+  background: repeating-linear-gradient(135deg, var(--raised) 0 6px, var(--line-strong) 6px 12px);
+}
+.fx-cap {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* A yard the belt cannot get through is the one state on this page that is
+   worth money to fix, so it is the one thing here that wears the value colour. */
+.fx-line[data-state='backlog'] .fx-bin { border-color: var(--value); }
+.fx-line[data-state='backlog'] .fx-yard .fx-cap { color: var(--value-soft); }
+.fx-line[data-state='starved'] .fx-bin { border-style: dashed; border-color: var(--line); }
+
+/* ------------------------------------------------ the belt */
+.fx-belt { position: relative; height: 38px; }
+.fx-track {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 19px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+/* Rollers, so the belt has ends to run around. */
+.fx-track::before,
+.fx-track::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+}
+.fx-track::before { left: 5px; }
+.fx-track::after { right: 5px; }
+
+.fx-tread {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -14px;
+  width: calc(100% + 14px);
+  background: repeating-linear-gradient(90deg, transparent 0 12px, var(--line) 12px 14px);
+  opacity: 0.7;
+  animation: fx-tread var(--fx-tread, 900ms) linear infinite;
+  will-change: transform;
+}
+@keyframes fx-tread {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(14px, 0, 0); }
+}
+
+/*
+ * A rider is the width of the belt with one piece of scrap pinned to its left
+ * edge, and it is the rider that moves. Percentages in translateX resolve
+ * against the element's own width, so a full-width rider is the only way to
+ * cross the belt end to end in a keyframe that never has to know how wide the
+ * belt happens to be on this phone.
+ */
+.fx-rider {
+  position: absolute;
+  inset: 0;
+  animation: fx-ride var(--fx-travel, 2s) linear infinite;
+  will-change: transform;
+}
+@keyframes fx-ride {
+  from { transform: translate3d(-4%, 0, 0); }
+  to { transform: translate3d(104%, 0, 0); }
+}
+.fx-scrap {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  background: linear-gradient(150deg, var(--line-strong), var(--raised));
+  clip-path: polygon(20% 0, 100% 14%, 84% 100%, 8% 82%);
+}
+
+/* ------------------------------------------------ the stations
+
+   They straddle the belt: the bottom of each one sits inside the top of the
+   track, so a piece of scrap passes underneath rather than beside. */
+.fx-station {
+  position: absolute;
+  bottom: 26px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 52px;
+}
+.fx-melter { left: 38%; }
+.fx-stamper { left: 72%; }
+.fx-tag {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.fx-hood {
+  width: 34px;
+  height: 20px;
+  background: var(--raised);
+  clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%);
+}
+/* The pour: one flash per piece passing, phased by the view. Anchored to the
+   lip of the hood rather than to the top of the station, so the caption above
+   it can be any height the theme's font makes it. */
+.fx-flash {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  width: 22px;
+  height: 14px;
+  margin-left: -11px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  animation: fx-fire var(--fx-period, 600ms) ease-out infinite;
+  will-change: transform, opacity;
+}
+@keyframes fx-fire {
+  0% { opacity: 0; transform: scale3d(0.4, 0.4, 1); }
+  6% { opacity: 0.9; transform: scale3d(1, 1, 1); }
+  40% { opacity: 0; transform: scale3d(1.3, 1.5, 1); }
+  100% { opacity: 0; transform: scale3d(0.4, 0.4, 1); }
+}
+
+.fx-frame {
+  width: 26px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  background: var(--surface);
+}
+.fx-piston {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 14px;
+  height: 12px;
+  margin-left: -7px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  animation: fx-stamp var(--fx-period, 600ms) ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes fx-stamp {
+  0% { transform: translate3d(0, 0, 0); }
+  8% { transform: translate3d(0, 14px, 0); }
+  26% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+/* ------------------------------------------------ what comes off the end */
+.fx-credit {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  margin-top: -9px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--value);
+  opacity: 0;
+  animation: fx-pay var(--fx-coin, 1.2s) ease-out infinite;
+  will-change: transform, opacity;
+}
+@keyframes fx-pay {
+  0% { opacity: 0; transform: translate3d(-8px, 0, 0); }
+  10% { opacity: 1; transform: translate3d(0, -4px, 0); }
+  55% { opacity: 1; transform: translate3d(14px, -22px, 0); }
+  100% { opacity: 0; transform: translate3d(24px, -38px, 0); }
+}
+/* The same payout, thrown up instead of out: stacked, the total is above the
+   belt's end rather than beside it, and a coin drifting right would leave the
+   line and be clipped rather than arriving anywhere. */
+@keyframes fx-pay-up {
+  0% { opacity: 0; transform: translate3d(-8px, 0, 0); }
+  12% { opacity: 1; transform: translate3d(-2px, -8px, 0); }
+  100% { opacity: 0; transform: translate3d(6px, -50px, 0); }
+}
+
+.fx-out { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding-bottom: 4px; }
+.fx-total {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--value);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------ what the line is doing */
+.fx-state {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.fx-state b { color: var(--text); font-weight: 600; }
+.fx-state.starved { border-color: var(--accent); background: var(--accent-soft); }
+.fx-state.starved b { color: var(--accent); }
+.fx-state.backlog { border-color: var(--line-strong); }
+.fx-state.backlog b { color: var(--value); }
+
+.fx-shop { margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+.fx-shop b { color: var(--text); font-weight: 600; }
+
+.fx-more { margin: 0; }
+.fx-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 14px;
+  margin: 8px 0 0;
+}
+.fx-detail > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--well);
+}
+.fx-detail dt {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.fx-detail dd { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text); }
+
+/* ------------------------------------------------ narrow
+
+   Below about 700px the three columns stop being a machine.
+
+   The belt is whatever is left after the bin and the total have taken their
+   width, and the arithmetic is unkind: at 390px that remainder was 150px of
+   run, the two stations stood almost on top of each other, and a credit coming
+   off the end landed on the stamper's own label. Measured across widths, the
+   payout only clears the stamper's label while the belt is longer than about
+   300px of run, which the three-column layout does not manage until the window
+   is 620px wide; the breakpoint sits at 700 so the tightest case that still
+   uses three columns has 24px in hand rather than none.
+
+   So below that the composition stacks: what is waiting and what has been paid
+   share one line, and the machine gets the whole width underneath them. At
+   390px that is 300px of belt instead of 150 -- the two stations sit well
+   apart, and the payout has the right-hand third to itself. */
+@media (max-width: 700px) {
+  .fx-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 6px 10px;
+    /* The stations' headroom moves with the belt, so the line no longer
+       reserves it at the top. */
+    padding: 12px 10px 14px;
+  }
+
+  /* The yard turns on its side: a crate with its count beside it, because a
+     tall bin standing next to nothing is just a tall bin. Reversed, so the
+     crate lands at the left edge over the head of the belt it feeds and the
+     count reads away from it. */
+  .fx-yard {
+    flex: 1 1 auto;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .fx-bin {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 34px;
+    border-top: 1px solid var(--line-strong);
+    border-radius: 3px;
+  }
+  .fx-cap { text-align: left; }
+
+  /* Ordered rather than reordered in the markup: on a wide screen the total
+     genuinely is the third column, and the belt only takes the whole width
+     here, which is what pushes the total up beside the yard. */
+  .fx-out { order: 1; flex: 0 0 auto; padding-bottom: 0; }
+  .fx-belt { order: 2; flex: 1 0 100%; margin-top: 44px; }
+  /* Pulled in from the ends: the melter wants the run in front of it to read
+     as approach, and the stamper has to leave the payout somewhere to land. */
+  .fx-melter { left: 34%; }
+  .fx-stamper { left: 68%; }
+
+  .fx-credit { font-size: 10px; padding: 0 5px; animation-name: fx-pay-up; }
+}
+
+/* ------------------------------------------------ phone
+
+   At 390px the line has about 300px of belt and everything on it is drawn to
+   the same scale as the text around it, so only the type and the total shrink. */
+@media (max-width: 430px) {
+  .fx-line { gap: 6px 8px; padding: 12px 8px 12px; }
+  .fx-station { width: 46px; }
+  .fx-total { font-size: 16px; }
+}
+
+/* ------------------------------------------------ stillness
+
+   Motion off, machine still readable: the scrap parks where it would be
+   standing on a running belt rather than piling up at the entry roller, and
+   one payout stays on screen instead of flying. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-tread,
+  .fx-flash,
+  .fx-piston { animation: none; }
+  .fx-flash { opacity: 0.55; }
+  .fx-rider {
+    animation: none;
+    transform: translate3d(calc(8% + var(--fx-i, 0) * 24%), 0, 0);
+  }
+  .fx-credit {
+    animation: none;
+    opacity: 1;
+    transform: translate3d(8px, -24px, 0);
+  }
+  .fx-credit + .fx-credit { display: none; }
+}

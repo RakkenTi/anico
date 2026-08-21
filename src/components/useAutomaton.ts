@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { useGame } from '../game/store'
+import { useGame, useUi } from '../game/store'
+import { ROUTES } from '../game/industry'
+
+const distanceOf = (key: string) => ROUTES.find((r) => r.key === key)?.distance ?? Infinity
 
 /**
  * The Automaton's loop.
@@ -17,23 +20,37 @@ import { useGame } from '../game/store'
 /**
  * What the machine is allowed to do on the board.
  *
- * Any raid the collection already answers, and any commission it has grown
- * into: both are lookups, and withholding a lookup would be the game being coy
- * (ADR 0013). What it never does is *choose* -- taking a commission on means
- * picking which series to chase, and that is the decision the mechanic exists
- * to give the player.
+ * Any contract the collection already fulfils, any pin it has grown into, and
+ * any caravan that has reached the end of its road: all three are lookups, and
+ * withholding a lookup would be the game being coy. What it never does is
+ * *choose* -- pinning a contract means picking which series to chase, and
+ * outfitting a caravan means picking what to do with a yard full of scrap.
+ * Those are the two decisions the works exist to give the player.
  *
- * Only ever from an open device. Away, the Refinery keeps filling and the
- * board keeps waiting, which is the whole of "away costs nothing, present
- * plays the board".
+ * Only ever from an open device. Away, the Press keeps milling and the Factory
+ * keeps melting -- both are settled by `settleOffline` -- while the board and
+ * the caravans wait for a hand on the button. Away costs nothing; present
+ * plays the works.
  */
 function clearRoutine(st: ReturnType<typeof useGame.getState>, onBoard: boolean): void {
   // One muster at a time. The machine can clear a board faster than a muster
   // plays, and a ritual interrupted by the next ritual is not a ritual.
   if (st.muster) return
+  // A caravan that has arrived is money sitting in the road. Collected first,
+  // because it is the only thing here that blocks a slot.
+  const home = st.works.out.find((e) => e.walked >= distanceOf(e.route))
+  if (home) return void st.collectExpedition(home.id)
+  // A standing order to re-outfit the same road. Only ever a road the player
+  // chose, only when a caravan is free and the yard can pay for it: the
+  // machine repeats a decision, it never makes one.
+  const repeat = useUi.getState().repeatRoute
+  const road = repeat ? ROUTES.find((r) => r.key === repeat) : null
+  if (road && st.works.out.length < st.works.caravans && st.works.scrap >= road.scrap) {
+    return void st.sendExpedition(road.key)
+  }
   const done = st.board.commissions.find((c) => c.held >= c.breadth)
   if (done) return void st.claimCommission(done.id, !onBoard)
-  const next = st.board.raids.find((r) => r.held >= r.breadth && st.scrip >= r.cost)
+  const next = st.board.raids.find((r) => r.held >= r.breadth)
   if (next) void st.raid(next.id, !onBoard)
 }
 
@@ -66,7 +83,7 @@ export function useAutomaton(tab: string) {
         return
       }
       void st.roll(st.packsPerPull)
-      void clearRoutine(st, tabRef.current === 'raids')
+      void clearRoutine(st, tabRef.current === 'contracts')
     }, autoSpinMs)
     return () => clearInterval(id)
   }, [autoSpin, autoSpinMs])

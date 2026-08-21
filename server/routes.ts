@@ -271,7 +271,7 @@ export function createApp(db: DB, config: Config) {
     return sync(c, { state: snapshot, total, sold })
   })
 
-  /* ------------------------------------------------------------- the board */
+  /* --------------------------------------------------- the board and the works */
 
   api.post('/raid/:id', (c) => {
     const { snapshot, ...paid } = game.attemptRaid(db, c.get('player'), Number(c.req.param('id')))
@@ -295,9 +295,18 @@ export function createApp(db: DB, config: Config) {
     sync(c, { state: game.abandonCommission(db, c.get('player'), Number(c.req.param('id'))) }),
   )
 
-  api.post('/renown', async (c) => {
+  api.post('/expedition', async (c) => {
     const b = await body(c)
-    return sync(c, { state: game.buyRenown(db, c.get('player'), String(b.key) as any) })
+    return sync(c, { state: game.sendExpedition(db, c.get('player'), String(b.route)) })
+  })
+
+  api.post('/expedition/:id/collect', (c) => {
+    const { snapshot, ...paid } = game.collectExpedition(
+      db,
+      c.get('player'),
+      Number(c.req.param('id')),
+    )
+    return sync(c, { state: snapshot, ...paid })
   })
 
   api.post('/aim', async (c) => {

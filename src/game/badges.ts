@@ -12,9 +12,14 @@
  */
 
 import { RARITY_MIN } from './economy.js'
+import { beltRate, caravans, foundryMult, outfitMult, sparesPerScrap } from './industry.js'
 import {
+  aimShare,
   autoSpinMs,
   cardRate,
+  maxDealtFor,
+  maxStacksFor,
+  maxStarsFor,
   coinChanceBonus,
   coinValueMult,
   mergeMult,
@@ -263,6 +268,27 @@ export interface Effects {
   guaranteeCount: number
   /** The rarity the guarantee names, for the UI to say out loud. */
   guaranteeRarity: (typeof GUARANTEE_TIERS)[number] | null
+
+  /* The works (ADR 0014). Bought with credits in the same shop as everything
+     above, because no mechanic here holds another one's ceilings hostage. */
+  /** Stars a stack may merge to. */
+  maxStars: number
+  /** Real cards one press deals, however large the pull is. */
+  maxDealt: number
+  /** Wrappers a press may lay side by side. */
+  maxStacks: number
+  /** Share of every pull drawn from the series Called Shot names. */
+  aimShare: number
+  /** Spare copies the Press needs for one scrap. */
+  sparesPerScrap: number
+  /** Scrap the Factory's belt pulls through per press. */
+  belt: number
+  /** Cards one scrap is worth: the Foundry's fraction of this player's press. */
+  scrapWorth: number
+  /** What an expedition's bounty is multiplied by. */
+  outfit: number
+  /** Expeditions that may be on the road at once. */
+  caravans: number
 }
 
 export const BASE_WISH_SLOTS = 3
@@ -307,6 +333,17 @@ export function computeEffects(b: Badges, u: Upgrades): Effects {
     guaranteeValue: guaranteeRarity ? RARITY_MIN[guaranteeRarity] : 0,
     guaranteeCount: emerald >= 6 ? 3 : emerald >= 5 ? 2 : emerald >= 1 ? 1 : 0,
     guaranteeRarity,
+    maxStars: maxStarsFor(u.depth),
+    maxDealt: maxDealtFor(u.hands),
+    maxStacks: maxStacksFor(u.table),
+    aimShare: aimShare(u.aim),
+    sparesPerScrap: sparesPerScrap(u.mill),
+    belt: beltRate(u.belt),
+    // Cards, not a bare multiplier: the Foundry buys a fraction of a *press*,
+    // and a press is exponential where scrap is flat. See BASE_SCRAP_WORTH.
+    scrapWorth: foundryMult(u.foundry) * packSize * packsPerPull(u.multipack),
+    outfit: outfitMult(u.outfit),
+    caravans: caravans(u.caravan),
   }
 }
 

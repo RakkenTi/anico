@@ -1,0 +1,563 @@
+/* ============================================================
+   The Press: a machine drawn in boxes, driven by one custom property.
+
+   --press-stroke is the real cadence. The view writes it on .press-machine
+   from the player's actual spare rate and every repeating thing in here reads
+   it for its animation-duration. That is the whole contract: buy Finer Mill,
+   the ram speeds up, and no React is involved.
+
+   --press-h is the other half. Every dimension inside the frame is a multiple
+   of it, so the machine scales as one object and the ram, the bed and the
+   portrait between them stay in register at 180px tall on a phone and 300px on
+   a desktop. Nothing here is a percentage of the frame's width, because the
+   width is itself a multiple of the height.
+
+   The keyframes read custom properties, which the pack opener learned to avoid
+   -- but what made that expensive was the property *changing*: a keyframe whose
+   var is re-substituted every frame is recalculated on the main thread. These
+   never change after mount. --press-stroke moves only when the rate does, and
+   it changes a duration rather than a value being interpolated.
+
+   Only transform and opacity are animated. Colour comes from the shared tokens
+   only: three themes swap them, and one hardcoded steel grey breaks two.
+   ============================================================ */
+
+.press-view { display: flex; flex-direction: column; gap: 12px; }
+.press-view .panel:last-child { margin-bottom: 0; }
+
+.press-lede {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.press-lede b { color: var(--text); font-weight: 600; }
+
+/* ------------------------------------------------ the machine
+
+   The frame is 1.6 wide for 1 tall and everything in it is placed in units of
+   --press-h measured from its top left corner, so the whole drawing can be
+   read off one list:
+
+     x 0.04  the two uprights, at 0.04 and 1.46
+     x 0.16  the feed table, with the queue standing on it at 0.23 and 0.30
+     x 0.26  the bin, whose mouth drops a card at 0.44
+     x 0.62  the bed starts, and the press assembly is centred on 0.98
+     x 1.30  the scrap ramp down to the yard
+
+     y 0.00  crown
+     y 0.14  uprights, guides, and the ram at the top of its stroke
+     y 0.44  the face of the ram, up
+     y 0.47  the top of a card standing on the bed
+     y 0.618 the face of the ram, down, on a card milled flat
+     y 0.66  the bed and the feed table, one continuous surface
+     y 0.80  the base, which carries both read-outs
+
+   The ram is off-centre because the feed has to come from somewhere and a
+   press with nothing on either side of it is a rectangle in a rectangle. The
+   whole left third of the frame is the material waiting to go in, which is
+   also what stops a screenshot of this view being an empty box.
+
+   The two working faces -- the bottom of the ram and the top of the bed -- are
+   the only things in here drawn in --text-dim. They are the jaws, they are
+   what the eye should find first, and against --well they are the strongest
+   contrast the token set has that is not the text colour itself. */
+
+.press-machine {
+  /* 44vw keeps the frame inside a 390px phone once the panel's padding is off,
+     and it stops growing where a portrait is still only about forty pixels
+     wide: past that the machine is larger, not clearer. */
+  --press-h: clamp(180px, 44vw, 300px);
+  /* From the face up to the face down: 0.618 - 0.44. The stroke stops on the
+     slab rather than on the bed, and the slab is deliberately thick enough to
+     see -- a card milled to a hairline reads as a card that vanished. */
+  --press-drop: calc(var(--press-h) * 0.178);
+  --press-from-x: calc(var(--press-h) * -0.54);
+  --press-from-y: calc(var(--press-h) * -0.27);
+  --press-tilt: -8deg;
+  --press-stroke: 1500ms;
+  display: flex;
+  justify-content: center;
+  margin: 0 0 14px;
+}
+
+.press-rig {
+  position: relative;
+  width: calc(var(--press-h) * 1.6);
+  max-width: 100%;
+  height: var(--press-h);
+  background: linear-gradient(180deg, var(--bg), var(--well) 60%);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  /* Nothing may leave the machine: a portrait clipped by the panel instead of
+     by the frame reads as a layout bug rather than as a machine. */
+  overflow: hidden;
+  /* The jolt. It is the frame that moves, not the ram: a press this size does
+     not shake itself, it shakes the floor and everything bolted to it. */
+  animation: pressShake var(--press-stroke) linear infinite;
+}
+
+.press-crown {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: calc(var(--press-h) * 0.14);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 calc(var(--press-h) * 0.05);
+  background: linear-gradient(180deg, var(--raised), var(--surface-2));
+  border-bottom: 2px solid var(--line-strong);
+  z-index: 6;
+}
+.press-plate {
+  font-family: var(--serif);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  /* The nameplate is the one thing on the crown that may be cut: the strokes
+     read-out is a number and half a number is worse than no plate. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.press-lamp {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.press-spm {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--value-soft);
+  white-space: nowrap;
+}
+
+/* The two uprights the crown sits on, and the two rails the ram runs in. */
+.press-column {
+  position: absolute;
+  top: calc(var(--press-h) * 0.14);
+  height: calc(var(--press-h) * 0.66);
+  width: calc(var(--press-h) * 0.1);
+  background: linear-gradient(90deg, var(--surface-2), var(--line-strong) 34%, var(--raised) 70%, var(--surface-2));
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+  z-index: 1;
+}
+.press-column.left { left: calc(var(--press-h) * 0.04); }
+.press-column.right { left: calc(var(--press-h) * 1.46); }
+
+.press-guide {
+  position: absolute;
+  top: calc(var(--press-h) * 0.14);
+  height: calc(var(--press-h) * 0.52);
+  width: calc(var(--press-h) * 0.03);
+  background: var(--line-strong);
+  z-index: 2;
+}
+.press-guide.left { left: calc(var(--press-h) * 0.665); }
+.press-guide.right { left: calc(var(--press-h) * 1.265); }
+
+/* The bin the cards come out of, over the table they land on. */
+.press-bin {
+  position: absolute;
+  left: calc(var(--press-h) * 0.26);
+  top: calc(var(--press-h) * 0.16);
+  width: calc(var(--press-h) * 0.36);
+  height: calc(var(--press-h) * 0.2);
+  background: linear-gradient(180deg, var(--line-strong), var(--surface-2));
+  clip-path: polygon(0 0, 100% 0, 70% 100%, 30% 100%);
+  z-index: 5;
+}
+.press-table {
+  position: absolute;
+  left: calc(var(--press-h) * 0.16);
+  top: calc(var(--press-h) * 0.66);
+  width: calc(var(--press-h) * 0.46);
+  height: calc(var(--press-h) * 0.14);
+  background: var(--surface-2);
+  border-top: 2px solid var(--line-strong);
+  z-index: 2;
+}
+
+.press-plunger {
+  position: absolute;
+  top: calc(var(--press-h) * 0.14);
+  left: calc(var(--press-h) * 0.7);
+  width: calc(var(--press-h) * 0.56);
+  height: calc(var(--press-h) * 0.3);
+  z-index: 4;
+  animation: pressRam var(--press-stroke) linear infinite;
+}
+.press-rod {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(var(--press-h) * 0.14);
+  margin-left: calc(var(--press-h) * -0.07);
+  height: calc(var(--press-h) * 0.12);
+  background: linear-gradient(90deg, var(--surface-2), var(--text-dim) 50%, var(--surface-2));
+  border-radius: 1px;
+}
+.press-ram {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: calc(var(--press-h) * 0.19);
+  background: linear-gradient(180deg, var(--line-strong), var(--raised) 20%, var(--surface-2) 65%, var(--raised));
+  border: 1px solid var(--line-strong);
+  /* The working face. Everything else in the frame is an edge; this is the
+     edge that does the damage, and it is drawn like it. */
+  border-bottom: calc(var(--press-h) * 0.022) solid var(--text-dim);
+  border-radius: 2px;
+}
+
+.press-bed {
+  position: absolute;
+  left: calc(var(--press-h) * 0.62);
+  top: calc(var(--press-h) * 0.66);
+  width: calc(var(--press-h) * 0.72);
+  height: calc(var(--press-h) * 0.14);
+  background: linear-gradient(180deg, var(--raised), var(--surface-2));
+  border: 1px solid var(--line-strong);
+  /* The other jaw. */
+  border-top: calc(var(--press-h) * 0.018) solid var(--text-dim);
+  border-radius: 2px;
+  z-index: 2;
+}
+/* The lip off the right of the bed, which is where a chip leaves from. */
+.press-ramp {
+  position: absolute;
+  left: calc(var(--press-h) * 1.3);
+  top: calc(var(--press-h) * 0.7);
+  width: calc(var(--press-h) * 0.18);
+  height: calc(var(--press-h) * 0.12);
+  background: var(--raised);
+  clip-path: polygon(0 0, 100% 55%, 100% 100%, 0 45%);
+  z-index: 2;
+}
+.press-base {
+  position: absolute;
+  left: 0; right: 0;
+  top: calc(var(--press-h) * 0.8);
+  bottom: 0;
+  background: var(--surface-2);
+  border-top: 2px solid var(--line-strong);
+  z-index: 1;
+}
+
+/*
+ * The work: real portraits out of the real collection.
+ *
+ * .press-queue is the material waiting on the table and never moves, which is
+ * what guarantees the frame has something in it at every instant. .press-card
+ * is the three that go under the ram, and they are visible for all but six
+ * percent of the stroke: seated on the bed, crushed, milled away, and then
+ * dropped out of the bin and slid back in. transform-origin is the bottom edge
+ * so scaleY flattens a card onto the bed rather than shrinking it toward its
+ * own middle.
+ */
+.press-card,
+.press-queue {
+  position: absolute;
+  top: calc(var(--press-h) * 0.47);
+  width: calc(var(--press-h) * 0.1357);
+  height: calc(var(--press-h) * 0.19);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  overflow: hidden;
+  transform-origin: 50% 100%;
+}
+.press-card img,
+.press-queue img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.press-card {
+  /* Seats are measured off the centre of the press, which is 0.98, not off the
+     centre of the frame. */
+  left: calc(var(--press-h) * 0.98);
+  margin-left: calc(var(--press-x, 0px) - var(--press-h) * 0.0679);
+  z-index: 3;
+  animation: pressFeed var(--press-stroke) linear infinite;
+  animation-delay: calc(var(--press-stroke) * var(--press-off, 0));
+}
+.press-queue {
+  left: var(--press-qx);
+  transform: rotate(var(--press-tilt));
+  z-index: 3;
+}
+
+/* What comes out. Under the ram in the stack, so a chip appears from beneath
+   the face rather than in front of it. */
+.press-scrap {
+  position: absolute;
+  top: calc(var(--press-h) * 0.625);
+  left: calc(var(--press-h) * 0.98);
+  width: calc(var(--press-h) * 0.045);
+  height: calc(var(--press-h) * 0.045);
+  margin-left: calc(var(--press-h) * -0.0225);
+  background: var(--value);
+  border-radius: 1px;
+  opacity: 0;
+  z-index: 3;
+  animation: pressScrap var(--press-stroke) linear infinite;
+  animation-delay: calc(var(--press-stroke) * var(--press-off, 0));
+}
+
+/* Two read-outs bolted to the base, so the thing you are watching answers "how
+   full" and "how much" without looking away from it. Both numbers are repeated
+   as text in the meters below, which is why the frame is aria-hidden. */
+.press-gauge {
+  position: absolute;
+  left: calc(var(--press-h) * 0.05);
+  bottom: calc(var(--press-h) * 0.05);
+  width: calc(var(--press-h) * 0.4);
+  z-index: 7;
+}
+.press-gauge-label {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.press-gauge-bar {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--well);
+  overflow: hidden;
+}
+.press-gauge-bar > span { display: block; height: 100%; background: var(--value); }
+
+.press-yard {
+  position: absolute;
+  right: calc(var(--press-h) * 0.05);
+  bottom: calc(var(--press-h) * 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  z-index: 7;
+}
+.press-yard-n {
+  font-family: var(--serif);
+  font-weight: 700;
+  /* Scales with the frame, within reason. Left at a flat 14px the counter is a
+     fifth of the machine on a phone, and the scrap coming off the ramp lands
+     on top of the digits instead of beside them. */
+  font-size: clamp(11px, calc(var(--press-h) * 0.047), 14px);
+  color: var(--value-soft);
+}
+.press-yard-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------ stopped
+
+   Idle still has to read as a machine. Everything with a cadence stops, the
+   ram breathes on a fixed slow cycle that has nothing to do with the stroke,
+   and the lamp goes from a steady green to a slow pulse in the dim colour. The
+   bed clears and the table does not: material waiting, machine stopped, which
+   is exactly what the copy underneath says. */
+
+.press-machine.idle .press-rig,
+.press-machine.idle .press-scrap { animation: none; }
+.press-machine.idle .press-card { animation: none; opacity: 0; }
+.press-machine.idle .press-plunger { animation: pressIdle 3.6s ease-in-out infinite; }
+.press-machine.idle .press-lamp {
+  background: var(--text-dim);
+  animation: pressHum 2.8s ease-in-out infinite;
+}
+.press-machine.idle .press-spm { color: var(--text-dim); }
+
+.press-idle {
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-soft);
+}
+.press-idle p { margin: 0; font-size: 13px; line-height: 1.55; }
+.press-idle b { color: var(--accent); }
+
+/* ------------------------------------------------ what it says */
+
+.press-lines { display: flex; flex-direction: column; gap: 6px; }
+.press-line { margin: 0; font-size: 13px; line-height: 1.55; }
+.press-line b { color: var(--text); font-weight: 600; }
+.press-line.dim { color: var(--text-dim); }
+.press-line.dim b { color: var(--value-soft); }
+
+.press-meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.press-toggle { margin-top: 12px; }
+
+.press-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0 16px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--well);
+  font-size: 12px;
+}
+.press-numbers > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.press-numbers dt { color: var(--text-dim); }
+.press-numbers dd { margin: 0; color: var(--text); font-weight: 600; white-space: nowrap; }
+
+/* ------------------------------------------------ motion */
+
+/*
+ * The stroke: held up to 18%, dropped fast, stopped hard on the work at 34%,
+ * one short recoil off the bed, settled, dwelling on it, then drawn back
+ * slowly. Every other keyframe in this file is written against that 34% mark.
+ *
+ * The impact sits a third of the way through rather than halfway because this
+ * view is reviewed, and largely seen, as a still. Two thirds of the cycle is
+ * now ram down or ram moving with chips in the air; the machine sitting
+ * loaded with its ram at the top -- the state a screenshot used to catch most
+ * often, and the one that says least -- is under a fifth of it.
+ */
+@keyframes pressRam {
+  0% { transform: translate3d(0, 0, 0); }
+  18% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.5, 0, 1, 0.45); }
+  34% { transform: translate3d(0, var(--press-drop), 0); animation-timing-function: cubic-bezier(0.2, 0, 0.2, 1); }
+  40% { transform: translate3d(0, calc(var(--press-drop) - var(--press-h) * 0.018), 0); }
+  46% { transform: translate3d(0, var(--press-drop), 0); }
+  58% { transform: translate3d(0, var(--press-drop), 0); animation-timing-function: cubic-bezier(0.4, 0, 0.3, 1); }
+  84% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+/* Sub-pixel on purpose. A jolt you can measure is a jolt that reads as the
+   layout breaking; this one is only felt. */
+@keyframes pressShake {
+  0%, 33% { transform: translate3d(0, 0, 0); }
+  35% { transform: translate3d(0, 1.5px, 0); }
+  38% { transform: translate3d(-1px, -1px, 0); }
+  41% { transform: translate3d(1px, 0.5px, 0); }
+  44%, 100% { transform: translate3d(0, 0, 0); }
+}
+
+/*
+ * A card's whole life, starting from the one place it spends longest: seated
+ * on the bed, upright, waiting to be hit.
+ *
+ * The crush runs from 18% to 34% on the ram's own easing, which is what keeps
+ * the face of the ram and the top of the card together: both are then linear
+ * in the same eased progress, so the card is never taller than the gap left
+ * under the ram. Squashing on a different curve, or on a stagger of more than
+ * a couple of percent, puts the ram through the portrait or leaves it stopped
+ * in mid air over a card already flat.
+ *
+ * It is milled away at 74% and the ram only finishes lifting at 84%, in that
+ * order: a card that survives the stroke is a card the machine failed to
+ * press. The next one is cut back to the bin in the hundredth of a percent
+ * after that, while it is still at zero opacity, because a card seen
+ * travelling backwards out of the press is the one thing worse than an empty
+ * bed. Then it falls, lands on the table and slides in, arriving as the ram
+ * reaches the top.
+ */
+@keyframes pressFeed {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(1); opacity: 1; }
+  18% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scaleY(1);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 0.45);
+  }
+  34% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(0.22); opacity: 1; }
+  70% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(0.22); opacity: 1; }
+  74% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(0.22); opacity: 0; }
+  74.01% {
+    transform: translate3d(var(--press-from-x), var(--press-from-y), 0) rotate(var(--press-tilt)) scaleY(1);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.4);
+  }
+  78% { opacity: 1; }
+  86% {
+    transform: translate3d(var(--press-from-x), 0, 0) rotate(0deg) scaleY(1);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1);
+  }
+  100% { transform: translate3d(0, 0, 0) rotate(0deg) scaleY(1); opacity: 1; }
+}
+
+/* A chip squeezes out from under the face at 36%, two percent after the ram
+   lands, then crosses the base to the counter and fades as it is counted. It
+   is in the air for three fifths of the cycle, which is the other half of
+   making a still frame of this view look like a machine doing something. */
+@keyframes pressScrap {
+  0%, 36% { transform: translate3d(0, 0, 0) scale(0.5); opacity: 0; }
+  41% {
+    transform: translate3d(calc(var(--press-h) * 0.08), calc(var(--press-h) * -0.02), 0) scale(1);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
+  }
+  88% { transform: translate3d(var(--press-sx), var(--press-sy), 0) scale(0.9); opacity: 1; }
+  100% { transform: translate3d(var(--press-sx), var(--press-sy), 0) scale(0.7); opacity: 0; }
+}
+
+/* Hydraulics with nothing to crush: pressure held, and the ram creeping. */
+@keyframes pressIdle {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, calc(var(--press-h) * 0.014), 0); }
+}
+
+@keyframes pressHum {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/*
+ * Reduced motion: the machine stops, but it stops loaded.
+ *
+ * Freezing mid-stroke would contradict the numbers underneath, and hiding the
+ * work would leave an empty frame. So the ram parks at the top of its stroke,
+ * three real portraits stand on the bed under it, two more wait on the table
+ * and the scrap sits at the counter: the same story the moving version tells,
+ * told once.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .press-rig,
+  .press-plunger,
+  .press-card,
+  .press-scrap,
+  .press-lamp { animation: none; }
+  /* The idle rules above win on specificity, so the breathing ram and the
+     pulsing lamp have to be stopped by name as well. */
+  .press-machine.idle .press-plunger,
+  .press-machine.idle .press-lamp { animation: none; }
+  .press-card { opacity: 1; transform: none; }
+  .press-scrap { opacity: 1; transform: translate3d(var(--press-sx), var(--press-sy), 0); }
+  .press-machine.idle .press-scrap { opacity: 0; }
+}

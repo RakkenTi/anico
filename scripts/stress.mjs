@@ -258,6 +258,16 @@ function climb(dbPath, rung) {
     haste: rung.haste,
     appraisal: 40,
     fortune: 10,
+    // The works, so their views have something to draw.
+    mill: 3,
+    foundry: 8,
+    belt: 4,
+    outfit: 3,
+    caravan: 1,
+    aim: 1,
+    table: 2,
+    hands: 2,
+    depth: 1,
     automaton: 10,
     nightshift: 11,
     alchemy: 20,
@@ -270,14 +280,14 @@ function climb(dbPath, rung) {
   /*
    * Scrip on the slab as well as credits.
    *
-   * The Refinery mills a few hundred spares over a run and a raid costs
-   * thousands, so a rung that started at zero could never press the board's
-   * own button -- which meant the muster, the one part of the second economy a
-   * player actually looks at, was never once rendered by the harness.
+   * The Press mills a few hundred spares over a run and an expedition costs
+   * thousands of scrap, so a rung that started at zero could never send one --
+   * and the caravan, the one part of the works a player actually watches,
+   * would never once be rendered by the harness.
    */
   db.prepare(
     `UPDATE player_state SET badges_json = ?, upgrades_json = ?, credits = ?, auto_spin = 0,
-            scrip = MAX(scrip, 50000)
+            scrap = MAX(scrap, 60000)
       WHERE player_id = ?`,
   ).run(JSON.stringify(badges), JSON.stringify(upgrades), Number.MAX_SAFE_INTEGER, player.id)
   db.close()
@@ -507,18 +517,54 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
     fetch('/api/state')
       .then((r) => r.json())
       .then((d) => ({
-        scrip: d.scrip,
-        spares: d.spares,
-        rate: d.sparesPerPull,
+        scrap: d.works.scrap,
+        spares: d.works.spares,
+        rate: d.works.sparesPerPull,
+        belt: d.works.belt,
+        perCard: d.creditsPerCard,
         raids: d.board.raids.length,
         answerable: d.board.raids.filter((r) => r.held >= r.breadth).length,
         cast: d.board.raids.map((r) => r.breadth).join('/'),
       })),
   )
 
-  await page.locator('.tab', { hasText: /raids/i }).click({ force: true })
-  await page.waitForSelector('.raids-view')
-  await page.screenshot({ path: join(OUT, `${rung.name}-board.png`), fullPage: true })
+  /*
+   * The works, one tab each (ADR 0014).
+   *
+   * Shot rather than only asserted: three of these four views exist to be a
+   * machine you can watch, and a machine that renders as an empty box passes
+   * every assertion anybody would think to write.
+   */
+  for (const [tab, root] of [
+    ['press', '.press-view'],
+    ['factory', '.factory-view'],
+    ['expeditions', '.expeditions-view'],
+    ['contracts', '.contracts-view'],
+  ]) {
+    await page.locator('.tab', { hasText: new RegExp(tab, 'i') }).click({ force: true })
+    await page.waitForSelector(root)
+    /*
+     * A caravan on the road, so the road gets drawn.
+     *
+     * The route map is the whole of this view and an empty one renders as a
+     * paragraph, so the rung sends the cheapest route before it shoots. Sent
+     * through the UI rather than the API for the same reason the muster is
+     * pressed rather than asserted: what is being checked is that the button
+     * works and the map appears, not that the row exists.
+     */
+    if (tab === 'expeditions') {
+      const send = page.locator('.exp-route-row .btn-primary:not([disabled])').first()
+      if (await send.count()) {
+        await send.click()
+        await page.waitForSelector('.exp-run', { timeout: 8000 })
+      }
+    }
+    // Long enough for one cycle of whatever the view animates.
+    await page.waitForTimeout(1200)
+    await page.screenshot({ path: join(OUT, `${rung.name}-${tab}.png`), fullPage: true })
+  }
+  await page.locator('.tab', { hasText: /contracts/i }).click({ force: true })
+  await page.waitForSelector('.contracts-view')
 
   /*
    * The muster.
@@ -529,7 +575,7 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
    * touches sixty-five thousand rows at render time. Pressed here rather than
    * asserted from the API on purpose.
    */
-  const send = page.locator('.raid-row.answerable:not(.pinned) .btn-primary:not([disabled])').first()
+  const send = page.locator('.contract-row.ready:not(.pinned) .btn-primary:not([disabled])').first()
   let muster = null
   if (await send.count()) {
     const began = Date.now()
@@ -670,8 +716,10 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('guarantee kept', promise.kept === promise.wrappers),
       `board ${second.raids} raids, ${second.answerable} answerable`.padStart(33) +
         ok('board posted', second.raids === BOARD_SIZE),
-      `refinery ${second.rate.toFixed(1)} spares a press`.padStart(33) +
-        ok('refinery milling', second.rate > 0),
+      `press ${second.rate.toFixed(1)} spares a press`.padStart(30) +
+        ok('press milling', second.rate > 0),
+      `factory ${second.scrap} scrap, belt ${second.belt}`.padStart(33) +
+        ok('factory fed', second.perCard > 0),
       `muster ${muster ? `${muster.faces} faces in ${muster.ms}ms` : 'nothing answerable'}`.padStart(33) +
         ok('muster plays', !muster || (muster.faces > 0 && muster.ms < MUSTER_MS)),
       `holding ${held.after.toLocaleString()} characters`.padStart(31),

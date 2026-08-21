@@ -7,8 +7,8 @@
 import type { OwnedCharacter, RolledCharacter } from './game/types'
 import type { Badges } from './game/badges'
 import type { Upgrades } from './game/upgrades'
-import type { Renown, RenownEffects, RenownKey } from './game/renown'
-import type { Commission, Musterer, Raid } from './game/raids'
+import type { Works } from './game/industry'
+import type { Contract, Musterer, Pinned } from './game/contracts'
 
 export type AutoSell = 'off' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
@@ -38,18 +38,14 @@ export interface Snapshot {
   poolSize: number
   /** Moves whenever the collection changes, including on another device. */
   collectionRev: number
-  /** The second economy: see ADR 0013. Milled copies short of a whole Scrip. */
-  spares: number
-  /** What a press has recently been worth in spares, smoothed. */
-  sparesPerPull: number
-  scrip: number
-  renown: number
-  renownLevels: Renown
-  /** The ceilings the Renown tree has raised. */
-  ceilings: RenownEffects
-  /** The series Called Shot is pointed at, or null. */
+  /** The works: see ADR 0014. Spare fractions short of a whole scrap. */
+  /** Everything the works are doing right now (ADR 0014). */
+  works: Works
+  /** What one card is worth to this player: every payout is quoted against it. */
+  creditsPerCard: number
+  /** The series Called Shot is pointed at. */
   aimSeries: string | null
-  board: { raids: Raid[]; commissions: Commission[] }
+  board: { raids: Contract[]; commissions: Pinned[] }
   /** Cards a pack deals, or 0 while the shop has not unlocked them yet. */
   packSize: number
   /** Packs torn at a single press. */
@@ -117,10 +113,12 @@ export interface RollSummary {
   /** Cards the pull held beyond what it dealt: appraised rather than shown. */
   hidden: number
   hiddenFor: number
-  /** Copies past what a stack can still merge, milled on arrival (ADR 0013). */
+  /** Spare fractions this pull shed, milled on arrival (ADR 0014). */
   spares: number
-  /** What the Refinery got out of them. */
-  scrip: number
+  /** Scrap the Press got out of them. */
+  scrap: number
+  /** Credits the Factory and the caravans paid on the back of this press. */
+  melted: number
 }
 
 export interface SessionInfo {
@@ -217,7 +215,9 @@ export const api = {
   claimCommission: (id: number) =>
     post<{ state: Snapshot } & RaidPayout>(`/commission/${id}/claim`),
   abandon: (id: number) => request<{ state: Snapshot }>(`/commission/${id}`, { method: 'DELETE' }),
-  buyRenown: (key: RenownKey) => post<{ state: Snapshot }>('/renown', { key }),
+  sendExpedition: (route: string) => post<{ state: Snapshot }>('/expedition', { route }),
+  collectExpedition: (id: number) =>
+    post<{ state: Snapshot; paid: number; route: string }>(`/expedition/${id}/collect`),
   setAim: (series: string | null) => post<{ state: Snapshot }>('/aim', { series }),
   buyUpgrade: (key: string) => post<{ state: Snapshot }>('/upgrade', { key }),
   updateSettings: (patch: Partial<ServerSettings>) =>

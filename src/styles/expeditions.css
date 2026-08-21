@@ -1,0 +1,339 @@
+/* ============================================================
+   Expeditions: the route map.
+
+   The page's one job is to make "this moves when you press" a
+   thing you can see. So the road is a road -- rail, waypoints,
+   a cart standing where the presses left it -- and the cart's
+   position is a single custom property, `--pos`, written once
+   per render from walked/distance. Every repeating motion here
+   is a transform or an opacity on a composited layer, timed off
+   `--beat` (the Automaton's own interval) rather than a React
+   tick, so a route map costs nothing to leave on screen.
+
+   Colour comes only from the shared token set: three themes
+   swap these underneath and a hardcoded hex would survive the
+   swap and look wrong in two of them.
+   ============================================================ */
+
+.expeditions-view { display: flex; flex-direction: column; gap: 12px; }
+
+/* The one sentence that has to land: caravans move when you summon. Same
+   treatment as the board's lede so the two pages read as siblings. */
+.exp-lede {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.exp-lede b { color: var(--text); font-weight: 600; }
+
+.exp-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+/* ------------------------------------------------------- runs on the road */
+
+.exp-runs { display: flex; flex-direction: column; gap: 10px; }
+
+.exp-run {
+  --pos: 0;
+  --beat: 2600ms;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--well);
+}
+/* Arrival is the payoff, so the whole card takes the accent rather than
+   hanging a small green chip off a row that looks like every other row. */
+.exp-run.arrived {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.exp-run-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.exp-run-name { font-family: var(--serif); font-size: 15px; }
+.exp-run-chip {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.exp-run-chip.go { border-color: var(--accent); color: var(--accent); }
+.exp-run-bounty {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--value);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- the map */
+
+/* Padding on the sides is what keeps the end waypoint's label inside the card
+   at 390px, where the road is only about three hundred pixels long. */
+.exp-map { padding: 22px 30px 26px; }
+
+.exp-track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+}
+
+/* The rail clips the road texture; the markers sit outside it so they can
+   overhang the road. */
+.exp-rail {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+/* Deliberately still. A road that flows on its own says the caravan travels on
+   its own, which is the one thing this page must not say. */
+.exp-dashes {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--line-strong) 0 6px,
+    transparent 6px 14px
+  );
+  opacity: 0.55;
+}
+
+/* Road already walked. Scaled rather than sized, so the one number that changes
+   every press changes a transform and nothing else. */
+.exp-walked {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scaleX(var(--pos));
+  transform-origin: left center;
+}
+
+/* ---------------------------------------------------------- waypoints */
+
+.exp-mark {
+  --at: 0;
+  position: absolute;
+  top: 50%;
+  left: calc(var(--at) * 100%);
+  width: 0;
+  height: 0;
+}
+.exp-mark-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  margin: -6px 0 0 -6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+}
+/* Collected: stamped shut with the accent, the way a paid stage should read. */
+.exp-mark.passed .exp-mark-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--well);
+}
+/* The one you are walking toward. A ring that breathes, on opacity and scale
+   only, so it costs a compositor frame and no layout. */
+.exp-mark.next .exp-mark-dot {
+  border-color: var(--value);
+  background: var(--surface);
+}
+.exp-mark.next .exp-mark-dot::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 1px solid var(--value);
+  border-radius: 50%;
+  animation: exp-target calc(var(--beat) * 2) ease-out infinite;
+}
+/* The end of the road is a bigger mark than the ones on the way to it. */
+.exp-mark.end .exp-mark-dot {
+  width: 15px;
+  height: 15px;
+  margin: -8px 0 0 -8px;
+  border-width: 2px;
+  border-color: var(--value);
+}
+.exp-mark.end.passed .exp-mark-dot { background: var(--value); border-color: var(--value); }
+
+.exp-mark-pay {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-dim);
+  opacity: 0;
+}
+/* Five identical amounts is noise. Only the stage you are walking toward and
+   the payoff at the end are worth naming. */
+.exp-mark.next .exp-mark-pay { opacity: 1; color: var(--value-soft); }
+.exp-mark.end .exp-mark-pay { opacity: 1; color: var(--value); transform: translateX(-80%); }
+
+/* Arrival, made large: a ring thrown off the end marker. */
+.exp-burst {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 15px;
+  height: 15px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  animation: exp-arrive calc(var(--beat) * 1.4) ease-out infinite;
+}
+
+/* ------------------------------------------------------------- the cart */
+
+/* Positioning trick: the shell spans the whole road, so translating it by
+   `--pos * 100%` walks its left edge from the start of the road to the end.
+   The token hangs off that edge, pulled back half its own width. Transform
+   only -- no left/width is touched when a press moves the caravan. */
+.exp-caravan {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 0;
+  transform: translateX(calc(var(--pos) * 100%));
+}
+.exp-caravan-token {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 26px;
+  height: 22px;
+  margin: -15px 0 0 -13px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  animation: exp-plod var(--beat) ease-in-out infinite;
+  will-change: transform;
+}
+.exp-caravan-token svg { width: 22px; height: 18px; display: block; }
+.exp-run.arrived .exp-caravan-token { color: var(--accent); animation: none; }
+
+/* ------------------------------------------------------------ under it */
+
+.exp-run-foot { display: flex; flex-direction: column; gap: 2px; }
+.exp-run-note { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+.exp-run-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.exp-collect { min-width: 180px; }
+
+/* ------------------------------------------------------------- routes */
+
+.exp-routes { display: flex; flex-direction: column; gap: 6px; }
+
+.exp-route-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--well);
+}
+.exp-route-row.sendable { border-color: var(--line-ok); }
+.exp-route-row.locked { opacity: 0.82; }
+
+.exp-route-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.exp-route-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.exp-route-name { font-family: var(--serif); font-size: 15px; }
+
+.exp-route-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.exp-route-fact { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.exp-route-fact em { font-style: normal; font-weight: 600; color: var(--text); }
+
+/* What is missing, and by how much. Two lines when two things are missing:
+   the button can only name one of them. */
+.exp-route-need { display: flex; flex-direction: column; gap: 2px; }
+.exp-route-need span { font-size: 11px; line-height: 1.45; color: var(--red); }
+
+.exp-route-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.exp-route-pay { font-size: 13px; font-weight: 700; color: var(--value); white-space: nowrap; }
+.exp-route-actions .btn { min-height: 34px; padding: 6px 14px; font-size: 0.8rem; }
+
+/* --------------------------------------------------------- keyframes */
+
+@keyframes exp-plod {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(-2deg); }
+  60% { transform: translateY(0) rotate(1.5deg); }
+}
+@keyframes exp-target {
+  0% { transform: scale(0.7); opacity: 0.9; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes exp-arrive {
+  0% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+/* ------------------------------------------------------------ phones */
+
+@media (max-width: 620px) {
+  .exp-map { padding: 20px 26px 24px; }
+  .exp-route-row { grid-template-columns: minmax(0, 1fr); }
+  .exp-route-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+  .exp-route-actions .btn { flex: 1; }
+  .exp-collect { width: 100%; }
+  .exp-run-bounty { margin-left: 0; }
+}
+
+/* Nothing here carries information in its motion: the cart's position, the
+   stamped waypoints and the accent on an arrived card say all of it. */
+@media (prefers-reduced-motion: reduce) {
+  .exp-caravan-token,
+  .exp-mark.next .exp-mark-dot::after {
+    animation: none;
+  }
+  .exp-burst { animation: none; opacity: 0.4; transform: scale(1.9); }
+}
+
+/* A standing order, not a second decision: the Automaton re-outfits this same
+   road when a caravan comes home. Quiet until it is on, because a button that
+   shouts is a button that reads as the primary action. */
+.exp-repeat { white-space: nowrap; }
+.exp-repeat.on {
+  color: var(--ok);
+  border-color: var(--line-ok);
+}
