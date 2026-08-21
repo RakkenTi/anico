@@ -480,24 +480,9 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
       scrap: Math.floor(row.scrap),
       belt: fx.belt,
       scrapWorth: fx.scrapWorth,
-      /*
-       * What the Factory pays per press, sustained.
-       *
-       * Against the *supply*, not against the yard. The belt starts at two
-       * scrap a press and a young Press makes a fifth of one, so the yard is
-       * empty almost all of the time by design -- and quoted against the yard
-       * this number read a flat zero for the entire early game, which is the
-       * Factory telling a player it is broken while it is in fact keeping up
-       * perfectly. Quoted against what is arriving it says what an hour is
-       * actually worth, and it still falls back to the yard once a backlog is
-       * what the belt is eating.
-       */
-      factoryRate: Math.floor(
-        Math.min(fx.belt, row.auto_spares / fx.sparesPerScrap + row.scrap) *
-          perCard *
-          fx.scrapWorth *
-          heatMult(heat),
-      ),
+      /* Heat, as it stands right now. The client draws the flame from it and
+         prices a scrap with it; the server applies it inside `runFactory`, so
+         a payout and the number quoting it are the same arithmetic. */
       heat,
       reach: reachOf(db, player.id, row.collection_rev),
       caravans: fx.caravans,

@@ -704,6 +704,11 @@ button.stat:disabled { cursor: default; color: var(--text-dim); }
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
+  /* A drag across the spread used to select every name and rarity chip it
+     crossed, which is a page full of blue boxes over the art. The pack grid
+     above it has always had this; the cards it deals never did. */
+  user-select: none;
+  -webkit-user-select: none;
   /* Ten cards in a 5x2 grid kept stopping short of the pane. The clamp still
      keeps a spread inside the viewport; within that, let it have the room. */
   max-width: clamp(360px, calc(215vh - 480px), 1280px);

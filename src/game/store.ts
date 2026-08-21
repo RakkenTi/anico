@@ -400,7 +400,6 @@ export const useGame = create<GameState>()((set, get) => {
       scrap: 0,
       belt: 2,
       scrapWorth: 0,
-      factoryRate: 0,
       heat: 0,
       reach: 0,
       caravans: 1,
