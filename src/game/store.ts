@@ -148,6 +148,7 @@ interface GameState {
   collectionAt: number
   /* The second economy (ADR 0013). */
   spares: number
+  sparesPerPull: number
   scrip: number
   renown: number
   renownLevels: Renown
@@ -302,6 +303,7 @@ export const useGame = create<GameState>()((set, get) => {
       collection: s.collection ?? prev.collection,
       collectionRev: s.collectionRev,
       spares: s.spares,
+      sparesPerPull: s.sparesPerPull,
       scrip: s.scrip,
       renown: s.renown,
       renownLevels: s.renownLevels,
@@ -402,6 +404,7 @@ export const useGame = create<GameState>()((set, get) => {
     collectionRev: 0,
     collectionAt: 0,
     spares: 0,
+    sparesPerPull: 0,
     scrip: 0,
     renown: 0,
     renownLevels: { ...EMPTY_RENOWN },

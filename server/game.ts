@@ -278,27 +278,42 @@ function addCopy(
   playerId: number,
   characterId: number,
   maxStars: number,
-): { stars: number; merged: boolean; spare: boolean } {
+): { stars: number; merged: boolean; spare: number } {
   const row = db
     .prepare('SELECT copies, stars FROM claims WHERE player_id = ? AND character_id = ?')
     .get(playerId, characterId) as { copies: number; stars: number } | undefined
-  if (!row) return { stars: 0, merged: false, spare: false }
+  if (!row) return { stars: 0, merged: false, spare: 0 }
   /*
-   * A **spare** is what a deep stack sheds.
+   * A **spare** is what a deep stack sheds, and how much it sheds is how deep
+   * it is: a copy is worth as much scrap as the stack it lands on is full.
    *
-   * Past twelve merges a stack is four thousand copies of one character, and
-   * what one more copy adds is its face value against a core worth about 1.9
-   * quadrillion times face value -- arithmetically nothing. So from there on
-   * every copy also drops a spare into the Refinery, which is the whole input
-   * to the second economy (ADR 0013).
+   * This used to be all or nothing at twelve merges, and all or nothing was
+   * the wrong shape by a wide margin. Every card in a pull is a *distinct*
+   * character -- `roll` deals against a `used` set -- so one press adds at
+   * most one copy to any one stack, and four thousand copies of one character
+   * means four thousand presses that happened to include them. Against a warm
+   * catalog and a thousand dealt cards that is 4096 x 80,000 / 1,000 =
+   * 327,680 presses, about a hundred and thirty-six hours, before the first
+   * spare ever fell. And because every character in the pool grows at exactly
+   * the same rate, a whole collection crossed the line within a few hundred
+   * presses of itself: a hundred and thirty-six hours of nothing followed by a
+   * thousand spares a press. A cliff, not a curve, and the flat part of it is
+   * where a player sits looking at 0 / 900 wondering what they did wrong.
+   *
+   * Fractional yield fixes the shape without moving either end of it. A stack
+   * at the cap still sheds a whole spare per copy, so the end-game rate --
+   * about one Scrip a press -- is exactly what it was. Below that the rate
+   * doubles every star and every star takes twice as long as the last, so
+   * Scrip earned grows with the square of time spent: accelerating, always
+   * paying something, never paying for nothing.
    *
    * The line is fixed at twelve rather than at the player's own cap. Tying it
-   * to the cap meant buying Deeper Merges switched the Refinery off until
-   * every stack had doubled again -- a hundred hours at end-game rates -- so
-   * the strongest line in the tree disabled the economy that pays for it.
-   * A stack still stops growing at its own cap; it just keeps shedding.
+   * to the cap meant buying Deeper Merges cut the yield until every stack had
+   * doubled again -- a hundred hours at end-game rates -- so the strongest
+   * line in the tree throttled the economy that pays for it. A stack still
+   * stops growing at its own cap; it just keeps shedding.
    */
-  const spare = row.copies >= Math.pow(2, BASE_MAX_STARS)
+  const spare = Math.min(1, row.copies / Math.pow(2, BASE_MAX_STARS))
   if (row.copies >= Math.pow(2, maxStars)) return { stars: row.stars, merged: false, spare }
   const copies = row.copies + 1
   const stars = starsFor(copies, maxStars)
@@ -366,6 +381,14 @@ export interface Snapshot {
   wishes: PoolPick[]
   /** Milled copies still short of a whole Scrip. */
   spares: number
+  /**
+   * What a press has recently been worth in spares, smoothed.
+   *
+   * The Refinery's rate is the only honest answer to "am I getting anywhere",
+   * and the page could only show a tank filling with no idea how fast. Already
+   * kept, because time away is settled at this rate.
+   */
+  sparesPerPull: number
   scrip: number
   renown: number
   renownLevels: Renown
@@ -408,7 +431,8 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     upgrades,
     settings,
     wishes: wishesOf(db, player.id),
-    spares: row.spares,
+    spares: Math.floor(row.spares),
+    sparesPerPull: row.auto_spares,
     scrip: row.scrip,
     renown: row.renown,
     renownLevels: renown,
@@ -493,7 +517,7 @@ export function settleOffline(
    * never costs anything -- what it costs is the board, which only the player
    * or a machine on an open device ever plays (ADR 0013).
    */
-  mill(db, player.id, Math.floor(pulls * row.auto_spares), rx, false)
+  mill(db, player.id, pulls * row.auto_spares, rx, false)
   return { pulls, credits, minutes: Math.round(elapsed / 60_000) }
 }
 
@@ -1041,7 +1065,12 @@ function payClaimBonuses(
  * nothing the credit curve does can inflate it.
  *
  * The remainder is kept rather than rounded away: a spare that fell short of a
- * whole Scrip is still a spare, and losing it would make the rate a lie.
+ * whole Scrip is still a spare, and losing it would make the rate a lie. That
+ * goes for fractions of one too, now that a copy sheds as much scrap as its
+ * stack is deep -- a collection turning up a third of a spare a press has to
+ * be able to reach its first Scrip, and rounding every press to nothing would
+ * leave it there forever. The snapshot quotes whole spares; the tank keeps
+ * what is left over.
  */
 function mill(
   db: DB,
@@ -1134,7 +1163,7 @@ function takeAll(
       // that doubles the stack it merges a star higher.
       const r = addCopy(db, player.id, entry.char.id, rx.maxStars)
       if (r.merged) merged++
-      if (r.spare) spares++
+      spares += r.spare
       entry.stars = r.stars
       continue
     }

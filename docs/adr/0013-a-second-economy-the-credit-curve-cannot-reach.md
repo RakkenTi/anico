@@ -126,6 +126,40 @@ needs a choice between series, or a stack that has to be built first, waits for
 a player. Accepting a commission is always a player's decision, because
 choosing what to chase is the decision.
 
+## A spare is a fraction, not a threshold
+
+Spares started as all or nothing: a copy landing on a stack already merged
+twelve times dropped one, and anything shallower dropped nothing. That reads
+as reasonable and is a cliff, because of an interaction with how a pull is
+dealt. Every card in a pull is a **distinct** character -- `roll` draws
+against a `used` set -- so a press adds at most one copy to any one stack
+however many million cards the pull holds. Four thousand copies of one
+character is four thousand presses that happened to include them: against a
+warm catalog and a thousand dealt cards, 4096 x 80,000 / 1,000 = 327,680
+presses, about a hundred and thirty-six hours of Automaton uptime, before the
+first spare ever fell.
+
+Worse, every character in the pool grows at exactly the same rate, so a whole
+collection crosses 4,096 within a few hundred presses of itself. The curve was
+a hundred and thirty-six hours of nothing followed by a thousand spares a
+press. Time away could not bootstrap it either: `settleOffline` mills at the
+player's *recent* rate, and a recent rate of zero settles to zero.
+
+So a copy now sheds as much scrap as the stack it lands on is deep: `copies /
+2^12`, capped at one. Neither end of the economy moves -- a stack at the cap
+still sheds a whole spare a copy, so the end-game rate is the same one Scrip a
+press it was tuned for -- but below the cap the rate doubles every star, and
+every star takes twice as long as the last, so Scrip earned grows with the
+square of time spent. Accelerating, always paying something, never paying for
+nothing.
+
+The tank keeps its fraction rather than rounding each press away. A collection
+turning up a third of a spare a press has to be able to reach its first Scrip,
+and rounding to zero every time would leave it there permanently. The snapshot
+quotes whole spares and the board quotes the rate beside them, because a meter
+that only fills tells a player nothing about whether they are getting
+anywhere, which is the question this economy kept failing to answer.
+
 ## The board is aimed at the collection, not drawn blind
 
 Shipped, the board picked a series at random and then a rung at random, and

@@ -37,9 +37,11 @@ export const BASE_MAX_STACKS = 24
  * Spares one Scrip is worth.
  *
  * A press deals at most a thousand cards and no upgrade can raise that, so at
- * end game -- where nearly every claim is a spare -- this is about one Scrip a
- * press. The whole second economy is denominated in presses, which is what
- * keeps the credit curve out of it.
+ * end game -- where nearly every dealt card lands on a stack at the cap and
+ * sheds a whole spare -- this is about one Scrip a press. Below the cap a copy
+ * sheds in proportion to how deep its stack is, so the rate ramps rather than
+ * switching on (ADR 0013). The whole second economy is denominated in presses,
+ * which is what keeps the credit curve out of it.
  */
 export const BASE_SPARES_PER_SCRIP = 900
 

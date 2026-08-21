@@ -217,15 +217,20 @@ buy a shape and finish (Auto Summon, Offline Earnings, Wish Odds). Every level c
 fixed multiple of the last, and always more than the effect it buys. Badges give the game
 its shape; upgrades give it its curve, and the curve has no end (ADR 0007).
 
-**Spare** — what a stack that has already merged twelve times sheds. At ★12 a stack is
-four thousand copies of one character, and one more copy adds its face value to a merged
-core worth quadrillions of times that, so arithmetically it is nothing. From there on
-every copy that lands also drops a spare. The line is fixed at twelve rather than at the
-player's own star cap: tying it to the cap meant buying **Deeper Merges** switched the
-**Refinery** off until every stack had doubled again (ADR 0013).
+**Spare** — the scrap a duplicate sheds, in proportion to how deep the stack it lands on
+already is. A copy landing on a stack halfway to ★12 is worth half a spare; one landing
+on a stack at the cap is worth a whole one, because at four thousand copies its face
+value against the merged core is arithmetically nothing. It was all or nothing at ★12
+once, which meant a hundred and thirty-six hours of no spares at all followed by a
+thousand a press — every card in a pull is a *distinct* character, so a stack gains at
+most one copy a press whatever the pull holds, and the whole collection therefore crosses
+the line at the same moment. The line is fixed at twelve rather than at the player's own
+star cap: tying it to the cap meant buying **Deeper Merges** throttled the **Refinery**
+until every stack had doubled again (ADR 0013).
 
 **Refinery** — what turns spares into **Scrip**, flat per spare and never by credit
-value. Paying by value would make feeding spare Mythics the optimal play and a collection
+value. Its rate — spares a press — is quoted on the board, because a tank that only fills
+answers nothing about whether the player is getting anywhere. Paying by value would make feeding spare Mythics the optimal play and a collection
 would be shredded to feed a machine. It runs while nobody is watching, at the same rate
 it runs while somebody is; what being away costs is the **board**, not the tank.
 

@@ -315,8 +315,9 @@ already on the machine (`npx playwright install chromium` provides one, or point
 Past a quadrillion credits the shop has nothing left to sell — every badge costs 63.9M
 between them and every upgrade line that ends costs 10.4B — so there is a second economy
 that the credit curve cannot reach. A press deals a bounded number of real cards however
-large the pull is, so copies arrive at a flat rate no upgrade can multiply: copies shed by
-stacks that have already merged twelve times are milled into **Scrip**, Scrip is spent on
+large the pull is, so copies arrive at a flat rate no upgrade can multiply: every
+duplicate sheds scrap in proportion to how deep the stack it lands on already is, that is
+milled into **Scrip**, Scrip is spent on
 **raids** that ask for a breadth of one series at a depth of stars, raids pay **Renown**,
 and Renown raises the ceilings the credit engine has been sitting against. Nothing in it
 reads a character's credit value, because that would only rename rarity. Each demand is
