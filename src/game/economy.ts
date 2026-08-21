@@ -106,10 +106,16 @@ export const MERGE_MULT = 2.6
  */
 export const MAX_STARS = 12
 
-/** The star a stack of `copies` has merged to: one per doubling. */
-export function starsFor(copies: number): number {
+/**
+ * The star a stack of `copies` has merged to: one per doubling.
+ *
+ * The ceiling is a floor, not a fact: Deeper Merges raises it, so callers that
+ * know whose stack it is pass the player's own. Twelve is what it is worth
+ * before anybody has bought any (ADR 0013).
+ */
+export function starsFor(copies: number, cap: number = MAX_STARS): number {
   if (copies < 2) return 0
-  return Math.min(MAX_STARS, Math.floor(Math.log2(copies)))
+  return Math.min(Math.max(0, Math.floor(cap)), Math.floor(Math.log2(copies)))
 }
 
 /**

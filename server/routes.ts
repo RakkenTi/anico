@@ -271,6 +271,41 @@ export function createApp(db: DB, config: Config) {
     return sync(c, { state: snapshot, total, sold })
   })
 
+  /* ------------------------------------------------------------- the board */
+
+  api.post('/raid/:id', (c) => {
+    const { snapshot, reward, series } = game.attemptRaid(db, c.get('player'), Number(c.req.param('id')))
+    return sync(c, { state: snapshot, reward, series })
+  })
+
+  api.post('/commission/:id', (c) =>
+    sync(c, { state: game.acceptCommission(db, c.get('player'), Number(c.req.param('id'))) }),
+  )
+
+  api.post('/commission/:id/claim', (c) => {
+    const { snapshot, reward, series } = game.claimCommission(
+      db,
+      c.get('player'),
+      Number(c.req.param('id')),
+    )
+    return sync(c, { state: snapshot, reward, series })
+  })
+
+  api.delete('/commission/:id', (c) =>
+    sync(c, { state: game.abandonCommission(db, c.get('player'), Number(c.req.param('id'))) }),
+  )
+
+  api.post('/renown', async (c) => {
+    const b = await body(c)
+    return sync(c, { state: game.buyRenown(db, c.get('player'), String(b.key) as any) })
+  })
+
+  api.post('/aim', async (c) => {
+    const b = await body(c)
+    const series = b.series === null || b.series === undefined ? null : String(b.series)
+    return sync(c, { state: game.setAim(db, c.get('player'), series) })
+  })
+
   api.post('/wish', async (c) => {
     const b = await body(c)
     return sync(c, { state: game.addWish(db, c.get('player'), Number(b.characterId)) })

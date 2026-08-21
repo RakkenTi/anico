@@ -39,7 +39,6 @@ import {
 } from '../src/game/badges.js'
 import {
   EMPTY_UPGRADES,
-  MAX_STACKS,
   dealtFor,
   UPGRADE_DEFS,
   upgradeCost,
@@ -47,7 +46,39 @@ import {
   type UpgradeKey,
   type Upgrades,
 } from '../src/game/upgrades.js'
-import { drawAboveValue, drawFromPool, getCharacter, type PoolPick } from './catalog.js'
+import {
+  drawAboveValue,
+  drawFromPool,
+  drawFromSeries,
+  getCharacter,
+  type PoolPick,
+} from './catalog.js'
+import {
+  BASE_MAX_STARS,
+  EMPTY_RENOWN,
+  RENOWN_DEFS,
+  renownCost,
+  renownEffects,
+  renownMaxed,
+  sanitizeRenown,
+  type Renown,
+  type RenownEffects,
+  type RenownKey,
+} from '../src/game/renown.js'
+import {
+  COMMISSION_BONUS,
+  COMMISSION_SLOTS,
+  MAX_CAST,
+  MIN_CAST,
+  RAID_BOARD,
+  RAID_TIERS,
+  demandFor,
+  raidCost,
+  raidReward,
+  raidWork,
+  type Commission,
+  type Raid,
+} from '../src/game/raids.js'
 import { autoSellFloor, instancePool, sanitizeSettings, type ServerSettings } from './rules.js'
 import { streamsFor } from './bus.js'
 import type { Player } from './auth.js'
@@ -135,6 +166,15 @@ interface StateRow {
   pending_sell_json: string | null
   /** Bumped whenever this player's claims change, so other devices can tell. */
   collection_rev: number
+  /** Milled copies waiting to become Scrip: see ADR 0013. */
+  spares: number
+  scrip: number
+  renown: number
+  renown_json: string
+  /** The series Called Shot is pointed at. */
+  aim_series: string | null
+  /** Smoothed spares one pull is worth, so time away fills the tank too. */
+  auto_spares: number
 }
 
 interface RollSessionEntry {
@@ -169,10 +209,18 @@ function loadState(db: DB, playerId: number): StateRow {
 }
 
 /** Badges and upgrades are two columns and one set of effects. */
-function loadoutOf(row: StateRow): { badges: Badges; upgrades: Upgrades; fx: ReturnType<typeof computeEffects> } {
+function loadoutOf(row: StateRow): {
+  badges: Badges
+  upgrades: Upgrades
+  fx: ReturnType<typeof computeEffects>
+  renown: Renown
+  /** What the second tree has raised: see ADR 0013. */
+  rx: RenownEffects
+} {
   const badges: Badges = { ...EMPTY_BADGES, ...JSON.parse(row.badges_json) }
   const upgrades: Upgrades = { ...EMPTY_UPGRADES, ...JSON.parse(row.upgrades_json || '{}') }
-  return { badges, upgrades, fx: computeEffects(badges, upgrades) }
+  const renown = sanitizeRenown(JSON.parse(row.renown_json || '{}'))
+  return { badges, upgrades, fx: computeEffects(badges, upgrades), renown, rx: renownEffects(renown) }
 }
 
 export interface OwnedCharacter extends PoolPick {
@@ -222,17 +270,39 @@ function collectionOf(db: DB, playerId: number, sellMult: number, mergeMult: num
  * star is derived from the count rather than stored as a separate currency, so
  * a stack can never disagree with itself about how many copies it took.
  */
-function addCopy(db: DB, playerId: number, characterId: number): { stars: number; merged: boolean } {
+function addCopy(
+  db: DB,
+  playerId: number,
+  characterId: number,
+  maxStars: number,
+): { stars: number; merged: boolean; spare: boolean } {
   const row = db
     .prepare('SELECT copies, stars FROM claims WHERE player_id = ? AND character_id = ?')
     .get(playerId, characterId) as { copies: number; stars: number } | undefined
-  if (!row) return { stars: 0, merged: false }
+  if (!row) return { stars: 0, merged: false, spare: false }
+  /*
+   * A **spare** is what a deep stack sheds.
+   *
+   * Past twelve merges a stack is four thousand copies of one character, and
+   * what one more copy adds is its face value against a core worth about 1.9
+   * quadrillion times face value -- arithmetically nothing. So from there on
+   * every copy also drops a spare into the Refinery, which is the whole input
+   * to the second economy (ADR 0013).
+   *
+   * The line is fixed at twelve rather than at the player's own cap. Tying it
+   * to the cap meant buying Deeper Merges switched the Refinery off until
+   * every stack had doubled again -- a hundred hours at end-game rates -- so
+   * the strongest line in the tree disabled the economy that pays for it.
+   * A stack still stops growing at its own cap; it just keeps shedding.
+   */
+  const spare = row.copies >= Math.pow(2, BASE_MAX_STARS)
+  if (row.copies >= Math.pow(2, maxStars)) return { stars: row.stars, merged: false, spare }
   const copies = row.copies + 1
-  const stars = starsFor(copies)
+  const stars = starsFor(copies, maxStars)
   db.prepare(
     'UPDATE claims SET copies = ?, stars = ? WHERE player_id = ? AND character_id = ?',
   ).run(copies, stars, playerId, characterId)
-  return { stars, merged: stars > row.stars }
+  return { stars, merged: stars > row.stars, spare }
 }
 
 function wishesOf(db: DB, playerId: number): PoolPick[] {
@@ -291,6 +361,16 @@ export interface Snapshot {
   upgrades: Upgrades
   settings: ServerSettings
   wishes: PoolPick[]
+  /** Milled copies still short of a whole Scrip. */
+  spares: number
+  scrip: number
+  renown: number
+  renownLevels: Renown
+  /** The ceilings the second tree has raised: see ADR 0013. */
+  ceilings: RenownEffects
+  /** The series Called Shot is pointed at. */
+  aimSeries: string | null
+  board: { raids: Raid[]; commissions: Commission[] }
   collection?: OwnedCharacter[]
   /** What the machine did while nobody was watching. Absent when it did nothing. */
   offline?: { pulls: number; credits: number; minutes: number }
@@ -300,7 +380,7 @@ export interface Snapshot {
 export function snapshot(db: DB, player: Player, withCollection = false): Snapshot {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
-  const { badges, upgrades, fx } = loadoutOf(row)
+  const { badges, upgrades, fx, renown, rx } = loadoutOf(row)
   const size = packSizeFor(fx, !!player.sandbox_of)
   return {
     username: player.username,
@@ -325,6 +405,16 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     upgrades,
     settings,
     wishes: wishesOf(db, player.id),
+    spares: row.spares,
+    scrip: row.scrip,
+    renown: row.renown,
+    renownLevels: renown,
+    ceilings: rx,
+    aimSeries: row.aim_series,
+    // Read rather than filled: `snapshot` is reached several times a second by
+    // the Automaton, and topping the board up is a random pick over a
+    // collection. The board only changes when somebody acts on it.
+    board: boardOf(db, player.id),
     collection: withCollection ? collectionOf(db, player.id, fx.sellMult, fx.mergeMult) : undefined,
     serverNow: Date.now(),
   }
@@ -334,6 +424,8 @@ export function fullState(db: DB, player: Player): Snapshot {
   // The one call every client makes on boot, which is exactly when the
   // Automaton's night's work should be counted and handed over.
   const away = settleOffline(db, player)
+  // And the one place the board is topped up without the player asking.
+  fillBoard(db, player.id)
   const snap = snapshot(db, player, true)
   return away ? { ...snap, offline: away } : snap
 }
@@ -359,7 +451,7 @@ export function settleOffline(
 ): { pulls: number; credits: number; minutes: number } | null {
   if (player.sandbox_of) return null
   const row = loadState(db, player.id)
-  const { fx } = loadoutOf(row)
+  const { fx, rx } = loadoutOf(row)
   const now = Date.now()
   const stamp = () =>
     db.prepare('UPDATE player_state SET auto_at = ? WHERE player_id = ?').run(now, player.id)
@@ -391,6 +483,14 @@ export function settleOffline(
     `UPDATE player_state SET credits = credits + ?, total_rolls = total_rolls + ?, auto_at = ?
       WHERE player_id = ?`,
   ).run(credits, pulls, now, player.id)
+  /*
+   * The tank fills while nobody is watching.
+   *
+   * Spares accrue away at the same rate they accrue present, so being away
+   * never costs anything -- what it costs is the board, which only the player
+   * or a machine on an open device ever plays (ADR 0013).
+   */
+  mill(db, player.id, Math.floor(pulls * row.auto_spares), rx, false)
   return { pulls, credits, minutes: Math.round(elapsed / 60_000) }
 }
 
@@ -489,6 +589,10 @@ export function roll(
   merged: number
   /** Anything worth saying out loud about what was granted. */
   notes: string[]
+  /** Copies past what a stack can still merge, milled on arrival. */
+  spares: number
+  /** What the Refinery got out of them. */
+  scrip: number
   /** Cards the pull held beyond what it dealt: opened by the machine, not seen. */
   hidden: number
   /** What those cards were appraised for. */
@@ -497,7 +601,7 @@ export function roll(
 } {
   const row = loadState(db, player.id)
   const settings: ServerSettings = JSON.parse(row.settings_json)
-  const { fx } = loadoutOf(row)
+  const { fx, rx } = loadoutOf(row)
   const sandbox = !!player.sandbox_of
   const wanted = Math.max(0, Math.floor(packsWanted))
   const multi = wanted >= 1
@@ -540,8 +644,8 @@ export function roll(
    * pull of a million cards would be a million rows written, a million images
    * mounted, and the same answer.
    */
-  const budget = dealtFor(total, fx.cardRate)
-  const packCount = pack ? Math.min(packs, MAX_STACKS) : 1
+  const budget = dealtFor(total, fx.cardRate, rx.maxDealt)
+  const packCount = pack ? Math.min(packs, rx.maxStacks) : 1
   const perPack = pack
     ? Math.max(1, Math.min(packSize, Math.floor(budget / packCount)))
     : Math.min(total, budget)
@@ -560,6 +664,18 @@ export function roll(
   // The pool belongs to the instance, not the player: see `instancePool`.
   const poolSize = instancePool(db)
   const pool = drawFromPool(db, dealt, settings.rollGender, poolSize, owner)
+  /*
+   * Called Shot: a share of the pull comes from the series the player named.
+   *
+   * Spliced into the front of the pool rather than replacing it, so a pull is
+   * still mostly the catalog. This is the only way in the game to collect on
+   * purpose, and it exists because a raid asks for a series by name -- without
+   * it the answer to "go and get more Frieren" is "keep pressing and hope".
+   */
+  if (rx.aimShare > 0 && row.aim_series) {
+    const aimed = drawFromSeries(db, row.aim_series, Math.floor(dealt * rx.aimShare))
+    if (aimed.length > 0) pool.unshift(...aimed)
+  }
   if (pool.length === 0) {
     fail('The catalog has no characters matching your filters yet. Give the first crawl a minute.')
   }
@@ -688,7 +804,7 @@ export function roll(
      * one summon that is free and unlimited was the one it ignored.
      */
     const seriesPaid: Record<string, number> = JSON.parse(row.series_paid_json)
-    const r = takeAll(db, player, session, fx, seriesPaid)
+    const r = takeAll(db, player, session, fx, rx, seriesPaid)
     results.forEach((entry, i) => {
       if (!wasOwned[i]) entry.fresh = true
     })
@@ -697,8 +813,9 @@ export function roll(
               series_paid_json = ? WHERE player_id = ?`,
     ).run(r.bonus, r.claimed, JSON.stringify(seriesPaid), player.id)
     const queued = queueAutoSell(db, player, settings, session)
+    const { scrip } = mill(db, player.id, r.spares, rx, pack)
     touchCollection(db, player.id)
-    return { ...r, ...swept, queued }
+    return { ...r, ...swept, queued, scrip }
   })()
 
   return {
@@ -717,6 +834,10 @@ export function roll(
     // Wishes fulfilled, series sets completed, the Emerald dowry. A handful at
     // most: a pack of a hundred should not arrive with a hundred toasts.
     notes: opened.notes.slice(0, 4),
+    /** Copies past what a stack can still merge, milled on arrival (ADR 0013). */
+    spares: opened.spares,
+    /** What the Refinery got out of them. */
+    scrip: opened.scrip,
     hidden: overflow,
     hiddenFor,
     /*
@@ -906,6 +1027,48 @@ function payClaimBonuses(
   return { bonus, notes }
 }
 
+/**
+ * The Refinery.
+ *
+ * Flat per spare, and never by credit value. Paying by value would make
+ * feeding spare Mythics the optimal play and a player would shred their best
+ * stacks to feed a machine, which is the "send the Mythics" failure wearing an
+ * apron (ADR 0013). A flat rate denominates the second economy in *presses*,
+ * and a press deals a bounded number of cards however large the pull is, so
+ * nothing the credit curve does can inflate it.
+ *
+ * The remainder is kept rather than rounded away: a spare that fell short of a
+ * whole Scrip is still a spare, and losing it would make the rate a lie.
+ */
+function mill(
+  db: DB,
+  playerId: number,
+  spares: number,
+  rx: RenownEffects,
+  smooth: boolean,
+): { scrip: number } {
+  if (spares <= 0 && !smooth) return { scrip: 0 }
+  const row = db
+    .prepare('SELECT spares FROM player_state WHERE player_id = ?')
+    .get(playerId) as { spares: number }
+  const pot = row.spares + Math.max(0, spares)
+  const scrip = Math.floor(pot / rx.sparesPerScrip)
+  db.prepare(
+    `UPDATE player_state SET spares = ?, scrip = scrip + ?,
+            auto_spares = CASE WHEN ? THEN auto_spares * ? + ? * ? ELSE auto_spares END
+      WHERE player_id = ?`,
+  ).run(
+    pot - scrip * rx.sparesPerScrip,
+    scrip,
+    smooth ? 1 : 0,
+    1 - YIELD_SMOOTHING,
+    Math.max(0, spares),
+    YIELD_SMOOTHING,
+    playerId,
+  )
+  return { scrip }
+}
+
 /** The last series milestone. Past it a series has nothing left to pay. */
 const LAST_SERIES_MILESTONE = SERIES_MILESTONES.reduce((n, m) => Math.max(n, m.count), 0)
 
@@ -932,12 +1095,14 @@ function takeAll(
   player: Player,
   session: RollSession,
   fx: ReturnType<typeof computeEffects>,
+  rx: RenownEffects,
   seriesPaid: Record<string, number>,
-): { claimed: number; bonus: number; merged: number; notes: string[] } {
+): { claimed: number; bonus: number; merged: number; spares: number; notes: string[] } {
   const now = Date.now()
   let claimed = 0
   let bonus = 0
   let merged = 0
+  let spares = 0
   const notes: string[] = []
   /*
    * How many of each series the player already holds.
@@ -964,8 +1129,9 @@ function takeAll(
     if (owns) {
       // A duplicate is a copy, not a consolation. It goes on the stack, and if
       // that doubles the stack it merges a star higher.
-      const r = addCopy(db, player.id, entry.char.id)
+      const r = addCopy(db, player.id, entry.char.id, rx.maxStars)
       if (r.merged) merged++
+      if (r.spare) spares++
       entry.stars = r.stars
       continue
     }
@@ -985,7 +1151,7 @@ function takeAll(
     entry.owned = true
     entry.compensation = 0
   }
-  return { claimed, bonus, merged, notes }
+  return { claimed, bonus, merged, spares, notes }
 }
 
 /**
@@ -1170,6 +1336,286 @@ export function sell(db: DB, player: Player, ids: number[]): { snapshot: Snapsho
   // what is left of sixty-five thousand characters is megabytes, the revision
   // counter moved, and the collection screen is already asking for a fresh copy.
   return { snapshot: snapshot(db, player), total, sold: rows.length }
+}
+
+/* ---------------------------------------------------------------- the board */
+
+/** How many characters of a series the catalog holds. */
+function castOf(db: DB, series: string): number {
+  return (
+    db.prepare('SELECT COUNT(*) AS n FROM characters WHERE series = ?').get(series) as { n: number }
+  ).n
+}
+
+/**
+ * How much of a series the player holds at a given depth.
+ *
+ * Series-first, so it walks the cast of one series and probes the claims key,
+ * rather than walking a collection of sixty-five thousand (ADR 0011).
+ */
+function heldIn(db: DB, playerId: number, series: string, depth: number): number {
+  /*
+   * Written as an EXISTS over the *catalog* rather than a join, so the series
+   * is always the driving table whatever the planner believes. A join here
+   * reads identically and was measured at 12.9ms against 0.1ms, because
+   * without statistics SQLite drove it from a collection of sixty-five
+   * thousand claims instead of from the twenty-five characters of one series.
+   */
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM characters c
+          WHERE c.series = @series
+            AND EXISTS (SELECT 1 FROM claims cl
+                         WHERE cl.player_id = @player AND cl.character_id = c.id
+                           AND cl.stars >= @depth)`,
+      )
+      .get({ player: playerId, series, depth }) as { n: number }
+  ).n
+}
+
+/**
+ * A series worth raiding.
+ *
+ * Mostly somewhere the player already has a foothold, sometimes not: a board
+ * of series you are already deep in is answerable and boring, and a board
+ * drawn from ten thousand series at random is noise. The minority that reach
+ * past what you own are the whole reason the board doubles as a to-do list
+ * (ADR 0013).
+ */
+function pickSeries(db: DB, playerId: number): string | null {
+  const span = db.prepare('SELECT MIN(id) AS lo, MAX(id) AS hi FROM characters').get() as {
+    lo: number | null
+    hi: number | null
+  }
+  if (span.lo === null || span.hi === null) return null
+  for (let tries = 0; tries < 8; tries++) {
+    /*
+     * A random claim by key rather than by `ORDER BY RANDOM()`.
+     *
+     * Shuffling a collection of sixty-five thousand to pick one row costs
+     * seven milliseconds, and the board refills after every raid the Automaton
+     * answers. Seeking to a random point in the claims key and taking the next
+     * row is the same pick at the cost of a b-tree descent.
+     */
+    const known = Math.random() < 0.7
+    const from = span.lo! + Math.floor(Math.random() * Math.max(1, span.hi! - span.lo! + 1))
+    const row = known
+      ? (db
+          .prepare(
+            `SELECT c.series AS series FROM claims cl
+               JOIN characters c ON c.id = cl.character_id
+              WHERE cl.player_id = @player AND cl.character_id >= @from
+              ORDER BY cl.character_id LIMIT 1`,
+          )
+          .get({ player: playerId, from }) as { series: string } | undefined)
+      : (db
+          .prepare('SELECT series FROM characters WHERE id >= ? ORDER BY id LIMIT 1')
+          .get(from) as { series: string } | undefined)
+    if (!row?.series || row.series === 'Unknown series') continue
+    const cast = castOf(db, row.series)
+    if (cast >= MIN_CAST && cast <= MAX_CAST) return row.series
+  }
+  return null
+}
+
+/** Put one new raid on the board. Returns false when the catalog cannot fill it. */
+function postRaid(db: DB, playerId: number): boolean {
+  const series = pickSeries(db, playerId)
+  if (!series) return false
+  const cast = castOf(db, series)
+  // Middle rungs are the common ones: the easy end is not worth a row and the
+  // hard end is not worth five of them.
+  const roll = Math.random()
+  const tier = roll < 0.2 ? 0 : roll < 0.5 ? 1 : roll < 0.8 ? 2 : roll < 0.95 ? 3 : RAID_TIERS - 1
+  const { breadth, depth } = demandFor(cast, tier)
+  const work = raidWork(breadth, depth)
+  db.prepare(
+    `INSERT INTO raids (player_id, series, breadth, depth, cost, reward, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(playerId, series, breadth, depth, raidCost(work), raidReward(work), Date.now())
+  return true
+}
+
+/**
+ * Top the board back up to full.
+ *
+ * Only ever called when a player has acted on it, or on boot -- never from
+ * `snapshot`, which the Automaton reaches several times a second and which has
+ * no business running a random pick over a collection.
+ */
+function fillBoard(db: DB, playerId: number): void {
+  for (let guard = 0; guard < RAID_BOARD * 2; guard++) {
+    const open = (
+      db
+        .prepare('SELECT COUNT(*) AS n FROM raids WHERE player_id = ? AND accepted_at IS NULL')
+        .get(playerId) as { n: number }
+    ).n
+    if (open >= RAID_BOARD) return
+    if (!postRaid(db, playerId)) return
+  }
+}
+
+type RaidRow = {
+  id: number
+  series: string
+  breadth: number
+  depth: number
+  cost: number
+  reward: number
+  accepted_at: number | null
+}
+
+function withHeld(db: DB, playerId: number, r: RaidRow): Raid {
+  return {
+    id: r.id,
+    series: r.series,
+    breadth: r.breadth,
+    depth: r.depth,
+    cost: r.cost,
+    reward: r.reward,
+    held: heldIn(db, playerId, r.series, r.depth),
+  }
+}
+
+export function boardOf(db: DB, playerId: number): { raids: Raid[]; commissions: Commission[] } {
+  const rows = db
+    .prepare('SELECT * FROM raids WHERE player_id = ? ORDER BY id')
+    .all(playerId) as RaidRow[]
+  const raids: Raid[] = []
+  const commissions: Commission[] = []
+  for (const r of rows) {
+    if (r.accepted_at === null) raids.push(withHeld(db, playerId, r))
+    else commissions.push({ ...withHeld(db, playerId, r), acceptedAt: r.accepted_at })
+  }
+  return { raids, commissions }
+}
+
+function raidRow(db: DB, playerId: number, id: number): RaidRow {
+  const row = db
+    .prepare('SELECT * FROM raids WHERE id = ? AND player_id = ?')
+    .get(id, playerId) as RaidRow | undefined
+  if (!row) fail('That raid is no longer on the board.')
+  return row!
+}
+
+/**
+ * Answer a raid.
+ *
+ * Nothing is gambled: the board shows what you hold against what it wants, so
+ * a raid you cannot answer is refused rather than taken and lost. Scrip is a
+ * price, not a stake.
+ */
+export function attemptRaid(
+  db: DB,
+  player: Player,
+  id: number,
+): { snapshot: Snapshot; reward: number; series: string } {
+  const row = raidRow(db, player.id, id)
+  if (row.accepted_at !== null) fail('That one is a commission. Claim it instead.')
+  const held = heldIn(db, player.id, row.series, row.depth)
+  if (held < row.breadth) {
+    fail(`${row.series} needs ${row.breadth} at ★${row.depth}. You have ${held}.`)
+  }
+  const state = loadState(db, player.id)
+  if (state.scrip < row.cost) fail(`That raid costs ${row.cost} Scrip. You have ${state.scrip}.`)
+  db.transaction(() => {
+    db.prepare(
+      'UPDATE player_state SET scrip = scrip - ?, renown = renown + ? WHERE player_id = ?',
+    ).run(row.cost, row.reward, player.id)
+    db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
+    fillBoard(db, player.id)
+  })()
+  return { snapshot: snapshot(db, player), reward: row.reward, series: row.series }
+}
+
+/**
+ * Take a raid on rather than answer it.
+ *
+ * Only ever one you cannot currently answer, which is what makes the two
+ * different: a raid is a test of what you hold and a commission is what you go
+ * and get. It costs no Scrip and pays more Renown, and what it costs instead
+ * is a slot -- scarcity here is slots, not clocks, because ADR 0004 took every
+ * timer out of this game.
+ */
+export function acceptCommission(db: DB, player: Player, id: number): Snapshot {
+  const row = raidRow(db, player.id, id)
+  if (row.accepted_at !== null) fail('That one is already taken.')
+  const taken = (
+    db
+      .prepare('SELECT COUNT(*) AS n FROM raids WHERE player_id = ? AND accepted_at IS NOT NULL')
+      .get(player.id) as { n: number }
+  ).n
+  if (taken >= COMMISSION_SLOTS) fail(`All ${COMMISSION_SLOTS} commission slots are full.`)
+  if (heldIn(db, player.id, row.series, row.depth) >= row.breadth) {
+    fail('You can already answer that one. Raid it.')
+  }
+  db.transaction(() => {
+    db.prepare('UPDATE raids SET accepted_at = ?, reward = ? WHERE id = ?').run(
+      Date.now(),
+      Math.max(1, Math.round(row.reward * COMMISSION_BONUS)),
+      row.id,
+    )
+    fillBoard(db, player.id)
+  })()
+  return snapshot(db, player)
+}
+
+/** Collect a commission the collection has grown into. */
+export function claimCommission(
+  db: DB,
+  player: Player,
+  id: number,
+): { snapshot: Snapshot; reward: number; series: string } {
+  const row = raidRow(db, player.id, id)
+  if (row.accepted_at === null) fail('That one has not been taken on.')
+  const held = heldIn(db, player.id, row.series, row.depth)
+  if (held < row.breadth) {
+    fail(`${row.series} needs ${row.breadth} at ★${row.depth}. You have ${held}.`)
+  }
+  db.transaction(() => {
+    db.prepare('UPDATE player_state SET renown = renown + ? WHERE player_id = ?').run(
+      row.reward,
+      player.id,
+    )
+    db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
+  })()
+  return { snapshot: snapshot(db, player), reward: row.reward, series: row.series }
+}
+
+/** Give a commission back. The slot is the cost, so this is how you pay it back. */
+export function abandonCommission(db: DB, player: Player, id: number): Snapshot {
+  const row = raidRow(db, player.id, id)
+  if (row.accepted_at === null) fail('That one has not been taken on.')
+  db.prepare('DELETE FROM raids WHERE id = ?').run(row.id)
+  return snapshot(db, player)
+}
+
+/** Point Called Shot at a series, or at nothing. */
+export function setAim(db: DB, player: Player, series: string | null): Snapshot {
+  const clean = series && series.trim().length > 0 ? series.trim().slice(0, 200) : null
+  if (clean && castOf(db, clean) === 0) fail('Nobody from that series is in the catalog.')
+  db.prepare('UPDATE player_state SET aim_series = ? WHERE player_id = ?').run(clean, player.id)
+  return snapshot(db, player)
+}
+
+/** Buy the next level of a Renown line. */
+export function buyRenown(db: DB, player: Player, key: RenownKey): Snapshot {
+  const def = RENOWN_DEFS.find((d) => d.key === key)
+  if (!def) fail('No such line.')
+  const row = loadState(db, player.id)
+  const levels = sanitizeRenown(JSON.parse(row.renown_json || '{}'))
+  const level = levels[key]
+  if (renownMaxed(level)) fail('That line is already finished.')
+  const cost = renownCost(def!, level)
+  if (row.renown < cost) fail(`That costs ${cost} Renown. You have ${row.renown}.`)
+  const next: Renown = { ...EMPTY_RENOWN, ...levels, [key]: level + 1 }
+  db.transaction(() => {
+    db.prepare(
+      'UPDATE player_state SET renown = renown - ?, renown_json = ? WHERE player_id = ?',
+    ).run(cost, JSON.stringify(next), player.id)
+  })()
+  return snapshot(db, player)
 }
 
 export function addWish(db: DB, player: Player, characterId: number): Snapshot {

@@ -14,8 +14,9 @@ import type { IconName } from './game/icons'
 import AuthView from './components/AuthView'
 import ToastStack from './components/ToastStack'
 import { useAutomaton } from './components/useAutomaton'
+import RaidsView from './components/RaidsView'
 
-type Tab = 'roll' | 'collection' | 'wishes' | 'shop' | 'stats' | 'settings'
+type Tab = 'roll' | 'collection' | 'raids' | 'wishes' | 'shop' | 'stats' | 'settings'
 
 /* Icons are Kenney's CC0 art (see src/assets/icons/LICENSE.txt). The tabs
    used to carry typographic glyphs -- ✦ ▦ ★ ⚙ -- which every platform draws
@@ -23,6 +24,7 @@ type Tab = 'roll' | 'collection' | 'wishes' | 'shop' | 'stats' | 'settings'
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: 'roll', label: 'Summon', icon: 'cards_fan' },
   { key: 'collection', label: 'Collection', icon: 'cards_collection' },
+  { key: 'raids', label: 'Raids', icon: 'crown_a' },
   { key: 'wishes', label: 'Wishes', icon: 'star' },
   { key: 'shop', label: 'Shop', icon: 'pouch' },
   { key: 'stats', label: 'Stats', icon: 'chart' },
@@ -141,6 +143,7 @@ export default function App() {
       <main className="main">
         {tab === 'roll' && <RollView />}
         {tab === 'collection' && <CollectionView />}
+        {tab === 'raids' && <RaidsView />}
         {tab === 'wishes' && <WishesView />}
         {tab === 'shop' && <ShopView />}
         {tab === 'stats' && <StatsView />}

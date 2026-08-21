@@ -120,8 +120,13 @@ have nothing to buy once the shop was finished, which took about ten minutes.
 **Guarantee** — the rarity floor **Emerald** promises every pack: a Rare or better at I,
 rising to Mythic at IV and to three Mythics at VI. Honoured pack by pack, by swapping the
 weakest cards of that pack for ones good enough, so a guarantee never makes a pack bigger
-and never covers only the first wrapper of a pull. Skipped outright when the catalog holds
-nobody that good yet.
+and never covers only the first wrapper of a pull.
+
+The floor is what the promise aims at, not what it can always reach. Eleven characters on
+all of AniList are Mythic, so Emerald VI's three a wrapper is a promise of seventy-two
+against a supply of eleven once **Extra Packs** is bought: it falls down the rarity ladder
+to the best tier the catalog can still supply, and never below Rare (ADR 0012). Skipped
+outright when the catalog holds nobody good enough at all.
 
 **Bulk mode** — the Collection's selection state. Cards are picked rather than opened,
 "select all" takes everything the filters are showing, and the lot is sold in one go.
@@ -202,13 +207,59 @@ purchase).
 **Badge** — a permanent perk bought with credits, in the Bronze through Emerald tree. Six
 lines of six levels, each level five times the price of the one below it. Badges change
 what the loop *is* — whether packs exist, how many wishes may be pinned, what a pack
-promises — rather than how fast it runs, which is why they end and upgrades do not.
+promises — rather than how fast it runs, which is why they end and upgrades do not. The
+whole tree costs 63.9M credits, which is why there is a second one bought with **Renown**
+(ADR 0013).
 
 **Upgrade** — the other half of the shop: nine lines, six of them with no last level
 (Sell Value, Open Speed, Pack Size, Coin Drops, Extra Packs, Merge Value) and three that
 buy a shape and finish (Auto Summon, Offline Earnings, Wish Odds). Every level costs a
 fixed multiple of the last, and always more than the effect it buys. Badges give the game
 its shape; upgrades give it its curve, and the curve has no end (ADR 0007).
+
+**Spare** — what a stack that has already merged twelve times sheds. At ★12 a stack is
+four thousand copies of one character, and one more copy adds its face value to a merged
+core worth quadrillions of times that, so arithmetically it is nothing. From there on
+every copy that lands also drops a spare. The line is fixed at twelve rather than at the
+player's own star cap: tying it to the cap meant buying **Deeper Merges** switched the
+**Refinery** off until every stack had doubled again (ADR 0013).
+
+**Refinery** — what turns spares into **Scrip**, flat per spare and never by credit
+value. Paying by value would make feeding spare Mythics the optimal play and a collection
+would be shredded to feed a machine. It runs while nobody is watching, at the same rate
+it runs while somebody is; what being away costs is the **board**, not the tank.
+
+**Scrip** — what the Refinery pays and raids cost. Denominated in *presses* rather than
+credits: a press deals a bounded number of real cards however large the pull is, so
+copies arrive at a flat rate that no upgrade can multiply. That is the whole reason the
+second economy exists — anything paid in credits joins a river already flowing at a
+quadrillion a second and is irrelevant on arrival.
+
+**Raid** — a demand for a breadth of one **series** at a depth of stars. Costs Scrip,
+pays **Renown**, and reads nothing else about a character: not credit value, and
+certainly not an invented stat. An earlier attempt gave characters numbers and the
+characters stopped mattering; scoring on credit value only renames rarity, so the answer
+would always be "send the eleven Mythics" (ADR 0013). Nothing is gambled — a raid you
+cannot answer is refused, not lost.
+
+**Board** — the five raids posted at once. Answering one generates its replacement, so
+there is no refresh and no daily reset: ADR 0004 took every clock out of this game.
+
+**Commission** — a raid taken on rather than answered. Only ever one you *cannot*
+currently answer, which is what makes the two different: a raid tests what you hold and a
+commission is what you go and get. It costs no Scrip, pays two and a half times as much,
+and waits as long as you like. What it costs is one of three slots — scarcity here is
+slots, not time.
+
+**Renown** — what raids pay and the second tree costs. Not convertible to credits in
+either direction, and still the strongest progression in the game, because what it buys
+are the ceilings the credit engine runs into: how deep a stack may merge, how many cards
+a pull deals, how many wrappers fit on a screen. A faucet adds income to a river; this is
+a lever on the engine, so it is worth more the more has already been built.
+
+**Called Shot** — the Renown line that points a share of every pull at one series. The
+only way in the game to collect on purpose rather than by waiting, and it exists because
+a raid asks for a series by name.
 
 **Opening discount** — the first five rungs of the endless lines, sold at a fraction of
 list price that fades out by the sixth. The ramp on to the curve: an exponential ladder
@@ -234,12 +285,6 @@ capped so a pack that has outgrown the hands still ends.
 heard, so they are rationed: a few may share any tenth of a second, one sample may not
 restart faster than an ear can separate it from itself, and a limiter across the master
 bus catches whatever still lands together. What was heard before was mostly clipping.
-
-**Guarantee** — what a wrapper is promised, and the best tier that promise can
-actually reach. Eleven characters on all of AniList are Mythic, so Emerald VI's three
-a wrapper is a promise of seventy-two against a supply of eleven once Extra Packs is
-bought. It falls down the rarity ladder rather than being broken, and never below Rare
-(ADR 0012).
 
 **Stress run** — `npm run stress`, which plays the end game on a throwaway instance at
 four rungs and a phone and fails on anything over budget: the press-to-wrappers delay,

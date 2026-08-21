@@ -98,6 +98,8 @@ const SELL_MS = 8000
  */
 const GUARANTEE = 3
 const GUARANTEE_FLOOR = 450
+/** Raids the board holds at once. */
+const BOARD_SIZE = 5
 
 /* --------------------------------------------------------------- helpers */
 
@@ -158,7 +160,18 @@ function favouritesAt(rank) {
 /** A catalog with as many characters in it as a crawl reaches in a good week. */
 function seed(dbPath, n) {
   const db = new Database(dbPath)
-  const series = ['Attack on Titan', 'Frieren', 'Bocchi the Rock!', 'JoJo', 'Monogatari', 'Kaguya-sama']
+  const titles = ['Attack on Titan', 'Frieren', 'Bocchi the Rock!', 'JoJo', 'Monogatari', 'Kaguya-sama']
+  /*
+   * About twenty-two characters a series.
+   *
+   * The seed used to put the whole catalog into six series of thirteen
+   * thousand, which no crawl produces -- a segment takes twenty-five of a
+   * media's cast, so a real series lands somewhere between one and fifty. It
+   * mattered the moment raids arrived: a raid names a series and asks for a
+   * fraction of its cast, so against six enormous ones the board could not
+   * post a single row.
+   */
+  const seriesOf = (i) => `${titles[Math.floor(i / 22) % titles.length]} ${Math.floor(i / 22)}`
   const value = (f) => Math.min(1500, Math.round(15 + 7 * Math.pow(Math.max(f, 0), 0.45)))
   const art = (i) =>
     'data:image/svg+xml;utf8,' +
@@ -181,7 +194,7 @@ function seed(dbPath, n) {
         art(i),
         ['Female', 'Male', 'Other'][i % 3],
         favourites,
-        series[i % series.length],
+        seriesOf(i),
         value(favourites),
         JSON.stringify([`Alias ${i}`]),
         JSON.stringify([]),
@@ -204,11 +217,23 @@ function stock(dbPath, n) {
   const player = db.prepare('SELECT id FROM players WHERE username = ?').get(USER)
   const have = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
   const stmt = db.prepare(
-    'INSERT OR IGNORE INTO claims (player_id, character_id, claimed_at, credit_value) VALUES (?,?,?,?)',
+    `INSERT OR IGNORE INTO claims (player_id, character_id, claimed_at, credit_value, copies, stars)
+     VALUES (?,?,?,?,?,?)`,
   )
   const now = Date.now()
+  /*
+   * Two thirds of it merged to the cap.
+   *
+   * The Refinery only runs on stacks that have already merged twelve times
+   * (ADR 0013), so a collection of singles is a collection with the whole
+   * second economy switched off -- which is not what a rung this deep looks
+   * like, and would mean the harness never tested any of it.
+   */
   db.transaction(() => {
-    for (let i = 0; i < n; i++) stmt.run(player.id, 1000 + i, now - i * 1000, 40 + (i % 900))
+    for (let i = 0; i < n; i++) {
+      const deep = i % 3 !== 2
+      stmt.run(player.id, 1000 + i, now - i * 1000, 40 + (i % 900), deep ? 4096 : 3, deep ? 12 : 1)
+    }
   })()
   const after = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
   db.close()
@@ -455,6 +480,31 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
     { packs: rung.multipack + 1, want: GUARANTEE, floor: GUARANTEE_FLOOR },
   )
 
+  /*
+   * The second economy (ADR 0013).
+   *
+   * Spares are milled as cards land, so a rung this deep should have Scrip
+   * moving and a board posted within a few presses. Read from the API rather
+   * than the screen for the same reason the guarantee is: what is being
+   * checked is the rule, not whether a row is scrolled into view.
+   */
+  const second = await page.evaluate(() =>
+    fetch('/api/state')
+      .then((r) => r.json())
+      .then((d) => ({
+        scrip: d.scrip,
+        spares: d.spares,
+        raids: d.board.raids.length,
+        answerable: d.board.raids.filter((r) => r.held >= r.breadth).length,
+        cast: d.board.raids.map((r) => r.breadth).join('/'),
+      })),
+  )
+
+  await page.locator('.tab', { hasText: /raids/i }).click({ force: true })
+  await page.waitForSelector('.raids-view')
+  await page.screenshot({ path: join(OUT, `${rung.name}-board.png`), fullPage: true })
+  await page.locator('.tab', { hasText: /summon/i }).click({ force: true })
+
   const spread = (await page.evaluate(() => {
     const grid = document.querySelector('.roll-spread')
     const pane = document.querySelector('.spread-scroller') ?? grid?.parentElement
@@ -575,6 +625,10 @@ for (const rung of RUNGS.filter((r) => ONLY.length === 0 || ONLY.includes(r.name
         ok('shop responsiveness', bought < SHOP_ANSWER_MS),
       `guarantee kept by ${promise.kept}/${promise.wrappers} wrappers`.padStart(35) +
         ok('guarantee kept', promise.kept === promise.wrappers),
+      `board ${second.raids} raids, ${second.answerable} answerable`.padStart(33) +
+        ok('board posted', second.raids === BOARD_SIZE),
+      `refinery ${second.scrip} scrip + ${second.spares} spares`.padStart(35) +
+        ok('refinery running', second.scrip + second.spares > 0),
       `holding ${held.after.toLocaleString()} characters`.padStart(31),
       ...(sold
         ? [

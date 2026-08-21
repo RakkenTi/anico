@@ -365,6 +365,10 @@ export async function startCrawl(db: DB, force = false): Promise<void> {
       await sleep(CRAWL_DELAY_MS)
     }
     setMeta(db, 'crawl_done', '1')
+    // The catalog just grew by tens of thousands of rows, which is exactly
+    // when the planner's statistics stop being true. Raids count a series
+    // against a collection and get this wrong by two orders of magnitude.
+    db.pragma('optimize')
     lastError = null
     console.log(`[catalog] crawl complete, ${catalogSize(db)} characters`)
   } catch (e) {
@@ -439,6 +443,23 @@ export function drawFromPool(
     )
     .all({ floor, count, player: excludeOwnedBy ?? 0 })
   return rows.map(rowToCharacter)
+}
+
+/**
+ * Draw from one series.
+ *
+ * Backs Called Shot: a player who has named a series gets a share of every
+ * pull from it, which is the only way in the game to collect on purpose rather
+ * than by waiting. Ignores the pool floor -- the point of aiming is to reach
+ * the cast of a series, and a raid asks for the whole cast, not the popular
+ * half of it.
+ */
+export function drawFromSeries(db: DB, series: string, count: number): PoolPick[] {
+  if (count <= 0) return []
+  const rows = db
+    .prepare(`SELECT * FROM characters WHERE series = @series ORDER BY RANDOM() LIMIT @count`)
+    .all({ series, count })
+  return (rows as any[]).map(rowToCharacter)
 }
 
 /**
