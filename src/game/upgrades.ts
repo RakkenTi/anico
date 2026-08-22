@@ -110,6 +110,56 @@ export function dealtFor(total: number, rate: number, cap: number = MAX_DEALT): 
   return Math.max(1, Math.min(total, Math.max(1, cap), Math.max(MIN_DEALT, hands)))
 }
 
+/**
+ * The gap between two cards landing, in milliseconds.
+ *
+ * Lives here rather than in the sound module because the server needs it too:
+ * how long a spread takes to deal is the pace of a summon by hand, and a pace
+ * enforced only in the browser is not a rule (ADR 0003). `mult` is the Open
+ * Speed multiplier, clamped the same way the animation clamps it.
+ */
+export function dealStepFor(count: number, mult: number): number {
+  if (count <= 1) return 0
+  const base =
+    count <= 20
+      ? 70
+      : count <= 100
+        ? Math.max(12, Math.round(1200 / count))
+        : Math.min(12, Math.max(2.8, Math.round((2800 / count) * 10) / 10))
+  return base * Math.min(1, Math.max(0.08, mult))
+}
+
+/**
+ * The longest a pull may take to empty, and the shortest, in seconds.
+ *
+ * Open Speed buys cards a second and that is what it delivers, until the pack
+ * has outgrown the hands entirely (the ceiling) or the hands have outgrown the
+ * pack (the floor, so a pull is still something that happens).
+ */
+export const MAX_OPEN_S = 8
+export const MIN_OPEN_S = 0.6
+
+/**
+ * How long a pull takes to come out of its wrappers, in milliseconds.
+ *
+ * `held` is what the pull really holds and `dealt` is what reaches the screen,
+ * so each dealt card stands in for `held / dealt` of them and the throws are
+ * paced at that share of the real rate. Otherwise a pull of two hundred
+ * thousand empties in the time nine hundred should take, and no amount of Open
+ * Speed changes it.
+ *
+ * The animation runs on this and so does the server, which is the point: how
+ * long a pack takes to open is the pace of summoning by hand, and a pace only
+ * the browser knows is one a reload can throw away.
+ */
+export function openMsFor(held: number, dealt: number, rate: number): number {
+  const shown = Math.max(1, dealt)
+  const carries = Math.max(1, Math.max(1, held) / shown)
+  const realRate = Math.max(1, rate, Math.max(1, held) / MAX_OPEN_S)
+  const dealtRate = Math.min(Math.max(1, realRate / carries), shown / MIN_OPEN_S)
+  return Math.round((shown / dealtRate) * 1000)
+}
+
 /** Packs laid side by side on screen. Past this the extra packs are appraised. */
 export const MAX_STACKS = 24
 

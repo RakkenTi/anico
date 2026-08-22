@@ -8,6 +8,8 @@
  * the 70ms flip animation, with a rising pitch across the sequence.
  */
 
+import { dealStepFor } from './upgrades'
+
 export type RarityKey = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic'
 
 const SAMPLES = [
@@ -232,10 +234,7 @@ export function dealSpeed(): number {
 }
 
 export function dealStepMs(count: number): number {
-  if (count <= 1) return 0
-  const base =
-    count <= 20 ? 70 : count <= 100 ? Math.max(12, Math.round(1200 / count)) : Math.min(12, Math.max(2.8, Math.round((2800 / count) * 10) / 10))
-  return base * hasteMult
+  return dealStepFor(count, hasteMult)
 }
 
 /* The deal eases in and out: the first cards land unhurried, the middle

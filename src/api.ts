@@ -92,6 +92,8 @@ export interface Snapshot {
   autoSpinMs: number
   /** The Automaton is switched on. Server-side, so a closed tab keeps it running. */
   autoSpin: boolean
+  /** Server time before which the next pack may not be bought. */
+  nextPullAt: number
   /** Cards a second the opening animation manages (Swift Hands). */
   cardRate: number
   lastDailyAt: number

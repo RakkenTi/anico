@@ -518,6 +518,24 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     ALTER TABLE invites DROP COLUMN used_at;
     `,
   },
+  {
+    name: '020_pull_pace',
+    sql: `
+    -- How fast a summon can be pressed stops being a browser rule.
+    --
+    -- A pack keeps the button until its last card is out, which is what paces
+    -- a player summoning by hand. That guard only ever existed in the client,
+    -- so reloading the page mid-open threw the wrappers away and freed the
+    -- button at once: the cards and the credits were already granted when the
+    -- pull was bought, so a reload bought the whole pull's income and skipped
+    -- the wait. Pressed at that rate it beat a fully upgraded Auto Summon,
+    -- which is a purchase, by a factor of two.
+    --
+    -- The pace is a rule, so it lives here (ADR 0003): the earliest the next
+    -- pull may be bought, stamped by the server when one is.
+    ALTER TABLE player_state ADD COLUMN next_pull_at INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ]
 
 export function openDb(file: string): DB {

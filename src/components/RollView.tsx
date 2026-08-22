@@ -22,6 +22,14 @@ export default function RollView() {
   const onePackPrice = packCost(s.packSize)
   const onePackAffordable = s.packSize > 0 && (s.sandbox || s.credits >= onePackPrice)
   const busy = s.packBusy()
+  /*
+   * The instance is still opening the last pull.
+   *
+   * Normally invisible: `busy` covers it while the wrappers are on screen. It
+   * shows after a reload, which used to throw that guard away and free the
+   * button, buying the whole pull's income and skipping the wait.
+   */
+  const paced = Math.max(0, s.nextPullAt - s.now)
   const pullSize = s.cardsPerPull
   const entry = s.rolled[s.selected]
   const mega = s.rolled.length > 20
@@ -246,7 +254,7 @@ export default function RollView() {
               <button
                 className="btn btn-primary btn-summon btn-pack"
                 onClick={() => s.roll(1)}
-                disabled={s.rolling || dealing || busy || !onePackAffordable}
+                disabled={s.rolling || dealing || busy || paced > 0 || !onePackAffordable}
                 title={
                   testing
                     ? `Sandbox: summon ${packSize} at once`
@@ -266,7 +274,7 @@ export default function RollView() {
                 <button
                   className="btn btn-quiet btn-summon btn-pack"
                   onClick={() => s.roll(s.packsPerPull)}
-                  disabled={s.rolling || dealing || busy || !affordable}
+                  disabled={s.rolling || dealing || busy || paced > 0 || !affordable}
                   title={`Tear all ${s.packsPerPull} packs at once: ${fmtCount(pullSize)} cards.`}
                 >
                   <span className="pack-x">
@@ -299,7 +307,14 @@ export default function RollView() {
         </div>
 
         <div className="roll-meta">
-          {testing ? (
+          {paced > 0 && !busy ? (
+            /* Only reachable by coming back to a pull already in progress: a
+               reload, or a second device. The wrappers are not on screen to
+               explain themselves, so the rail does it. */
+            <span className="testing-note">
+              Still opening the last pull · {(paced / 1000).toFixed(1)}s
+            </span>
+          ) : testing ? (
             <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
           ) : packSize > 0 ? (
             <span className="testing-note">
