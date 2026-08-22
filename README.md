@@ -1,7 +1,6 @@
-# Anico 🎴
+# Anico
 
-A self-hosted anime card collecting game. No Discord bot, no commands: a web app you run on
-your own box, open in a browser, and play.
+A self-hosted incremental anime character collecting game. 
 
 ![Anico: one free card, a first pack, then ten packs of nineteen hundred](./docs/img/hero.gif)
 
@@ -23,7 +22,7 @@ Whenever you get a duplicate card, it is merged with your existing collection, w
 
 ### Incremental Scaling
 
-Some upgrades have limits, others don't. It is at its core an incremental game, so numbers do get pretty massive. 
+Some upgrades have limits, others don't. It's an incremental game, so numbers do get pretty massive. 
 
 ![The shop](./docs/img/shop.jpg)
 

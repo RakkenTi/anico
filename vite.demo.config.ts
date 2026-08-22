@@ -19,6 +19,7 @@
  */
 
 import { cpSync, existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -26,22 +27,14 @@ import react from '@vitejs/plugin-react'
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url))
 
-/**
- * The sound samples.
- *
- * They live in the instance's own `public/` and are the one asset the client
- * asks for by URL at runtime, so the demo needs a copy beside its own. Copied
- * rather than pointed at, because `publicDir` here belongs to the catalog: a
- * demo build should never be able to ship the instance's service worker.
- */
-function copySfx(): Plugin {
+function copyPublic(asset: string): Plugin {
   return {
-    name: 'anico-demo-sfx',
+    name: `anico-demo-copy-${asset}`,
     apply: 'build',
     closeBundle() {
-      const from = here('./public/sfx')
+      const from = here(join('public', asset))
       if (!existsSync(from)) return
-      cpSync(from, here('./dist/demo/sfx'), { recursive: true })
+      cpSync(from, here(join('dist/demo', asset)), { recursive: true })
     },
   }
 }
@@ -50,7 +43,7 @@ export default defineConfig({
   base: process.env.ANICO_DEMO_BASE ?? '/',
   root: here('./demo'),
   publicDir: here('./demo/public'),
-  plugins: [react(), copySfx()],
+  plugins: [react(), copyPublic('sfx'), copyPublic('anico.svg')],
   define: {
     __APP_VERSION__: JSON.stringify(`${version}-demo`),
     __DEMO__: 'true',
