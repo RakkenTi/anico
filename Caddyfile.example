@@ -1,12 +1,24 @@
 # Caddy in front of Anico. Copy the block into your Caddyfile and reload.
 #
-# TLS, HTTP/2 and compression are Caddy's job; the instance speaks plain HTTP
-# on localhost only, so it is never reachable except through this.
+# TLS and HTTP/2 are Caddy's job; the instance speaks plain HTTP on localhost
+# only, so it is never reachable except through this.
 
 anico.example.com {
-	encode zstd gzip
 	reverse_proxy 127.0.0.1:8080
 }
+
+# Caddy itself in Docker? Put it on the same network as the instance and point
+# it at the container instead of the published port:
+#
+# anico.example.com {
+# 	reverse_proxy anico:8080
+# }
+
+# Nothing compresses by default: the instance serves its bundle as-is, so a
+# cold load is about 400 KB rather than 120 KB. One line of Caddy fixes that,
+# and it is worth adding unless you have a reason not to:
+#
+# 	encode zstd gzip
 
 # Plain-HTTP LAN instance instead? Skip Caddy, publish the port directly, and
 # set COOKIE_SECURE=false in docker-compose.yml, or the session cookie is

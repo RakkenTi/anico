@@ -82,6 +82,12 @@ chmod 750 "$DATA_DIR"
 ok "$DATA_DIR is ready ($(du -sh "$DATA_DIR" 2>/dev/null | cut -f1) in use)"
 
 # --- what to do next ------------------------------------------------------
+# install.sh starts the container itself and prints its own next steps, so it
+# silences this block rather than having the two of them disagree.
+if [ "${ANICO_NEXT:-1}" = "0" ]; then
+  exit 0
+fi
+
 cat <<'NEXT'
 
 Next:
