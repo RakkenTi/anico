@@ -20,15 +20,16 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = resolve(new URL('..', import.meta.url).pathname)
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 
-/* The local binaries, rather than `npx`, which prints npm's warnings over
-   every line this script is trying to keep readable. */
-const bin = (name) => {
-  const local = join(root, 'node_modules', '.bin', name)
-  return existsSync(local) ? local : name
-}
+/* The tools' entry scripts, run under this Node. The node_modules/.bin shims
+   are shell wrappers that Windows cannot execute, and `npx` prints npm's
+   warnings over every line this script is trying to keep readable. */
+const bin = (name) =>
+  join(root, 'node_modules', { tsc: 'typescript/bin/tsc', vite: 'vite/bin/vite.js' }[name])
+const node = process.execPath
 
 const PORT = Number(process.env.ANICO_DEV_PORT ?? 8090)
 const DATA = process.env.ANICO_DEV_DATA ?? join(root, 'devdata')
@@ -101,13 +102,13 @@ if (!EXTERNAL) {
   // and a first compile is the difference between a working command and a
   // restart loop on a fresh clone.
   log('compiling the server…')
-  const built = spawnSync(bin('tsc'), ['-p', 'tsconfig.server.json'], { cwd: root, stdio: 'inherit' })
+  const built = spawnSync(node, [bin('tsc'), '-p', 'tsconfig.server.json'], { cwd: root, stdio: 'inherit' })
   if (built.status !== 0) {
     console.error(say('the server did not compile; fix the errors above and try again'))
     process.exit(built.status ?? 1)
   }
 
-  tag(run(bin('tsc'), ['-p', 'tsconfig.server.json', '--watch', '--preserveWatchOutput']), '[tsc]   ', 35)
+  tag(run(node, [bin('tsc'), '-p', 'tsconfig.server.json', '--watch', '--preserveWatchOutput']), '[tsc]   ', 35)
   tag(
     run('node', ['--watch', 'dist/server/server/index.js'], {
       PORT: String(PORT),
@@ -131,7 +132,7 @@ if (!EXTERNAL) {
 /* -------------------------------------------------------------- the client */
 
 const api = EXTERNAL ?? `http://127.0.0.1:${PORT}`
-tag(run(bin('vite'), [], { ANICO_API: api, FORCE_COLOR: '1' }), '[client]', 34)
+tag(run(node, [bin('vite')], { ANICO_API: api, FORCE_COLOR: '1' }), '[client]', 34)
 
 log(EXTERNAL ? `client only, /api goes to ${api}` : `instance on ${api}, data in ${DATA}`)
 if (!EXTERNAL) log('first run: create the admin account. It needs no invite. Delete devdata/ to start over')
