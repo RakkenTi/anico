@@ -1,7 +1,6 @@
 # Anico
 
-A self-hosted anime card collecting game. No Discord bot, no commands: a web app you run on
-your own box, open in a browser, and play.
+A self-hosted incremental anime character collecting game. 
 
 ![Anico: one free card, a first pack, then ten packs of nineteen hundred](./docs/img/hero.gif)
 
