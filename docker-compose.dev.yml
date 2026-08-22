@@ -1,0 +1,40 @@
+# A staging instance, running the :dev image.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Its own project, its own port, its own directory, and no watchtower: a
+# staging build should move when you decide it moves, not a minute after CI
+# finishes. To take a new one:
+#
+#   docker compose -f docker-compose.dev.yml pull && \
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Point it at a copy of real data by dropping a backup in as the database:
+#
+#   cp anico-data/backups/anico-<stamp>-auto.db anico-dev-data/anico.db
+#
+# Never at the real directory. Migrations only run forwards, so a dev build
+# that adds one leaves that database unopenable by the released image.
+name: anico-dev
+
+services:
+  anico-dev:
+    image: ${ANICO_DEV_IMAGE:-ghcr.io/rakkenti/anico:dev}
+    container_name: anico-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./anico-dev-data:/data
+    environment:
+      DATA_DIR: /data
+      # Plain HTTP on localhost, so a Secure cookie would be dropped and
+      # signing in would look like it silently did nothing.
+      COOKIE_SECURE: "false"
+      # Staging draws on whatever catalog it was given. Switch it on if you
+      # are testing the crawl itself.
+      CRAWL_ON_BOOT: "${ANICO_DEV_CRAWL:-false}"
+    labels:
+      # Deliberately absent: com.centurylinklabs.watchtower.enable. The
+      # released instance updates itself; this one is yours to move.
+      autoheal: "false"

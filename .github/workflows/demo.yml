@@ -9,7 +9,9 @@ name: Demo
 
 on:
   push:
-    branches: [master]
+    # dev builds and plays the demo but never deploys it: the Pages site is
+    # public, and the deploy job below is gated on master.
+    branches: [master, dev]
   pull_request:
   workflow_dispatch:
 
