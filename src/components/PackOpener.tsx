@@ -6,6 +6,7 @@ import { flapPath, foilPath } from '../game/tear'
 import type { RollResult } from '../api'
 import CharacterCard from './CharacterCard'
 import { fmtCount } from '../game/format'
+import { openMsFor } from '../game/upgrades'
 
 /**
  * Pointer travel that finishes a tear. Accumulated rather than measured from
@@ -30,22 +31,6 @@ const THROW_STEP_MS = 26
 const THROW_STAGGER_MS = 4 * THROW_STEP_MS
 const AUTOTEAR_MS = 420
 
-/**
- * The longest a pull may take to empty, in seconds.
- *
- * Open Speed buys cards a second and that is what it delivers: a hundred cards
- * at twelve a second take eight seconds, and the next level makes them take
- * six. Only when the pack has outgrown the hands entirely does this cap bind.
- */
-const MAX_OPEN_S = 8
-/**
- * The shortest, so a pull is still something that happens.
- *
- * Open Speed eventually buys more cards a second than a pull even holds, at
- * which point the honest answer is "instantly" and the honest answer is not
- * worth watching. Barely longer than the tear it follows.
- */
-const MIN_OPEN_S = 0.6
 /**
  * How often a stack may update, at most.
  *
@@ -281,9 +266,8 @@ export default function PackOpener({ pack, cards }: Props) {
    * the dealt cards represent.
    */
   const dealtTotal = Math.max(1, cards.length)
-  const carries = Math.max(1, heldTotal / dealtTotal)
-  const realRate = Math.max(1, cardRate, heldTotal / MAX_OPEN_S)
-  const dealtRate = Math.min(Math.max(1, realRate / carries), dealtTotal / MIN_OPEN_S)
+  // The same maths the instance paces summoning with, so the two cannot drift.
+  const dealtRate = dealtTotal / (openMsFor(heldTotal, dealtTotal, cardRate) / 1000)
   const rawStep = (1000 * stacks) / dealtRate
   const target = Math.max(MIN_STEP_MS, 1000 / TICKS_PER_SECOND)
   const batch = rawStep >= target ? 1 : Math.ceil(target / rawStep)

@@ -42,6 +42,7 @@ import {
   EMPTY_UPGRADES,
   bulkCost,
   dealtFor,
+  openMsFor,
   UPGRADE_DEFS,
   upgradeMaxed,
   type UpgradeKey,
@@ -184,6 +185,8 @@ interface StateRow {
   collection_rev: number
   /** The series Called Shot is pointed at, as a JSON array of names. */
   aim_json: string
+  /** The earliest the next pack may be bought. See `pullPace`. */
+  next_pull_at: number
 }
 
 interface RollSessionEntry {
@@ -378,6 +381,13 @@ export interface Snapshot {
   autoSpinMs: number
   /** The Automaton is switched on. Kept on the server so it survives a closed tab. */
   autoSpin: boolean
+  /**
+   * The earliest the next pack may be bought.
+   *
+   * Server time. A reload no longer buys back the wait, because the wait is
+   * not something the browser is holding.
+   */
+  nextPullAt: number
   /** Cards a second the opening animation manages (Swift Hands). */
   cardRate: number
   lastDailyAt: number
@@ -420,6 +430,7 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     packPrice: player.sandbox_of ? 0 : packCost(fx.cardsPerPull),
     autoSpinMs: player.sandbox_of ? 0 : fx.autoSpinMs,
     autoSpin: !!row.auto_spin,
+    nextPullAt: player.sandbox_of ? 0 : row.next_pull_at,
     cardRate: fx.cardRate,
     lastDailyAt: row.last_daily_at,
     dailyStreak: row.daily_streak,
@@ -576,6 +587,28 @@ function packSizeFor(fx: ReturnType<typeof computeEffects>, sandbox: boolean): n
  * moment it is rolled; a single summon is one card, still yours to claim or
  * leave.
  */
+/**
+ * How long until this player may buy another pull.
+ *
+ * By hand, it is how long the spread takes to come out: the pack is the thing
+ * you bought and watching it is the pace. With Auto Summon running it is that
+ * upgrade's cadence instead, because skipping the ceremony is exactly what it
+ * sells -- and a machine that had to wait out an animation nobody is watching
+ * would be a strange thing to have paid for.
+ *
+ * A little short of both, so an interval firing a millisecond early is not
+ * refused. The client keeps the honest guard; this is the floor under it.
+ */
+const PACE_GRACE_MS = 250
+/** The tear the cards come out of, which the animation plays before them. */
+const TEAR_MS = 900
+
+function pullPace(held: number, dealt: number, fx: ReturnType<typeof computeEffects>): number {
+  const byHand = openMsFor(held, dealt, fx.cardRate) + TEAR_MS
+  const pace = fx.autoSpinMs > 0 ? fx.autoSpinMs : byHand
+  return Math.max(0, pace - PACE_GRACE_MS)
+}
+
 export function roll(
   db: DB,
   player: Player,
@@ -636,6 +669,21 @@ export function roll(
       }
     }
   }
+  /*
+   * The pull before this one is still coming out of its wrappers.
+   *
+   * The client already refuses to summon while a pack is open, but that guard
+   * lives in the browser and a reload throws it away along with the spread --
+   * and the pull's credits were banked the moment it was bought, so reloading
+   * mid-open bought the income and skipped the wait. This is the same rule
+   * where it cannot be reloaded away.
+   *
+   * The free single summon is never paced, and neither is the sandbox.
+   */
+  if (multi && !sandbox && Date.now() < row.next_pull_at) {
+    fail('The last pull is still opening.')
+  }
+
   // Sandbox bulk stays a plain spread: it is for looking at a hundred cards at
   // once, and a sealed wrapper is the opposite of that.
   const pack = multi && !sandbox
@@ -821,6 +869,10 @@ export function roll(
         `UPDATE player_state SET auto_yield = auto_yield * ? + ? * ?, auto_at = ?
           WHERE player_id = ?`,
       ).run(1 - YIELD_SMOOTHING, pullYield, YIELD_SMOOTHING, now, player.id)
+      db.prepare('UPDATE player_state SET next_pull_at = ? WHERE player_id = ?').run(
+        now + pullPace(total, results.length, fx),
+        player.id,
+      )
     }
     // Remember what was already in the collection: takeAll marks everything it
     // hands over as owned, which would otherwise erase the difference between

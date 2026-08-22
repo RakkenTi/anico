@@ -48,6 +48,11 @@ export function useAutomaton(tab: string) {
     const id = setInterval(() => {
       const st = useGame.getState()
       if (st.rolling || Date.now() + st.clockOffset < st.dealUntil) return
+      // The instance paces pulls too, and refuses an early one. The machine's
+      // interval and that pace are the same number, so a tick that arrives a
+      // moment early waits for the next one rather than being turned away --
+      // a refusal switches the machine off.
+      if (Date.now() < st.nextPullAt) return
       if (st.packBusy()) {
         // On the summon view the wrappers are being torn on screen, and the
         // machine waits for them. Anywhere else there is nobody to watch: the

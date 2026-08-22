@@ -165,6 +165,14 @@ interface GameState {
   packPrice: number
   /** Milliseconds between automatic pulls, or 0 while the Automaton is unbought. */
   autoSpinMs: number
+  /**
+   * The earliest the instance will sell another pack, in local time.
+   *
+   * The same rule as `dealUntil`, but stamped by the server, so it survives a
+   * reload. Without it, reloading mid-open threw the guard away and bought the
+   * next pull at once.
+   */
+  nextPullAt: number
   /** Cards a second the hands manage: what Swift Hands buys. */
   cardRate: number
   lastDailyAt: number
@@ -335,6 +343,9 @@ export const useGame = create<GameState>()((set, get) => {
       cardsPerPull: s.cardsPerPull,
       packPrice: s.packPrice,
       autoSpinMs: s.autoSpinMs,
+      // Server time, corrected the same way `now` is: a browser a minute fast
+      // would otherwise think the pace had already elapsed.
+      nextPullAt: s.nextPullAt > 0 ? s.nextPullAt - (s.serverNow - Date.now()) : 0,
       cardRate: s.cardRate,
       /*
        * The switch is this device's, but the machine is the account's.
@@ -444,6 +455,7 @@ export const useGame = create<GameState>()((set, get) => {
     cardsPerPull: 0,
     packPrice: 0,
     autoSpinMs: 0,
+    nextPullAt: 0,
     cardRate: BASE_CARD_RATE,
     lastDailyAt: 0,
     dailyStreak: 0,
@@ -559,6 +571,8 @@ export const useGame = create<GameState>()((set, get) => {
       // mid-open used to wipe a spread nobody had finished looking at, and it
       // made the tearing optional in a way that rather defeated the pack.
       if (s.rolling || s.now < s.dealUntil || s.packBusy()) return
+      // The instance's own copy of that rule, which a reload cannot discard.
+      if (packs > 0 && Date.now() < s.nextPullAt) return
       sfx.rollStart(packs > 0 ? s.packSize : 1)
       set({ rolling: true, error: null })
       const res = await guard(() => api.roll(packs))
