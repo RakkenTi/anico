@@ -53,6 +53,7 @@ import {
   drawFromPool,
   drawFromSeries,
   getCharacter,
+  poolCount,
   type PoolPick,
 } from './catalog.js'
 import {
@@ -760,6 +761,28 @@ export function roll(
     fail('The catalog has no characters matching your filters yet. Give the first crawl a minute.')
   }
 
+  /*
+   * Where each card of the spread comes from.
+   *
+   * A pull is drawn with replacement, so nothing stops the same character
+   * coming out twice. It should not: a pull of a trillion cards against a
+   * catalog of eighty thousand holds twelve million of everybody, and the
+   * spread is a sample of that pull rather than the whole of it. Dealing every
+   * card a different character was the one shape the pull could never actually
+   * have, and it is what made a late collection advance in lockstep -- every
+   * stack up one, every star on the same schedule, nobody ever having a moment.
+   *
+   * `slots` is how many characters could come out, not how many were sampled,
+   * so the repeat rate follows the catalog: a warm one repeats about seventy
+   * cards in three thousand, a half-crawled one several hundred, and a pool
+   * narrower than the deal cannot fill a spread any other way. The pool is
+   * already a random sample, so a slot's first visit takes the next entry off
+   * it and every later visit to that slot is that same character again. One
+   * query a pull, not one a card (ADR 0011).
+   */
+  const slots = Math.max(pool.length, poolCount(db, settings.rollGender, poolSize))
+  const seats = new Map<number, PoolPick>()
+
   const results: RollResult[] = []
   const used = new Set<number>()
   let totalComp = 0
@@ -781,7 +804,13 @@ export function roll(
       // times and empties the whole wishlist in one go.
       wishGranted = true
     } else {
-      char = pool.find((c) => !used.has(c.id)) ?? pool[i % pool.length]
+      const slot = Math.floor(Math.random() * slots)
+      let seated = seats.get(slot)
+      if (!seated) {
+        seated = pool[seats.size % pool.length]
+        seats.set(slot, seated)
+      }
+      char = seated
       wished = wishes.some((w) => w.id === char!.id)
     }
     if (!char) break
@@ -972,7 +1001,7 @@ function guaranteePool(
   dealt: number[],
 ): PoolPick[] {
   const taken: PoolPick[] = []
-  const exclude = [...dealt]
+  const exclude = [...new Set(dealt)]
   for (const floor of GUARANTEE_LADDER) {
     if (taken.length >= want) break
     // Never above what the badge promised: Emerald I does not quietly deal

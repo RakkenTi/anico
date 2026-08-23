@@ -442,6 +442,26 @@ export function drawFromPool(
 }
 
 /**
+ * How many characters a pull could draw from at all, floor and gender applied.
+ *
+ * `drawFromPool` returns a sample, so its length says nothing about the size of
+ * the pool behind it. A pull is drawn with replacement and how often the same
+ * character comes out twice depends on how many there are to come out, so the
+ * deal needs the real number. One indexed count a pull, never one a card
+ * (ADR 0011).
+ */
+export function poolCount(db: DB, pref: RollGender, poolSize: number): number {
+  const floor = poolFloor(db, poolSize, pref)
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM characters
+        WHERE favourites >= @floor ${genderClause(pref)}`,
+    )
+    .get({ floor }) as { n: number }
+  return row.n
+}
+
+/**
  * Draw from one series.
  *
  * Backs Called Shot: a player who has named a series gets a share of every

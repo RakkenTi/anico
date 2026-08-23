@@ -625,8 +625,10 @@ export const useGame = create<GameState>()((set, get) => {
         )
       }
       if (res.hidden > 0) {
+        // Both halves of the pull, because the dealt figure is the one the shop
+        // sells and it has never appeared anywhere the player can see it.
         get().pushToast(
-          `${fmtCount(res.hidden)} of those cards were appraised as they came out, +${fmt(res.hiddenFor)} credits`,
+          `${fmtCount(res.results.length)} cards landed; the other ${fmtCount(res.hidden)} were appraised as they came out, +${fmt(res.hiddenFor)} credits`,
           'credits',
         )
       }

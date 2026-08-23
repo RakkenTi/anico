@@ -1,8 +1,9 @@
 /**
  * How wide a net a roll casts.
  *
- * Shared by the server (which enforces it) and the settings screen (which
- * offers it), so the two can never drift apart about what a pool size means.
+ * Shared by the server (which enforces it) and the admin panel (which sets it
+ * for the whole instance), so the two can never drift apart about what a pool
+ * size means.
  * The number is a rank: "the top N characters by AniList favourites", turned
  * into a favourites floor at roll time.
  */
