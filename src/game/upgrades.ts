@@ -228,7 +228,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     blurb: 'Cards come out faster, and six seconds of them is how much of a pull you open.',
     baseCost: 8_000,
     growth: 1.9,
-    effect: (l) => `${fmtCount(cardRate(l))} cards/sec, ${fmtCount(dealtFor(MAX_DEALT, cardRate(l)))} dealt`,
+    effect: (l) => `${fmtCount(cardRate(l))} cards/sec, ${fmtCount(dealtFor(MAX_DEALT, cardRate(l)))} land`,
   },
   {
     key: 'packs',
@@ -258,7 +258,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     blurb: 'Open several packs at once, side by side.',
     baseCost: 60_000,
     growth: 2.2,
-    effect: (l) => `${packsPerPull(l)} pack${packsPerPull(l) === 1 ? '' : 's'} per press`,
+    effect: (l) => `${packsPerPull(l)} pack${packsPerPull(l) === 1 ? '' : 's'} per pull`,
   },
   {
     key: 'alchemy',
@@ -277,7 +277,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     baseCost: 200_000,
     growth: 2.8,
     maxLevel: 10,
-    effect: (l) => (l > 0 ? `1 press every ${(autoSpinMs(l) / 1000).toFixed(2)}s` : 'not bought'),
+    effect: (l) => (l > 0 ? `1 pull every ${(autoSpinMs(l) / 1000).toFixed(2)}s` : 'not bought'),
   },
   {
     key: 'nightshift',
@@ -356,11 +356,11 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     key: 'hands',
     name: 'Wider Deal',
     icon: 'cards_fan',
-    blurb: 'A press deals more real cards, so more of it becomes copies instead of credits.',
+    blurb: 'A pull deals more real cards, so more of it becomes copies instead of credits.',
     baseCost: 1_000_000_000,
     growth: 12,
     maxLevel: 6,
-    effect: (l) => `${fmtCount(maxDealtFor(l))} cards dealt`,
+    effect: (l) => `${fmtCount(maxDealtFor(l))} cards land, the rest appraised`,
   },
   {
     key: 'depth',
@@ -382,7 +382,7 @@ export function maxStarsFor(level: number): number {
 }
 
 /**
- * Cards a press deals.
+ * Cards a pull deals.
  *
  * Every dealt card is a claim written, so this is the one line here the server
  * pays for: four hundred more cards a level, not a doubling. It also very

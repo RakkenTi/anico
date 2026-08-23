@@ -54,8 +54,9 @@ export default function ShopView() {
     return !upgradeMaxed(def, level) && s.credits >= upgradeCost(def, level, priceMult)
   })
 
-  /* What a press of a row would actually do, priced level by level against the
-     balance: every level costs more than the last, so this is a sum. */
+  /* What a press of the buy button would actually do, priced level by level
+     against the balance: every level costs more than the last, so this is a
+     sum. */
   const quote = (def: (typeof UPGRADE_DEFS)[number], level: number) =>
     bulkCost(def, level, s.credits, buyAmount, priceMult)
 
@@ -69,7 +70,7 @@ export default function ShopView() {
             {fx.packSize > 0 ? (
               <>
                 <b>{fmtCount(fx.packSize)}</b> cards, <b className="credits-text">{fmt(packCost(fx.packSize))}</b>
-                {fx.packsPerPull > 1 && <> ({fx.packsPerPull} at a press)</>}
+                {fx.packsPerPull > 1 && <> ({fx.packsPerPull} a pull)</>}
               </>
             ) : (
               <>Locked. <b>Sapphire I</b> opens packs</>
