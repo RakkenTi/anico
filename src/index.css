@@ -2961,3 +2961,13 @@ a.stat-user em { text-decoration: none; }
   .muster-close { animation: none; }
 }
 
+/* ---------------------------------------------------------- sandbox stages */
+/* A stage is a paragraph as much as a button: the name alone does not say
+   whether it holds two thousand characters or sixty-five. */
+.stage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.stage-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 10px 12px; height: auto; white-space: normal; }
+.stage-btn > b { font-size: 0.95rem; }
+.stage-btn > span { font-size: 0.8rem; opacity: 0.72; line-height: 1.35; font-weight: 400; }
+.stage-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.stage-inline input { width: 8.5ch; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.stage-x { font-size: 0.85rem; opacity: 0.7; }

@@ -38,6 +38,8 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir, tmpdir } from 'node:os'
+// Built output, not source: this script already requires `npm run build`.
+import { seedStage, stockClaims } from '../dist/server/server/sandbox.js'
 
 const PORT = Number(process.env.ANICO_STRESS_PORT ?? 8099)
 const USER = 'stress'
@@ -234,90 +236,35 @@ function seed(dbPath, n) {
 }
 
 /**
- * Fill the collection up to `n` characters.
+ * Fill the collection, and put the player on a rung.
  *
- * Topped up rather than reset, so a rung that sells everything is followed by
- * one that has to build it back. Claims are spread across the catalog rather
- * than clustered, because both the pool draw and the series count read them.
+ * Both are `server/sandbox.ts`, which is also what the sandbox menu seeds
+ * with: two ladders would drift, and this one is the tested one.
  */
 function stock(dbPath, n, copies = 4096) {
   const db = new Database(dbPath)
   const player = db.prepare('SELECT id FROM players WHERE username = ?').get(USER)
-  const have = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
-  const stmt = db.prepare(
-    `INSERT OR IGNORE INTO claims (player_id, character_id, claimed_at, credit_value, copies, stars)
-     VALUES (?,?,?,?,?,?)`,
-  )
-  const now = Date.now()
-  /*
-   * Two thirds of it merged deep, and how deep is the rung's business.
-   *
-   * The contract board asks for a breadth of a series at a depth of stars, so
-   * a collection of singles answers nothing and the harness would never once
-   * render a payable row. The `mid` rung deliberately sits *below* the star
-   * cap, which is where a real collection spends most of its life.
-   */
-  const stars = Math.floor(Math.log2(copies))
-  db.transaction(() => {
-    for (let i = 0; i < n; i++) {
-      const deep = i % 3 !== 2
-      stmt.run(player.id, 1000 + i, now - i * 1000, 40 + (i % 900), deep ? copies : 3, deep ? stars : 1)
-    }
-  })()
-  const after = db.prepare('SELECT COUNT(*) AS n FROM claims WHERE player_id = ?').get(player.id).n
-  /* Claims written behind the game's back still have to count: the contract
-     board opens on `total_claims`, and a rung holding sixty-five thousand
-     characters that the counter has never heard of is a state no real player
-     can be in. */
-  db.prepare('UPDATE player_state SET total_claims = MAX(total_claims, ?) WHERE player_id = ?')
-    .run(after, player.id)
+  const counts = stockClaims(db, player.id, n, copies)
   db.close()
-  return { before: have, after }
+  return counts
 }
 
-/** Put the player on a rung: every badge, and the upgrades this rung names. */
 function climb(dbPath, rung) {
   const db = new Database(dbPath)
   const player = db.prepare('SELECT id FROM players WHERE username = ?').get(USER)
   if (!player) throw new Error(`no player ${USER}`)
-  const badges = { bronze: 6, silver: 6, gold: 6, sapphire: 6, ruby: 6, emerald: 6 }
-  const upgrades = {
+  // `hands`, `depth` and the credit pile are pinned rather than taken from a
+  // stage: the budgets in RUNGS were measured against these, and a rung that
+  // moves its ceilings is not comparable with the run before it.
+  seedStage(db, player.id, {
     packs: rung.packs,
     multipack: rung.multipack,
     haste: rung.haste,
-    appraisal: 40,
-    fortune: 10,
-    // The board, so its view has something to draw.
-    aim: 3,
-    focus: 2,
-    autoaim: 1,
     table: rung.table ?? 2,
     hands: 2,
     depth: 1,
-    automaton: 10,
-    nightshift: 11,
-    alchemy: 20,
-    divination: 10,
-  }
-  // `auto_spin` off as well: it is stored per account and adopted on sign-in,
-  // so the Automaton switched on at the end of one rung would be pulling
-  // before the next rung's first press and would open its own packs over the
-  // top of whatever was being measured.
-  db.prepare(
-    `UPDATE player_state SET badges_json = ?, upgrades_json = ?, credits = ?, auto_spin = 0
-      WHERE player_id = ?`,
-  ).run(JSON.stringify(badges), JSON.stringify(upgrades), Number.MAX_SAFE_INTEGER, player.id)
-  /*
-   * A fresh board.
-   *
-   * The rungs share one database, and a contract is posted against the
-   * collection as it stood when it was posted -- so a board written on the
-   * first rung stays on the wall for every rung after it, one step out of
-   * reach of a collection that has since quadrupled. Nothing was ever
-   * answerable, so the muster -- the only ritual this page has -- was never
-   * once played, and the assertion that covers it passed on an empty hand.
-   */
-  db.prepare('DELETE FROM raids WHERE player_id = ?').run(player.id)
+    credits: Number.MAX_SAFE_INTEGER,
+  })
   db.close()
 }
 

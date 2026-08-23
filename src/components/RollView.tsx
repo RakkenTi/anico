@@ -12,7 +12,6 @@ import PackOpener from './PackOpener'
 
 export default function RollView() {
   const s = useGame()
-  const testing = s.sandbox
   const pack = s.pack && s.pack.stacks.some((st) => st.state !== 'open') ? s.pack : null
   // Packs are the whole of the progression: nothing until Sapphire I, and
   // bigger from there. Zero means the only summon available is a single card.
@@ -20,7 +19,7 @@ export default function RollView() {
   const affordable = s.canAffordPack()
   // One pack costs a share of the pull: the primary button is a single wrapper.
   const onePackPrice = packCost(s.packSize)
-  const onePackAffordable = s.packSize > 0 && (s.sandbox || s.credits >= onePackPrice)
+  const onePackAffordable = s.packSize > 0 && s.credits >= onePackPrice
   const busy = s.packBusy()
   /*
    * The instance is still opening the last pull.
@@ -255,22 +254,16 @@ export default function RollView() {
                 className="btn btn-primary btn-summon btn-pack"
                 onClick={() => s.roll(1)}
                 disabled={s.rolling || dealing || busy || paced > 0 || !onePackAffordable}
-                title={
-                  testing
-                    ? `Sandbox: summon ${packSize} at once`
-                    : `Open one sealed pack of ${fmtCount(packSize)}. Every card in it is yours.`
-                }
+                title={`Open one sealed pack of ${fmtCount(packSize)}. Every card in it is yours.`}
               >
                 <span className="pack-x">
                   {s.rolling ? 'Summoning…' : <>Summon ×{fmtCount(packSize)}</>}
                 </span>
-                {!testing && (
-                  <span className="pack-price">
-                    <Icon name="token" /> {fmt(onePackPrice)}
-                  </span>
-                )}
+                <span className="pack-price">
+                  <Icon name="token" /> {fmt(onePackPrice)}
+                </span>
               </button>
-              {s.packsPerPull > 1 && !testing && (
+              {s.packsPerPull > 1 && (
                 <button
                   className="btn btn-quiet btn-summon btn-pack"
                   onClick={() => s.roll(s.packsPerPull)}
@@ -314,8 +307,6 @@ export default function RollView() {
             <span className="testing-note">
               Still opening the last pull · {(paced / 1000).toFixed(1)}s
             </span>
-          ) : testing ? (
-            <span className="testing-note">Sandbox: a scratch profile, nothing is kept</span>
           ) : packSize > 0 ? (
             <span className="testing-note">
               A pack of {fmtCount(packSize)} costs {fmt(onePackPrice)}
@@ -331,39 +322,37 @@ export default function RollView() {
         {/* Two machines, both bought in the shop: one sells the chaff as it
             lands, the other presses the button for you. Between them the late
             game runs without a hand on it. */}
-        {!testing && (
-          <div className="auto-row">
-            <label className="auto-sell">
-              <span className="auto-label">Auto-sell</span>
-              <select
-                className="input"
-                value={s.settings.autoSell}
-                onChange={(e) => s.updateSettings({ autoSell: e.target.value as AutoSell })}
-              >
-                <option value="off">Keep everything</option>
-                <option value="rare">Sell below Rare</option>
-                <option value="epic">Sell below Epic</option>
-                <option value="legendary">Sell below Legendary</option>
-                <option value="mythic">Sell below Mythic</option>
-              </select>
-            </label>
-            {s.autoSpinMs > 0 && (
-              <button
-                className={`btn ${s.autoSpin ? 'btn-primary' : 'btn-quiet'} auto-spin`}
-                onClick={() => s.setAutoSpin(!s.autoSpin)}
-                title={`The Automaton opens a pull every ${(s.autoSpinMs / 1000).toFixed(1)}s while this is on`}
-              >
-                <Icon name="gear" className={s.autoSpin ? 'spinning' : undefined} />
-                {/* Two labels, one shown at a time: a phone has no room for
-                    the sentence and no patience for a mystery icon. */}
-                <span className="label-long">
-                  {s.autoSpin ? 'Automaton running' : 'Start the Automaton'}
-                </span>
-                <span className="label-short">{s.autoSpin ? 'Running' : 'Automaton'}</span>
-              </button>
-            )}
-          </div>
-        )}
+        <div className="auto-row">
+          <label className="auto-sell">
+            <span className="auto-label">Auto-sell</span>
+            <select
+              className="input"
+              value={s.settings.autoSell}
+              onChange={(e) => s.updateSettings({ autoSell: e.target.value as AutoSell })}
+            >
+              <option value="off">Keep everything</option>
+              <option value="rare">Sell below Rare</option>
+              <option value="epic">Sell below Epic</option>
+              <option value="legendary">Sell below Legendary</option>
+              <option value="mythic">Sell below Mythic</option>
+            </select>
+          </label>
+          {s.autoSpinMs > 0 && (
+            <button
+              className={`btn ${s.autoSpin ? 'btn-primary' : 'btn-quiet'} auto-spin`}
+              onClick={() => s.setAutoSpin(!s.autoSpin)}
+              title={`The Automaton opens a pull every ${(s.autoSpinMs / 1000).toFixed(1)}s while this is on`}
+            >
+              <Icon name="gear" className={s.autoSpin ? 'spinning' : undefined} />
+              {/* Two labels, one shown at a time: a phone has no room for
+                  the sentence and no patience for a mystery icon. */}
+              <span className="label-long">
+                {s.autoSpin ? 'Automaton running' : 'Start the Automaton'}
+              </span>
+              <span className="label-short">{s.autoSpin ? 'Running' : 'Automaton'}</span>
+            </button>
+          )}
+        </div>
 
         {/* Nothing about the contents until the wrapper is off: the bar was
             naming a card while the pack was still sealed. */}
