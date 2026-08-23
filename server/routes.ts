@@ -395,9 +395,28 @@ export function createApp(db: DB, config: Config) {
     return sync(c, { state: game.updateSettings(db, c.get('player'), b) })
   })
 
-  api.post('/grant', async (c) => {
+  /*
+   * Sandbox controls.
+   *
+   * Every one of these guards on `player.sandbox_of` inside `game`, not here:
+   * the shadow profile is the only thing they may ever write to, and a seeding
+   * route that can be aimed at a real profile is a save-wiper.
+   */
+  api.post('/sandbox/credits', async (c) => {
     const b = await body(c)
-    return sync(c, { state: game.grantCredits(db, c.get('player'), Number(b.amount ?? 1000)) })
+    return sync(c, { state: game.setSandboxCredits(db, c.get('player'), Number(b.amount ?? 0)) })
+  })
+
+  api.post('/sandbox/stage', async (c) => {
+    const b = await body(c)
+    return sync(c, { state: game.applySandboxStage(db, c.get('player'), String(b.stage ?? '')) })
+  })
+
+  api.post('/sandbox/stock', async (c) => {
+    const b = await body(c)
+    return sync(c, {
+      state: game.stockSandbox(db, c.get('player'), Number(b.count ?? 0), Number(b.copies ?? 4096)),
+    })
   })
 
   /**

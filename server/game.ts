@@ -48,6 +48,8 @@ import {
   type UpgradeKey,
   type Upgrades,
 } from '../src/game/upgrades.js'
+import { stageByKey } from '../src/game/sandbox.js'
+import { clearClaims, seedStage, stockClaims } from './sandbox.js'
 import {
   drawAboveValue,
   drawFromPool,
@@ -103,8 +105,6 @@ const WISH_CHANCE_CAP = 0.006
  * player has bought without the server having to replay a million rolls.
  */
 const YIELD_SMOOTHING = 0.3
-/** Sandbox bulk summons, which answer to nothing else. */
-const SANDBOX_MAX_DRAW = 100
 
 export class GameError extends Error {}
 const fail = (msg: string): never => {
@@ -415,7 +415,6 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
   const row = loadState(db, player.id)
   const settings = settingsOf(row)
   const { badges, upgrades, fx } = loadoutOf(row)
-  const size = packSizeFor(fx, !!player.sandbox_of)
   const perCard = creditsPerCard(row, fx)
   return {
     username: player.username,
@@ -425,11 +424,11 @@ export function snapshot(db: DB, player: Player, withCollection = false): Snapsh
     credits: row.credits,
     poolSize: instancePool(db),
     collectionRev: row.collection_rev,
-    packSize: size,
-    packsPerPull: player.sandbox_of ? 1 : fx.packsPerPull,
-    cardsPerPull: player.sandbox_of ? size : fx.cardsPerPull,
-    packPrice: player.sandbox_of ? 0 : packCost(fx.cardsPerPull),
-    autoSpinMs: player.sandbox_of ? 0 : fx.autoSpinMs,
+    packSize: fx.packSize,
+    packsPerPull: fx.packsPerPull,
+    cardsPerPull: fx.cardsPerPull,
+    packPrice: packCost(fx.cardsPerPull),
+    autoSpinMs: fx.autoSpinMs,
     autoSpin: !!row.auto_spin,
     nextPullAt: player.sandbox_of ? 0 : row.next_pull_at,
     cardRate: fx.cardRate,
@@ -569,17 +568,6 @@ export interface RollResult {
 }
 
 /**
- * What a pack holds for this player right now.
- *
- * Zero until the shop unlocks packs, which is the whole of the progression:
- * a fresh account summons one card at a time, and Sapphire is what turns that
- * into a sealed pack.
- */
-function packSizeFor(fx: ReturnType<typeof computeEffects>, sandbox: boolean): number {
-  return sandbox ? SANDBOX_MAX_DRAW : fx.packSize
-}
-
-/**
  * Summon a card, or a pack of them.
  *
  * Nothing here is rationed: there is no summon budget and no cooldown, so the
@@ -647,7 +635,9 @@ export function roll(
   const sandbox = !!player.sandbox_of
   const wanted = Math.max(0, Math.floor(packsWanted))
   const multi = wanted >= 1
-  const packSize = packSizeFor(fx, sandbox)
+  // Zero until the shop unlocks packs: a fresh account summons one card at a
+  // time, and Sapphire is what turns that into a sealed pack.
+  const packSize = fx.packSize
 
   let total = 1
   let price = 0
@@ -656,18 +646,14 @@ export function roll(
     if (packSize <= 0) {
       fail('Packs are locked. The Sapphire badge in the shop opens them.')
     }
-    if (sandbox) {
-      total = SANDBOX_MAX_DRAW
-    } else {
-      // One pack or all of them, and never more than Both Hands has bought.
-      packs = Math.max(1, Math.min(wanted, fx.packsPerPull))
-      total = packSize * packs
-      price = packCost(total)
-      // A pack is what credits are for. The single summon is always free, so an
-      // empty purse is never a dead end -- it just means selling something first.
-      if (row.credits < price) {
-        fail(`This pull costs ${fmt(price)} credits. Sell something first.`)
-      }
+    // One pack or all of them, and never more than Both Hands has bought.
+    packs = Math.max(1, Math.min(wanted, fx.packsPerPull))
+    total = packSize * packs
+    price = packCost(total)
+    // A pack is what credits are for. The single summon is always free, so an
+    // empty purse is never a dead end -- it just means selling something first.
+    if (row.credits < price) {
+      fail(`This pull costs ${fmt(price)} credits. Sell something first.`)
     }
   }
   /*
@@ -685,9 +671,7 @@ export function roll(
     fail('The last pull is still opening.')
   }
 
-  // Sandbox bulk stays a plain spread: it is for looking at a hundred cards at
-  // once, and a sealed wrapper is the opposite of that.
-  const pack = multi && !sandbox
+  const pack = multi
 
   /*
    * How much of the pull is actually dealt.
@@ -1867,10 +1851,33 @@ export function updateSettings(db: DB, player: Player, patch: unknown): Snapshot
 }
 
 /** Sandbox only: the debug credit grant. */
-export function grantCredits(db: DB, player: Player, amount: number): Snapshot {
+export function setSandboxCredits(db: DB, player: Player, amount: number): Snapshot {
   if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
-  const n = Math.max(0, Math.min(100_000, Math.round(amount)))
-  pay(db, player.id, n)
+  const n = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.round(amount)))
+  db.prepare('UPDATE player_state SET credits = ? WHERE player_id = ?').run(n, player.id)
+  return snapshot(db, player)
+}
+
+/** Put this profile at a stage of the game. Sandbox only, like everything here. */
+export function applySandboxStage(db: DB, player: Player, key: string): Snapshot {
+  if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
+  const stage = stageByKey(key)
+  if (!stage) return fail('No such stage.')
+  db.transaction(() => {
+    clearClaims(db, player.id)
+    seedStage(db, player.id, stage)
+    if (stage.own > 0) stockClaims(db, player.id, stage.own, stage.copies)
+  })()
+  return snapshot(db, player)
+}
+
+/** Top a sandbox collection up to `n` characters at `copies` each. */
+export function stockSandbox(db: DB, player: Player, n: number, copies: number): Snapshot {
+  if (!player.sandbox_of) fail('Sandbox is not enabled for this account.')
+  const want = Math.max(0, Math.min(200_000, Math.round(n)))
+  const deep = Math.max(1, Math.min(1 << 20, Math.round(copies)))
+  if (want === 0) clearClaims(db, player.id)
+  else stockClaims(db, player.id, want, deep)
   return snapshot(db, player)
 }
 

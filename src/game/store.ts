@@ -289,7 +289,10 @@ interface GameState {
   /** `count` is levels, or 'max' for as many as the balance covers. */
   buyUpgrade: (key: UpgradeKey, count?: number | 'max') => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
-  grantCredits: (amount: number) => Promise<void>
+  /* Sandbox controls. No-ops off a sandbox profile: the server refuses them. */
+  setSandboxCredits: (amount: number) => Promise<void>
+  applyStage: (stage: string) => Promise<void>
+  stockSandbox: (count: number, copies: number) => Promise<void>
   resetSave: (username: string, password: string) => Promise<string | null>
   clearError: () => void
   pushToast: (text: string, flavor?: Toast['flavor']) => void
@@ -925,8 +928,18 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    grantCredits: async (amount) => {
-      const res = await guard(() => api.grant(amount))
+    setSandboxCredits: async (amount) => {
+      const res = await guard(() => api.sandboxCredits(amount))
+      if (res) apply(res.state)
+    },
+
+    applyStage: async (stage) => {
+      const res = await guard(() => api.sandboxStage(stage))
+      if (res) apply(res.state)
+    },
+
+    stockSandbox: async (count, copies) => {
+      const res = await guard(() => api.sandboxStock(count, copies))
       if (res) apply(res.state)
     },
 

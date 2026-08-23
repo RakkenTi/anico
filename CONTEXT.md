@@ -38,11 +38,14 @@ invites and holds sandbox access.
 the first account exists, registration is closed except through an invite.
 
 **Sandbox** — a scratch *profile*, not a state the account is in. The admin grants the
-privilege; the player switches it on, and gets a separate empty collection with its own
-credits. Nothing done there touches their real one, and none of it survives switching
-back or restarting the instance. Every badge is already paid for there: free ×100 summons
-and claim all, without buying anything. An admin privilege, not a setting a player can grant
-themselves.
+privilege; the player switches it on, and gets a separate collection with its own credits.
+Nothing done there touches their real one, and none of it survives switching back or
+restarting the instance. An admin privilege, not a setting a player can grant themselves.
+
+**Stage** — a point in the game a sandbox profile can be put at, from Fresh to Silly. It
+seeds badges, upgrades, credits and a collection and then stops: a seeded profile plays by
+the ordinary rules, and the summon it presses is the summon everyone else presses. The
+stress harness seeds the same way, from the same module, so the two cannot drift.
 
 ## The catalog
 
