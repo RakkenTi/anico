@@ -303,7 +303,10 @@ export const api = {
     post<{ state: Snapshot }>('/upgrade', { key, count }),
   updateSettings: (patch: Partial<ServerSettings>) =>
     request<{ state: Snapshot }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
-  grant: (amount: number) => post<{ state: Snapshot }>('/grant', { amount }),
+  sandboxCredits: (amount: number) => post<{ state: Snapshot }>('/sandbox/credits', { amount }),
+  sandboxStage: (stage: string) => post<{ state: Snapshot }>('/sandbox/stage', { stage }),
+  sandboxStock: (count: number, copies: number) =>
+    post<{ state: Snapshot }>('/sandbox/stock', { count, copies }),
   reset: (username: string, password: string) =>
     post<{ state: Snapshot }>('/reset', { username, password }),
   rename: (username: string, password: string) =>

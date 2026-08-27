@@ -289,7 +289,10 @@ interface GameState {
   /** `count` is levels, or 'max' for as many as the balance covers. */
   buyUpgrade: (key: UpgradeKey, count?: number | 'max') => Promise<void>
   updateSettings: (patch: Partial<ServerSettings>) => Promise<void>
-  grantCredits: (amount: number) => Promise<void>
+  /* Sandbox controls. No-ops off a sandbox profile: the server refuses them. */
+  setSandboxCredits: (amount: number) => Promise<void>
+  applyStage: (stage: string) => Promise<void>
+  stockSandbox: (count: number, copies: number) => Promise<void>
   resetSave: (username: string, password: string) => Promise<string | null>
   clearError: () => void
   pushToast: (text: string, flavor?: Toast['flavor']) => void
@@ -625,8 +628,10 @@ export const useGame = create<GameState>()((set, get) => {
         )
       }
       if (res.hidden > 0) {
+        // Both halves of the pull, because the dealt figure is the one the shop
+        // sells and it has never appeared anywhere the player can see it.
         get().pushToast(
-          `${fmtCount(res.hidden)} of those cards were appraised as they came out, +${fmt(res.hiddenFor)} credits`,
+          `${fmtCount(res.results.length)} cards landed; the other ${fmtCount(res.hidden)} were appraised as they came out, +${fmt(res.hiddenFor)} credits`,
           'credits',
         )
       }
@@ -923,8 +928,18 @@ export const useGame = create<GameState>()((set, get) => {
       if (res) apply(res.state)
     },
 
-    grantCredits: async (amount) => {
-      const res = await guard(() => api.grant(amount))
+    setSandboxCredits: async (amount) => {
+      const res = await guard(() => api.sandboxCredits(amount))
+      if (res) apply(res.state)
+    },
+
+    applyStage: async (stage) => {
+      const res = await guard(() => api.sandboxStage(stage))
+      if (res) apply(res.state)
+    },
+
+    stockSandbox: async (count, copies) => {
+      const res = await guard(() => api.sandboxStock(count, copies))
       if (res) apply(res.state)
     },
 

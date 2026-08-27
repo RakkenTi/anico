@@ -3,6 +3,7 @@ import { useGame, useUi } from '../game/store'
 import { POOL_OPTIONS } from '../game/pool'
 import { sfx } from '../game/sound'
 import AdminPanel from './AdminPanel'
+import SandboxPanel from './SandboxPanel'
 import { DEMO } from '../game/demo'
 import type { RollGender, ThemeKey } from '../game/types'
 import type { ServerSettings } from '../api'
@@ -30,10 +31,8 @@ export default function SettingsView() {
   const ui = useUi()
   const update = useGame((s) => s.updateSettings)
   const resetSave = useGame((s) => s.resetSave)
-  const grantCredits = useGame((s) => s.grantCredits)
   const pushToast = useGame((s) => s.pushToast)
   const sandboxAllowed = useGame((s) => s.sandboxAllowed)
-  const setSandbox = useGame((s) => s.setSandbox)
   const rename = useGame((s) => s.rename)
   const username = useGame((s) => s.username)
   const [newName, setNewName] = useState('')
@@ -175,42 +174,9 @@ export default function SettingsView() {
         </div>
       </div>
 
-      {sandboxAllowed && (
-        <div className={`panel ${sandbox ? 'panel-testing' : ''}`}>
-          <h2 className="section-title">Sandbox</h2>
-          <p className="section-sub">
-            A scratch profile with its own credits and its own empty collection. Nothing you
-            do in it touches the collection you care about, and none of it is kept: switching
-            back deletes it, and so does restarting the instance.
-          </p>
-          <div className="setting-row">
-            <button
-              className={`btn ${sandbox ? 'btn-danger' : 'btn-primary'}`}
-              onClick={() => void setSandbox(!sandbox)}
-            >
-              {sandbox ? 'Leave the sandbox' : 'Enter the sandbox'}
-            </button>
-            <p className="setting-hint">
-              {sandbox
-                ? 'You are in the sandbox now. Your own collection is untouched and waiting.'
-                : 'Your collection stays exactly as it is while you are in there.'}
-            </p>
-          </div>
-          {sandbox && (
-            <div className="setting-row">
-              <button
-                className="btn btn-ghost"
-                onClick={() => {
-                  grantCredits(1000)
-                  pushToast('+1000 credits (sandbox)', 'credits')
-                }}
-              >
-                +1000 credits (debug)
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {/* No sandbox in the demo: it has no accounts to grant the privilege to,
+          and the stages are server-seeded rules. */}
+      {!DEMO && sandboxAllowed && <SandboxPanel />}
 
       {/* Everything below needs an account: one is an admin privilege, the
           others ask for credentials the demo never issued. */}
