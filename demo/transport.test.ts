@@ -29,13 +29,14 @@ function walk(dir: string, out: string[] = []): string[] {
 const clientFiles = walk(join(root, 'src'))
 const serverFiles = walk(join(root, 'server'))
 const read = (path: string) => readFileSync(path, 'utf8')
+const relative = (path: string) => path.slice(root.length).replaceAll('\\', '/')
 
 test('the client reaches the instance through src/api.ts and nowhere else', () => {
   const offenders = clientFiles
-    .filter((f) => !f.endsWith(`src${'/'}api.ts`))
+    .filter((f) => !relative(f).endsWith(`src${'/'}api.ts`))
     .filter((f) => /['"`]\/api[/'"`]/.test(read(f)))
   assert.deepEqual(
-    offenders.map((f) => f.slice(root.length)),
+    offenders.map(relative),
     [],
     'a second path to /api works in the app and breaks the demo, which has no /api to call',
   )
@@ -46,9 +47,9 @@ test('nothing outside src/api.ts and src/game/sound.ts calls fetch', () => {
   // anywhere. Anything else is a request the demo cannot answer.
   const allowed = new Set([`src${'/'}api.ts`, `src${'/'}game${'/'}sound.ts`])
   const offenders = clientFiles
-    .filter((f) => !allowed.has(f.slice(root.length)))
+    .filter((f) => !allowed.has(relative(f)))
     .filter((f) => /\bfetch\(/.test(read(f)))
-  assert.deepEqual(offenders.map((f) => f.slice(root.length)), [])
+  assert.deepEqual(offenders.map(relative), [])
 })
 
 test('only the server modules the demo never loads reach for node', () => {
@@ -63,10 +64,10 @@ test('only the server modules the demo never loads reach for node', () => {
     `server${'/'}backups.ts`,
   ])
   const offenders = serverFiles
-    .filter((f) => !stubbed.has(f.slice(root.length)))
+    .filter((f) => !stubbed.has(relative(f)))
     .filter((f) => /from ['"](node:[a-z_]+|fs|path|crypto|util)['"]/.test(read(f)))
   assert.deepEqual(
-    offenders.map((f) => f.slice(root.length)),
+    offenders.map(relative),
     [],
     'a node import in the rules is a module the browser cannot load',
   )
